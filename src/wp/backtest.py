@@ -166,7 +166,7 @@ def build_rank_input_for_date(trade_date: str, cache_root: Path | None = None) -
     out["today_limitup"] = np.where(out["ts_code"].isin(current_limit_codes) | ((up_limit > 0) & (close >= up_limit * 0.999)), 1, 0)
     out["pre_day_limitup"] = np.where(out["ts_code"].isin(prev_limit_codes), 1, 0)
 
-    sector_gt6 = out.assign(_gt6=pct_chg >= 6).groupby("sector_name")["_gt6"].sum()
+    sector_gt6 = out.assign(_gt6=pct_chg > 6).groupby("sector_name")["_gt6"].sum()
     sector_amount = out.groupby("sector_name")["amount"].sum()
     amount_median = float(sector_amount.median()) if len(sector_amount) else 0.0
     sector_metrics = pd.DataFrame({

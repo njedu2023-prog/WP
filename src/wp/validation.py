@@ -52,8 +52,8 @@ def assert_top50_rules(top50: pd.DataFrame) -> list[str]:
     errors = []
     if top50.empty:
         return errors
-    if (top50["pct_chg"].astype(float) < 6).any():
-        errors.append("Top50 contains pct_chg < 6")
+    if (top50["pct_chg"].astype(float) <= 6).any():
+        errors.append("Top50 contains pct_chg <= 6")
     if (top50["pre_day_limitup"].astype(int) == 1).any():
         errors.append("Top50 contains previous-day limit-up stocks")
     if (top50["today_limitup"].astype(int) == 1).any():

@@ -60,7 +60,7 @@ def filter_candidates(df: pd.DataFrame, min_pct_chg: float = 6.0, min_amount: fl
     if df.empty:
         return enrich_basic_fields(df)
     out = flag_limitup(enrich_basic_fields(df))
-    mask = (out["pct_chg"] >= min_pct_chg) & (out["pre_day_limitup"] != 1) & (out["today_limitup"] != 1)
+    mask = (out["pct_chg"] > min_pct_chg) & (out["pre_day_limitup"] != 1) & (out["today_limitup"] != 1)
     if exclude_st:
         mask &= ~out["is_st"]
     if min_amount > 0:
