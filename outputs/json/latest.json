@@ -1,24 +1,18 @@
 {
-  "generated_at": "2026-07-06 14:55:23",
+  "generated_at": "2026-07-06 15:13:27",
   "health": {
-    "status": "数据异常",
+    "status": "无符合条件股票",
     "is_trading_day": true,
-    "is_trading_time": true,
-    "data_time": "2026-07-06 14:55:23",
+    "is_trading_time": false,
+    "data_time": "2026-07-06 15:13:27",
     "raw_count": 0,
     "candidate_count": 0,
     "top50_count": 0,
-    "missing_fields": [
-      "涨幅字段",
-      "昨日涨停字段",
-      "今日涨停字段",
-      "板块字段",
-      "成交额字段"
-    ],
+    "missing_fields": [],
     "fallback_used": false,
-    "load_ok": false,
-    "load_error": "HTTP Error 404: Not Found",
-    "generated_at": "2026-07-06T14:55:24"
+    "load_ok": true,
+    "load_error": "",
+    "generated_at": "2026-07-06T15:13:28"
   },
   "top50": []
 }
