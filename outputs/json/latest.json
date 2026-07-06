@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-07-06 15:22:37",
+  "generated_at": "2026-07-06 15:13:27",
   "health": {
     "status": "无符合条件股票",
     "is_trading_day": true,
     "is_trading_time": false,
-    "data_time": "2026-07-06 15:22:37",
+    "data_time": "2026-07-06 15:13:27",
     "raw_count": 0,
     "candidate_count": 0,
     "top50_count": 0,
@@ -12,7 +12,7 @@
     "fallback_used": false,
     "load_ok": true,
     "load_error": "",
-    "generated_at": "2026-07-06T15:22:37"
+    "generated_at": "2026-07-06T15:13:28"
   },
   "top50": []
 }
