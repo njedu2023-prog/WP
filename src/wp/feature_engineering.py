@@ -23,7 +23,7 @@ def add_feature_scores(df: pd.DataFrame) -> pd.DataFrame:
     pre_close = numeric_series(out, ["pre_close", "昨收"], out["pre_close"])
     ret_5d = numeric_series(out, ["ret_5d", "五日涨幅"], out["pct_chg"])
     ret_20d = numeric_series(out, ["ret_20d", "二十日涨幅"], ret_5d)
-    close_position = np.where(high > low, (close - low) / (high - low) * 100, 50)
+    close_position = pd.Series(np.where(high > low, (close - low) / (high - low) * 100, 50), index=out.index).fillna(50)
 
     out["sector_strength_score"] = clip(100 - sector_rank * 3 + sector_gt6 * 5 + sector_lu * 6 + (sector_amount_ratio - 1) * 20)
     out["stock_strength_score"] = clip(out["pct_chg"] * 7 + volume_ratio * 8 + close_position * 0.25)

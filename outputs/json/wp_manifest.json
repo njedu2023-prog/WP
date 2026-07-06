@@ -1,5 +1,5 @@
 {
-  "latest_update": "2026-07-06 15:37:12",
+  "latest_update": "2026-07-06 15:41:22",
   "mode": "backtest",
   "backtest": {
     "mode": "backtest",
@@ -9,7 +9,7 @@
     "trade_count": 150,
     "hit_top10": 0.0333,
     "hit_top20": 0.0333,
-    "hit_top50": 0.0333,
-    "generated_at": "2026-07-06T15:37:41"
+    "hit_top50": 0.0267,
+    "generated_at": "2026-07-06T15:41:25"
   }
 }
