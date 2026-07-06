@@ -26,10 +26,7 @@ jobs:
         run: python -m wp.main
         env:
           PYTHONPATH: src
-      - name: Commit outputs
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add outputs logs data/cache
-          git diff --cached --quiet || git commit -m "Update WP outputs"
-          git push
+      - name: Commit outputs through GitHub API
+        run: python scripts/github_commit_paths.py "Update WP outputs" outputs logs data/cache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,10 +1,10 @@
 {
-  "generated_at": "2026-07-06 14:51:17",
+  "generated_at": "2026-07-06 14:55:23",
   "health": {
     "status": "数据异常",
     "is_trading_day": true,
     "is_trading_time": true,
-    "data_time": "2026-07-06 14:51:17",
+    "data_time": "2026-07-06 14:55:23",
     "raw_count": 0,
     "candidate_count": 0,
     "top50_count": 0,
@@ -18,7 +18,7 @@
     "fallback_used": false,
     "load_ok": false,
     "load_error": "HTTP Error 404: Not Found",
-    "generated_at": "2026-07-06T14:51:18"
+    "generated_at": "2026-07-06T14:55:24"
   },
   "top50": []
 }
