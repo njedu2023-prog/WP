@@ -1,0 +1,5 @@
+high_risk_threshold: 65
+medium_risk_threshold: 45
+late_pullback_pct: 3.0
+high_position_ret_20d: 35.0
+excessive_amount_ratio: 4.0

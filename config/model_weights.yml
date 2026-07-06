@@ -1,0 +1,7 @@
+sector_strength_score: 0.30
+stock_strength_score: 0.25
+acceptance_score: 0.20
+momentum_score: 0.10
+capital_score: 0.10
+pattern_score: 0.05
+risk_penalty_score: -0.25

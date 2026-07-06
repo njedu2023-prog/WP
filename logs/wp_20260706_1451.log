@@ -1,0 +1,2 @@
+2026-07-06 14:51:17,535 INFO WP run started, source=https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/latest/wp_latest_rank_input.csv
+2026-07-06 14:51:18,055 INFO WP run completed: raw=0 candidates=0 top50=0 log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260706_1451.log
