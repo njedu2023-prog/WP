@@ -58,7 +58,7 @@ def run() -> dict:
         return result.summary
 
     cache_path = ROOT / "data" / "cache" / "wp_latest_rank_input.csv"
-    source = config.get("input_url", "")
+    source = os.environ.get("WP_SOURCE_CSV", "").strip() or config.get("input_url", "")
     logging.info("WP run started, source=%s", source)
     load_result = read_rank_input(source, cache_path=cache_path)
     raw = load_result.frame
@@ -71,7 +71,17 @@ def run() -> dict:
     )
     ranked_input = add_scores(add_feature_scores(candidates))
     top50, full_rank = rank_candidates(ranked_input, update_time, top_n=int(config.get("top_n", 50)))
-    health = build_healthcheck(raw, candidates, top50, load_result.ok, load_result.error, load_result.fallback_used, update_time, expected_trade_date)
+    health = build_healthcheck(
+        raw,
+        candidates,
+        top50,
+        load_result.ok,
+        load_result.error,
+        load_result.fallback_used,
+        update_time,
+        expected_trade_date,
+        load_result.metadata,
+    )
     if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
         logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
         top50 = top50.iloc[0:0].copy()
@@ -87,18 +97,43 @@ def run() -> dict:
 
     ensure_dir(output_root / "csv")
     ensure_dir(output_root / "json")
-    ensure_dir(output_root / "html_reports" / "archive" / current.strftime("%Y%m%d"))
+    archive_dir = output_root / "html_reports" / "archive" / current.strftime("%Y%m%d")
+    ensure_dir(archive_dir)
     top50.to_csv(output_root / "csv" / "wp_top50.csv", index=False, encoding="utf-8-sig")
     full_rank.to_csv(output_root / "csv" / "wp_full_rank.csv", index=False, encoding="utf-8-sig")
     ranked_input.to_csv(output_root / "csv" / "wp_model_debug.csv", index=False, encoding="utf-8-sig")
+    latest_html = output_root / "html_reports" / "latest.html"
+    archive_html = archive_dir / f"{current.strftime('%H%M')}.html"
+    preserve_latest = (not load_result.ok) and (not load_result.fallback_used) and latest_html.exists()
+    health["preserved_latest_html"] = bool(preserve_latest)
     latest_payload = {"generated_at": update_time, "health": health, "top50": top50.to_dict(orient="records")}
     write_json(output_root / "json" / "latest.json", latest_payload)
-    write_json(output_root / "json" / "wp_manifest.json", {"latest_update": update_time, "top50_count": len(top50), "health_status": health["status"]})
+    write_json(
+        output_root / "json" / "wp_manifest.json",
+        {
+            "latest_update": update_time,
+            "top50_count": len(top50),
+            "health_status": health["status"],
+            "preserved_latest_html": bool(preserve_latest),
+        },
+    )
     write_json(output_root / "json" / "wp_data_healthcheck.json", health)
-    render_html(top50, full_rank, health, output_root / "html_reports" / "latest.html")
-    render_html(top50, full_rank, health, output_root / "html_reports" / "archive" / current.strftime("%Y%m%d") / f"{current.strftime('%H%M')}.html")
+    if preserve_latest:
+        logging.error("Source failed; preserving existing latest.html. error=%s", load_result.error)
+    else:
+        render_html(top50, full_rank, health, latest_html)
+    render_html(top50, full_rank, health, archive_html)
     render_markdown(top50, output_root / "html_reports" / "latest.md")
-    logging.info("WP run completed: raw=%s candidates=%s top50=%s log=%s", len(raw), len(candidates), len(top50), log_path)
+    logging.info(
+        "WP run completed: raw=%s candidates=%s top50=%s missing_fields=%s fallback=%s outputs=%s log=%s",
+        len(raw),
+        len(candidates),
+        len(top50),
+        ",".join(health.get("missing_fields", [])) or "none",
+        health.get("fallback_used"),
+        output_root,
+        log_path,
+    )
     return health
 
 

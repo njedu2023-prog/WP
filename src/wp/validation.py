@@ -16,6 +16,7 @@ def build_healthcheck(
     fallback_used: bool,
     update_time: str,
     expected_trade_date: str | None = None,
+    source_metadata: dict | None = None,
 ) -> dict:
     required = {
         "涨幅字段": ["pct_chg", "change_pct", "涨跌幅"],
@@ -32,9 +33,16 @@ def build_healthcheck(
         dates = dates[dates.str.len() == 8]
         if not dates.empty:
             data_trade_date = str(sorted(dates.unique())[-1])
+    source_metadata = source_metadata or {}
     status = "ok"
+    if source_metadata.get("status") == "stale_data":
+        data_trade_date = str(source_metadata.get("source_trade_date") or data_trade_date)
+        expected_trade_date = str(source_metadata.get("expected_trade_date") or expected_trade_date or "")
+        status = "数据日期过期"
     if not load_ok:
         status = "数据异常"
+    elif status == "数据日期过期":
+        pass
     elif expected_trade_date and data_trade_date and data_trade_date != expected_trade_date:
         status = "数据日期过期"
     elif missing:
@@ -55,6 +63,8 @@ def build_healthcheck(
         "fallback_used": bool(fallback_used),
         "load_ok": bool(load_ok),
         "load_error": load_error,
+        "source_status": source_metadata.get("status", ""),
+        "source_generated_at": source_metadata.get("generated_at", ""),
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }
 

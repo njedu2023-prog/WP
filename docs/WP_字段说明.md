@@ -8,3 +8,15 @@
 - `risk_penalty_score`: 风险惩罚分。
 - `core_reason`: 入选核心理由。
 - `risk_reason`: 风险提示。
+- `amount_ratio_5d`: 当日成交额相对近 5 个交易日均额放大倍数。
+- `amount_ratio_20d`: 当日成交额相对近 20 个交易日均额放大倍数。
+- `close_position`: 收盘价在日内高低区间中的位置，越接近 100 越靠近全天高点。
+- `intraday_pullback_pct`: 从全天高点回落到收盘的幅度。
+- `open_to_close_pct`: 开盘到收盘的涨跌幅，用于识别高开低走。
+- `gap_open_pct`: 开盘相对昨收的跳空幅度。
+- `amplitude`: 当日振幅。
+- `high_20d_break`: 是否突破近 20 日高点。
+- `platform_break_20d`: 是否突破近 20 日收盘平台。
+- `dragon_tiger_flag`: 是否有龙虎榜资金线索。
+- `high_open_low_walk_flag`: 是否出现高开低走弱结构。
+- `volume_price_sync_flag`: 是否量价结构同步。

@@ -35,11 +35,31 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Check A-share run window
+        if: github.event_name == 'schedule'
+        run: |
+          python - <<'PY'
+          from datetime import datetime, time
+          from zoneinfo import ZoneInfo
+          now = datetime.now(ZoneInfo("Asia/Shanghai"))
+          in_day = now.weekday() < 5
+          in_time = time(9, 25) <= now.time() <= time(11, 35) or time(12, 55) <= now.time() <= time(15, 10)
+          if not (in_day and in_time):
+              print(f"Skip outside A-share run window: {now:%Y-%m-%d %H:%M:%S}")
+              with open(__import__("os").environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+                  handle.write("RUN_WP=0\n")
+              raise SystemExit(0)
+          print(f"Run window ok: {now:%Y-%m-%d %H:%M:%S}")
+          with open(__import__("os").environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+              handle.write("RUN_WP=1\n")
+          PY
       - name: Install dependencies
+        if: env.RUN_WP != '0'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run WP
+        if: env.RUN_WP != '0'
         run: python -m wp.main
         env:
           PYTHONPATH: src
@@ -47,6 +67,7 @@ jobs:
           WP_BACKTEST_START: ${{ github.event.inputs.start_date }}
           WP_BACKTEST_END: ${{ github.event.inputs.end_date }}
       - name: Commit outputs through GitHub API
+        if: env.RUN_WP != '0'
         run: python scripts/github_commit_paths.py "Update WP outputs" outputs logs data/cache
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

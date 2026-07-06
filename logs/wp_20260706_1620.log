@@ -1,0 +1,3 @@
+2026-07-06 16:20:47,199 INFO WP run started, source=/Users/moclh/Documents/尾盘/work/wp_impl/a-share-top3-data/data/wp/latest/wp_latest_rank_input.csv
+2026-07-06 16:20:47,209 ERROR Stale WP data: data_trade_date=20260703 expected=20260706
+2026-07-06 16:20:47,215 INFO WP run completed: raw=0 candidates=0 top50=0 log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260706_1620.log

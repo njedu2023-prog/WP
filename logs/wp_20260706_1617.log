@@ -1,0 +1,4 @@
+2026-07-06 16:17:47,837 INFO WP run started, source=/Users/moclh/Documents/尾盘/work/wp_impl/a-share-top3-data/data/wp/latest/wp_latest_rank_input.csv
+2026-07-06 16:17:47,890 INFO WP backtest started, start=20260701 end=20260703
+2026-07-06 16:17:47,893 INFO WP run completed: raw=278 candidates=239 top50=50 log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260706_1617.log
+2026-07-06 16:18:14,363 INFO WP backtest completed: {'mode': 'backtest', 'start_date': '20260701', 'end_date': '20260703', 'trade_days': 3, 'trade_count': 150, 'hit_top10': 0.0333, 'hit_top20': 0.05, 'hit_top50': 0.04, 'precision_at_10': 0.0333, 'precision_at_20': 0.05, 'precision_at_50': 0.04, 'auc': 0.4201, 'brier': 0.890422, 'avg_next_day_max_pct_top10': 4.0387, 'avg_next_day_close_pct_top10': 0.6207, 'max_drawdown_risk_top10': -10.7246, 'avg_next_day_max_pct_top50': 4.7389, 'avg_next_day_close_pct_top50': 0.5865, 'max_drawdown_risk_top50': -13.9358, 'generated_at': '2026-07-06T16:18:14'}

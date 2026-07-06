@@ -26,6 +26,12 @@ SCHEMA = [
     "volume_ratio", "sector_name", "sector_rank", "sector_limitup_count",
     "sector_gt6_count", "sector_amount_ratio", "pre_day_limitup", "today_limitup",
     "today_limit_up_price", "prev_limit_up_price", "ret_5d", "ret_20d",
+    "amount_ratio_5d", "amount_ratio_20d", "turnover_rate_5d_avg",
+    "close_position", "intraday_pullback_pct", "open_to_close_pct",
+    "gap_open_pct", "amplitude", "high_20d_break", "platform_break_20d",
+    "stage_high_20d", "dragon_tiger_flag", "dragon_tiger_net_rate",
+    "dragon_tiger_reason", "limit_touch_count", "open_board_count",
+    "limitup_quality_score", "intraday_risk_score",
 ]
 
 
@@ -119,6 +125,62 @@ def _limitup_codes(trade_date: str, cache_root: Path | None = None) -> set[str]:
     return set(frame["ts_code"].dropna().astype(str).str.strip())
 
 
+def _add_history_features(out: pd.DataFrame, trade_date: str, cache_root: Path | None = None) -> pd.DataFrame:
+    start = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=45)).strftime("%Y%m%d")
+    dates = _available_trade_dates(start, trade_date)[-24:]
+    frames = []
+    for date in dates:
+        frame = _read_remote_csv(f"data/raw/{date[:4]}/{date}/daily.csv", cache_root)
+        if frame.empty:
+            continue
+        keep = [col for col in ["ts_code", "trade_date", "close", "high", "low", "amount", "pct_chg"] if col in frame.columns]
+        frame = frame[keep].copy()
+        frame["trade_date"] = frame.get("trade_date", date)
+        frames.append(frame)
+    if not frames:
+        return out
+    hist = pd.concat(frames, ignore_index=True, sort=False)
+    hist["ts_code"] = hist["ts_code"].astype(str).str.strip()
+    hist["trade_date"] = hist["trade_date"].astype(str).str.replace("-", "", regex=False)
+    for col in ["close", "high", "low", "amount", "pct_chg"]:
+        if col in hist.columns:
+            hist[col] = pd.to_numeric(hist[col], errors="coerce")
+    hist = hist.sort_values(["ts_code", "trade_date"])
+    current = hist[hist["trade_date"] == trade_date].set_index("ts_code")
+    prev = hist[hist["trade_date"] < trade_date]
+    if current.empty or prev.empty:
+        return out
+
+    rows = []
+    for ts_code, group in prev.groupby("ts_code"):
+        group = group.sort_values("trade_date")
+        cur = current.loc[ts_code] if ts_code in current.index else None
+        if cur is None:
+            continue
+        close = float(cur.get("close", np.nan))
+        high = float(cur.get("high", np.nan))
+        amount = float(cur.get("amount", np.nan))
+        amount_5 = group["amount"].tail(5).mean()
+        amount_20 = group["amount"].tail(20).mean()
+        close_5 = group["close"].tail(5).iloc[0] if len(group.tail(5)) else np.nan
+        close_20 = group["close"].tail(20).iloc[0] if len(group.tail(20)) else np.nan
+        high_20 = group["high"].tail(20).max()
+        close_high_20 = group["close"].tail(20).max()
+        rows.append({
+            "ts_code": ts_code,
+            "amount_ratio_5d": amount / amount_5 if amount_5 and amount_5 > 0 else np.nan,
+            "amount_ratio_20d": amount / amount_20 if amount_20 and amount_20 > 0 else np.nan,
+            "ret_5d": (close / close_5 - 1) * 100 if close_5 and close_5 > 0 else np.nan,
+            "ret_20d": (close / close_20 - 1) * 100 if close_20 and close_20 > 0 else np.nan,
+            "stage_high_20d": high_20,
+            "high_20d_break": int(high >= high_20 * 0.999) if high_20 and high_20 > 0 else 0,
+            "platform_break_20d": int(close >= close_high_20 * 1.005) if close_high_20 and close_high_20 > 0 else 0,
+        })
+    if not rows:
+        return out
+    return out.merge(pd.DataFrame(rows), on="ts_code", how="left")
+
+
 def build_rank_input_for_date(trade_date: str, cache_root: Path | None = None) -> pd.DataFrame:
     trade_date = _date_key(trade_date)
     base = f"data/raw/{trade_date[:4]}/{trade_date}"
@@ -165,6 +227,11 @@ def build_rank_input_for_date(trade_date: str, cache_root: Path | None = None) -
     out["prev_limit_up_price"] = np.nan
     out["today_limitup"] = np.where(out["ts_code"].isin(current_limit_codes) | ((up_limit > 0) & (close >= up_limit * 0.999)), 1, 0)
     out["pre_day_limitup"] = np.where(out["ts_code"].isin(prev_limit_codes), 1, 0)
+    out["close_position"] = np.where(_to_num(out, "high") > _to_num(out, "low"), (close - _to_num(out, "low")) / (_to_num(out, "high") - _to_num(out, "low")) * 100, 50)
+    out["intraday_pullback_pct"] = np.where(close > 0, (_to_num(out, "high") / close - 1) * 100, 0)
+    out["open_to_close_pct"] = np.where(_to_num(out, "open") > 0, (close / _to_num(out, "open") - 1) * 100, 0)
+    out["gap_open_pct"] = np.where(_to_num(out, "pre_close") > 0, (_to_num(out, "open") / _to_num(out, "pre_close") - 1) * 100, 0)
+    out["amplitude"] = np.where(_to_num(out, "pre_close") > 0, (_to_num(out, "high") - _to_num(out, "low")) / _to_num(out, "pre_close") * 100, 0)
 
     sector_gt6 = out.assign(_gt6=pct_chg > 6).groupby("sector_name")["_gt6"].sum()
     sector_amount = out.groupby("sector_name")["amount"].sum()
@@ -184,8 +251,17 @@ def build_rank_input_for_date(trade_date: str, cache_root: Path | None = None) -
     out["sector_limitup_count"] = _to_num(out, "sector_limitup_count", 0)
     out["sector_gt6_count"] = _to_num(out, "sector_gt6_count", 0)
     out["sector_amount_ratio"] = _to_num(out, "sector_amount_ratio", 1)
-    out["ret_5d"] = pct_chg
-    out["ret_20d"] = pct_chg
+    out = _add_history_features(out, trade_date, cache_root)
+    out["ret_5d"] = _to_num(out, "ret_5d", 0).replace(0, np.nan).fillna(pct_chg)
+    out["ret_20d"] = _to_num(out, "ret_20d", 0).replace(0, np.nan).fillna(pct_chg)
+    out["amount_ratio_5d"] = _to_num(out, "amount_ratio_5d", 1).replace([np.inf, -np.inf], np.nan).fillna(_to_num(out, "volume_ratio", 1))
+    out["amount_ratio_20d"] = _to_num(out, "amount_ratio_20d", 1).replace([np.inf, -np.inf], np.nan).fillna(out["amount_ratio_5d"])
+    out["turnover_rate_5d_avg"] = _to_num(out, "turnover_rate_5d_avg", 0)
+    out["high_20d_break"] = _to_num(out, "high_20d_break", 0)
+    out["platform_break_20d"] = _to_num(out, "platform_break_20d", 0)
+    out["stage_high_20d"] = _to_num(out, "stage_high_20d", 0)
+    out["dragon_tiger_flag"] = _to_num(out, "dragon_tiger_flag", 0)
+    out["dragon_tiger_net_rate"] = _to_num(out, "dragon_tiger_net_rate", 0)
     out["update_time"] = _date_dash(trade_date)
     for col in SCHEMA:
         if col not in out.columns:
@@ -211,6 +287,13 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
     out = today_rank.copy()
     out["next_trade_date"] = next_date or ""
     out["label_t1_limitup"] = 0
+    out["next_day_high"] = np.nan
+    out["next_day_close"] = np.nan
+    out["next_day_low"] = np.nan
+    out["next_day_limitup_price"] = np.nan
+    out["next_day_max_pct"] = np.nan
+    out["next_day_close_pct"] = np.nan
+    out["next_day_drawdown_pct"] = np.nan
     if not next_date:
         return out
     base = f"data/raw/{next_date[:4]}/{next_date}"
@@ -218,12 +301,23 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
     limit_next = _read_remote_csv(f"{base}/stk_limit.csv", cache_root)
     if daily_next.empty or limit_next.empty:
         return out
-    next_frame = daily_next[["ts_code", "high"]].merge(limit_next[["ts_code", "up_limit"]], on="ts_code", how="left")
+    keep_daily = [col for col in ["ts_code", "high", "close", "low"] if col in daily_next.columns]
+    next_frame = daily_next[keep_daily].merge(limit_next[["ts_code", "up_limit"]], on="ts_code", how="left")
     next_frame["ts_code"] = next_frame["ts_code"].astype(str).str.strip()
     next_frame["next_high"] = pd.to_numeric(next_frame["high"], errors="coerce")
+    next_frame["next_close"] = pd.to_numeric(next_frame["close"], errors="coerce") if "close" in next_frame.columns else np.nan
+    next_frame["next_low"] = pd.to_numeric(next_frame["low"], errors="coerce") if "low" in next_frame.columns else np.nan
     next_frame["next_up_limit"] = pd.to_numeric(next_frame["up_limit"], errors="coerce")
-    merged = out.merge(next_frame[["ts_code", "next_high", "next_up_limit"]], on="ts_code", how="left")
+    merged = out.merge(next_frame[["ts_code", "next_high", "next_close", "next_low", "next_up_limit"]], on="ts_code", how="left")
     merged["label_t1_limitup"] = ((merged["next_up_limit"] > 0) & (merged["next_high"] >= merged["next_up_limit"] * 0.999)).astype(int)
+    price = pd.to_numeric(merged.get("price", merged.get("close", 0)), errors="coerce")
+    merged["next_day_high"] = merged["next_high"]
+    merged["next_day_close"] = merged["next_close"]
+    merged["next_day_low"] = merged["next_low"]
+    merged["next_day_limitup_price"] = merged["next_up_limit"]
+    merged["next_day_max_pct"] = np.where(price > 0, (merged["next_day_high"] / price - 1) * 100, np.nan)
+    merged["next_day_close_pct"] = np.where(price > 0, (merged["next_day_close"] / price - 1) * 100, np.nan)
+    merged["next_day_drawdown_pct"] = np.where(price > 0, (merged["next_day_low"] / price - 1) * 100, np.nan)
     return merged
 
 
@@ -248,6 +342,61 @@ def _period_hit_rate(frame: pd.DataFrame, n: int) -> float:
     if combined.empty:
         return 0.0
     return round(float(combined["label_t1_limitup"].mean()), 4)
+
+
+def _period_top_samples(frame: pd.DataFrame, n: int) -> pd.DataFrame:
+    if frame.empty or "backtest_trade_date" not in frame.columns:
+        return pd.DataFrame()
+    return pd.concat(
+        [group.sort_values("rank").head(n) for _, group in frame.groupby("backtest_trade_date")],
+        ignore_index=True,
+    )
+
+
+def _auc_score(frame: pd.DataFrame) -> float | None:
+    if frame.empty or "label_t1_limitup" not in frame.columns or "p_limitup_t1" not in frame.columns:
+        return None
+    y = pd.to_numeric(frame["label_t1_limitup"], errors="coerce")
+    score = pd.to_numeric(frame["p_limitup_t1"], errors="coerce")
+    valid = y.notna() & score.notna()
+    y = y[valid]
+    score = score[valid]
+    pos = int((y == 1).sum())
+    neg = int((y == 0).sum())
+    if pos == 0 or neg == 0:
+        return None
+    ranks = score.rank(method="average")
+    auc = (ranks[y == 1].sum() - pos * (pos + 1) / 2) / (pos * neg)
+    return round(float(auc), 4)
+
+
+def _brier_score(frame: pd.DataFrame) -> float | None:
+    if frame.empty or "label_t1_limitup" not in frame.columns or "p_limitup_t1" not in frame.columns:
+        return None
+    y = pd.to_numeric(frame["label_t1_limitup"], errors="coerce")
+    p = pd.to_numeric(frame["p_limitup_t1"], errors="coerce") / 100
+    valid = y.notna() & p.notna()
+    if not valid.any():
+        return None
+    return round(float(((p[valid] - y[valid]) ** 2).mean()), 6)
+
+
+def _mean_metric(frame: pd.DataFrame, column: str) -> float | None:
+    if frame.empty or column not in frame.columns:
+        return None
+    values = pd.to_numeric(frame[column], errors="coerce").dropna()
+    if values.empty:
+        return None
+    return round(float(values.mean()), 4)
+
+
+def _min_metric(frame: pd.DataFrame, column: str) -> float | None:
+    if frame.empty or column not in frame.columns:
+        return None
+    values = pd.to_numeric(frame[column], errors="coerce").dropna()
+    if values.empty:
+        return None
+    return round(float(values.min()), 4)
 
 
 def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n: int = 50) -> BacktestResult:
@@ -290,6 +439,17 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
         "hit_top10": _period_hit_rate(trades, 10),
         "hit_top20": _period_hit_rate(trades, 20),
         "hit_top50": round(float(trades["label_t1_limitup"].mean()), 4) if not trades.empty and "label_t1_limitup" in trades.columns else 0.0,
+        "precision_at_10": _period_hit_rate(trades, 10),
+        "precision_at_20": _period_hit_rate(trades, 20),
+        "precision_at_50": _period_hit_rate(trades, 50),
+        "auc": _auc_score(trades),
+        "brier": _brier_score(trades),
+        "avg_next_day_max_pct_top10": _mean_metric(_period_top_samples(trades, 10), "next_day_max_pct"),
+        "avg_next_day_close_pct_top10": _mean_metric(_period_top_samples(trades, 10), "next_day_close_pct"),
+        "max_drawdown_risk_top10": _min_metric(_period_top_samples(trades, 10), "next_day_drawdown_pct"),
+        "avg_next_day_max_pct_top50": _mean_metric(trades, "next_day_max_pct"),
+        "avg_next_day_close_pct_top50": _mean_metric(trades, "next_day_close_pct"),
+        "max_drawdown_risk_top50": _min_metric(trades, "next_day_drawdown_pct"),
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }
 
@@ -343,6 +503,11 @@ def render_backtest_html(summary: dict, daily_summary: pd.DataFrame, trades: pd.
       <div>Top10 命中：<strong>{summary["hit_top10"]:.2%}</strong></div>
       <div>Top20 命中：<strong>{summary["hit_top20"]:.2%}</strong></div>
       <div>Top50 命中：<strong>{summary["hit_top50"]:.2%}</strong></div>
+      <div>AUC：<strong>{summary["auc"] if summary["auc"] is not None else "-"}</strong></div>
+      <div>Brier：<strong>{summary["brier"] if summary["brier"] is not None else "-"}</strong></div>
+      <div>Top10 平均次日最高涨幅：<strong>{f'{summary["avg_next_day_max_pct_top10"]:.2f}%' if summary["avg_next_day_max_pct_top10"] is not None else "-"}</strong></div>
+      <div>Top10 平均次日收盘涨幅：<strong>{f'{summary["avg_next_day_close_pct_top10"]:.2f}%' if summary["avg_next_day_close_pct_top10"] is not None else "-"}</strong></div>
+      <div>Top10 最大回撤风险：<strong>{f'{summary["max_drawdown_risk_top10"]:.2f}%' if summary["max_drawdown_risk_top10"] is not None else "-"}</strong></div>
     </section>
     <section class="panel"><h2>每日汇总</h2><div class="table-wrap"><table><thead><tr><th>日期</th><th>原始数</th><th>候选数</th><th>Top数</th><th>Top10</th><th>Top20</th><th>Top50</th><th>下一交易日</th></tr></thead><tbody>{daily_rows}</tbody></table></div></section>
     <section class="panel"><h2>样本预览</h2><div class="table-wrap"><table><thead><tr><th>日期</th><th>排名</th><th>代码</th><th>名称</th><th>概率</th><th>评分</th><th>T+1涨停</th></tr></thead><tbody>{trade_rows}</tbody></table></div></section>
