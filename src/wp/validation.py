@@ -15,6 +15,7 @@ def build_healthcheck(
     load_error: str,
     fallback_used: bool,
     update_time: str,
+    expected_trade_date: str | None = None,
 ) -> dict:
     required = {
         "涨幅字段": ["pct_chg", "change_pct", "涨跌幅"],
@@ -25,9 +26,17 @@ def build_healthcheck(
     }
     columns = set(raw.columns)
     missing = [name for name, choices in required.items() if not any(item in columns for item in choices)]
+    data_trade_date = ""
+    if "trade_date" in raw.columns:
+        dates = raw["trade_date"].dropna().astype(str).str.replace("-", "", regex=False)
+        dates = dates[dates.str.len() == 8]
+        if not dates.empty:
+            data_trade_date = str(sorted(dates.unique())[-1])
     status = "ok"
     if not load_ok:
         status = "数据异常"
+    elif expected_trade_date and data_trade_date and data_trade_date != expected_trade_date:
+        status = "数据日期过期"
     elif missing:
         status = "数据不完整"
     elif candidates.empty:
@@ -37,6 +46,8 @@ def build_healthcheck(
         "is_trading_day": is_a_share_trading_day(),
         "is_trading_time": is_trading_time(),
         "data_time": update_time,
+        "data_trade_date": data_trade_date,
+        "expected_trade_date": expected_trade_date or "",
         "raw_count": int(len(raw)),
         "candidate_count": int(len(candidates)),
         "top50_count": int(len(top50)),

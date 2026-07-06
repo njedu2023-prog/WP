@@ -62,6 +62,7 @@ def run() -> dict:
     logging.info("WP run started, source=%s", source)
     load_result = read_rank_input(source, cache_path=cache_path)
     raw = load_result.frame
+    expected_trade_date = current.strftime("%Y%m%d")
     candidates = filter_candidates(
         raw,
         min_pct_chg=float(config.get("min_pct_chg", 6.0)),
@@ -70,7 +71,14 @@ def run() -> dict:
     )
     ranked_input = add_scores(add_feature_scores(candidates))
     top50, full_rank = rank_candidates(ranked_input, update_time, top_n=int(config.get("top_n", 50)))
-    health = build_healthcheck(raw, candidates, top50, load_result.ok, load_result.error, load_result.fallback_used, update_time)
+    health = build_healthcheck(raw, candidates, top50, load_result.ok, load_result.error, load_result.fallback_used, update_time, expected_trade_date)
+    if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
+        logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
+        top50 = top50.iloc[0:0].copy()
+        full_rank = full_rank.iloc[0:0].copy()
+        ranked_input = ranked_input.iloc[0:0].copy()
+        health["candidate_count"] = 0
+        health["top50_count"] = 0
     rule_errors = assert_top50_rules(top50)
     if rule_errors:
         health["status"] = "规则自检失败"

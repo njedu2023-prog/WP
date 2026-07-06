@@ -35,6 +35,8 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
         rows.append("<tr><td colspan=\"16\" class=\"empty\">无符合条件股票</td></tr>")
     sector_html = "".join(f"<li>{html.escape(str(k))}: {v} 只</li>" for k, v in sector_top) or "<li>暂无板块数据</li>"
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
+    data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
+    expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
     page = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -74,6 +76,7 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
     <section class="panel">
       <strong>今日运行状态：</strong><span class="status {status_cls}">{html.escape(str(health.get("status")))}</span>
       <div>数据更新时间：{html.escape(str(health.get("data_time")))}</div>
+      <div>行情日期：{data_trade_date}；期望交易日：{expected_trade_date}</div>
       <div>候选池数量：{health.get("candidate_count", 0)}；入选 Top50 数量：{health.get("top50_count", 0)}；原始数据量：{health.get("raw_count", 0)}</div>
       <div>数据健康检查：缺失字段 {html.escape(", ".join(health.get("missing_fields", [])) or "无")}；fallback={health.get("fallback_used")}</div>
     </section>

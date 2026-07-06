@@ -1,14 +1,16 @@
 {
-  "status": "ok",
+  "status": "数据日期过期",
   "is_trading_day": true,
   "is_trading_time": false,
-  "data_time": "2026-07-06 15:50:09",
+  "data_time": "2026-07-06 16:01:54",
+  "data_trade_date": "20260703",
+  "expected_trade_date": "20260706",
   "raw_count": 278,
-  "candidate_count": 239,
-  "top50_count": 50,
+  "candidate_count": 0,
+  "top50_count": 0,
   "missing_fields": [],
   "fallback_used": false,
   "load_ok": true,
   "load_error": "",
-  "generated_at": "2026-07-06T15:50:10"
+  "generated_at": "2026-07-06T16:01:55"
 }
