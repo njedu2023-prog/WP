@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import logging
+import os
 from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
 
+from .backtest import run_backtest
 from .calendar import now_cn
 from .candidate_filter import filter_candidates
 from .data_loader import read_rank_input
@@ -40,6 +42,21 @@ def run() -> dict:
     log_path = setup_logging(update_key)
     config = load_yaml(ROOT / "config" / "wp_config.yml")
     output_root = ROOT / "outputs"
+    mode = os.environ.get("WP_MODE", "").strip().lower()
+    backtest_start = os.environ.get("WP_BACKTEST_START", "").strip()
+    backtest_end = os.environ.get("WP_BACKTEST_END", "").strip()
+    if mode == "backtest" or (backtest_start and backtest_end):
+        start_date = backtest_start or current.strftime("%Y%m%d")
+        end_date = backtest_end or start_date
+        logging.info("WP backtest started, start=%s end=%s", start_date, end_date)
+        result = run_backtest(start_date, end_date, output_root, top_n=int(config.get("top_n", 50)))
+        write_json(
+            output_root / "json" / "wp_manifest.json",
+            {"latest_update": update_time, "mode": "backtest", "backtest": result.summary},
+        )
+        logging.info("WP backtest completed: %s", result.summary)
+        return result.summary
+
     cache_path = ROOT / "data" / "cache" / "wp_latest_rank_input.csv"
     source = config.get("input_url", "")
     logging.info("WP run started, source=%s", source)

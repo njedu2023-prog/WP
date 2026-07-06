@@ -1,0 +1,4 @@
+2026-07-06 15:37:05,538 INFO WP run started, source=https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/latest/wp_latest_rank_input.csv
+2026-07-06 15:37:06,334 INFO WP run completed: raw=278 candidates=239 top50=50 log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260706_1537.log
+2026-07-06 15:37:12,006 INFO WP backtest started, start=20260701 end=20260703
+2026-07-06 15:37:41,964 INFO WP backtest completed: {'mode': 'backtest', 'start_date': '20260701', 'end_date': '20260703', 'trade_days': 3, 'trade_count': 150, 'hit_top10': 0.0333, 'hit_top20': 0.0333, 'hit_top50': 0.0333, 'generated_at': '2026-07-06T15:37:41'}

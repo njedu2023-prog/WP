@@ -2,6 +2,23 @@ name: Run WP 10min
 
 on:
   workflow_dispatch:
+    inputs:
+      mode:
+        description: "运行模式"
+        required: true
+        default: "live"
+        type: choice
+        options:
+          - live
+          - backtest
+      start_date:
+        description: "回测开始日期 YYYYMMDD"
+        required: false
+        type: string
+      end_date:
+        description: "回测结束日期 YYYYMMDD"
+        required: false
+        type: string
   schedule:
     - cron: "*/10 1-7 * * 1-5"
 
@@ -26,6 +43,9 @@ jobs:
         run: python -m wp.main
         env:
           PYTHONPATH: src
+          WP_MODE: ${{ github.event.inputs.mode }}
+          WP_BACKTEST_START: ${{ github.event.inputs.start_date }}
+          WP_BACKTEST_END: ${{ github.event.inputs.end_date }}
       - name: Commit outputs through GitHub API
         run: python scripts/github_commit_paths.py "Update WP outputs" outputs logs data/cache
         env:

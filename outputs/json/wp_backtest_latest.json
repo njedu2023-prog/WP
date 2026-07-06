@@ -1,0 +1,11 @@
+{
+  "mode": "backtest",
+  "start_date": "20260701",
+  "end_date": "20260703",
+  "trade_days": 3,
+  "trade_count": 150,
+  "hit_top10": 0.0333,
+  "hit_top20": 0.0333,
+  "hit_top50": 0.0333,
+  "generated_at": "2026-07-06T15:37:41"
+}

@@ -1,14 +1,14 @@
 {
-  "status": "无符合条件股票",
+  "status": "ok",
   "is_trading_day": true,
   "is_trading_time": false,
-  "data_time": "2026-07-06 15:13:27",
-  "raw_count": 0,
-  "candidate_count": 0,
-  "top50_count": 0,
+  "data_time": "2026-07-06 15:37:05",
+  "raw_count": 278,
+  "candidate_count": 239,
+  "top50_count": 50,
   "missing_fields": [],
   "fallback_used": false,
   "load_ok": true,
   "load_error": "",
-  "generated_at": "2026-07-06T15:13:28"
+  "generated_at": "2026-07-06T15:37:06"
 }

@@ -9,6 +9,32 @@ pip install -r requirements.txt
 python -m wp.main
 ```
 
+## 历史区间测试
+
+可手动指定历史时间段，用同一套筛选和排序逻辑跑回测：
+
+```bash
+WP_MODE=backtest WP_BACKTEST_START=20260701 WP_BACKTEST_END=20260703 python -m wp.main
+```
+
+GitHub Actions 页面点 `Run workflow` 时也可以选择：
+
+```text
+mode = backtest
+start_date = 20260701
+end_date = 20260703
+```
+
+回测输出：
+
+```text
+outputs/backtests/<start>_<end>/trades.csv
+outputs/backtests/<start>_<end>/daily_summary.csv
+outputs/backtests/<start>_<end>/summary.json
+outputs/json/wp_backtest_latest.json
+outputs/html_reports/backtest_latest.html
+```
+
 默认读取：
 
 ```text
