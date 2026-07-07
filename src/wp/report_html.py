@@ -73,7 +73,7 @@ def render_html(
         ("运行状态", f"<span class=\"status {status_cls}\">{html.escape(str(health.get('status')))}</span>"),
         ("市场数据时间", f"<span class=\"market-time\">{market_data_time}</span>"),
         ("上游生成时间", html.escape(str(health.get("source_generated_at") or "-"))),
-        ("WP运行时间", wp_run_time),
+        ("报告更新时间", wp_run_time),
         ("行情日期", data_trade_date),
         ("期望交易日", expected_trade_date),
         ("候选池数量", str(health.get("candidate_count", 0))),
@@ -111,9 +111,9 @@ def render_html(
     .summary-toggle-title {{ display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }}
     .summary-toggle-title strong {{ font-size: 18px; line-height: 1.25; font-weight: 700; color: #1d1d1f; }}
     .summary-toggle-meta {{ color: #6e6e73; font-size: 13px; line-height: 1.4; }}
-    .summary-toggle-action {{ flex: 0 0 auto; color: #06c; font-size: 13px; font-weight: 600; }}
-    .summary-toggle-action::after {{ content: "展开"; }}
-    .summary-details[open] .summary-toggle-action::after {{ content: "收起"; }}
+    .summary-toggle-action {{ flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #d2d2d7; border-radius: 50%; background: #f5f5f7; color: #1d1d1f; display: inline-grid; place-items: center; font-size: 20px; line-height: 1; font-weight: 500; }}
+    .summary-toggle-action::after {{ content: "+"; transform: translateY(-1px); }}
+    .summary-details[open] .summary-toggle-action::after {{ content: "-"; transform: translateY(-2px); }}
     .summary-grid {{ border-top: 1px solid #f1f1f3; }}
     .summary-grid {{ display: grid; grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.84fr); }}
     .summary-pane {{ padding: 22px 24px; }}
@@ -174,7 +174,7 @@ def render_html(
       <summary class="summary-toggle">
         <span class="summary-toggle-title">
           <strong>运行状态与板块热度</strong>
-          <span class="summary-toggle-meta">状态：<span class="status {status_cls}">{status_text}</span>；市场数据：<span class="market-time">{market_data_time}</span></span>
+          <span class="summary-toggle-meta">状态：<span class="status {status_cls}">{status_text}</span>；市场数据：<span class="market-time">{market_data_time}</span>；报告更新：{wp_run_time}</span>
         </span>
         <span class="summary-toggle-action" aria-hidden="true"></span>
       </summary>
