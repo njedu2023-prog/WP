@@ -41,6 +41,9 @@ def add_feature_scores(df: pd.DataFrame) -> pd.DataFrame:
     dragon_tiger_net_rate = numeric_series(out, ["dragon_tiger_net_rate"], 0)
     announcement_flag = numeric_series(out, ["announcement_flag"], 0)
     hot_topic_flag = numeric_series(out, ["hot_topic_flag"], 0)
+    auction_pct_chg = numeric_series(out, ["auction_pct_chg"], 0)
+    auction_amount_ratio = numeric_series(out, ["auction_amount_ratio"], 0)
+    auction_strength_score = numeric_series(out, ["auction_strength_score"], 0)
     close_position = numeric_series(out, ["close_position"], np.nan)
     close_position = close_position.where(close_position.notna(), pd.Series(np.where(high > low, (close - low) / (high - low) * 100, 50), index=out.index)).fillna(50)
     pullback_pct = numeric_series(out, ["intraday_pullback_pct"], np.nan)
@@ -68,13 +71,14 @@ def add_feature_scores(df: pd.DataFrame) -> pd.DataFrame:
         + np.maximum(sector_net_inflow, 0).clip(0, 1000000000) / 100000000
         + sector_turnover.clip(0, 20) * 0.5
     )
-    out["stock_strength_score"] = clip(out["pct_chg"] * 6.5 + volume_ratio * 6 + amount_ratio_5d * 8 + close_position * 0.25 + high_20d_break * 8 + hot_topic_flag * 4)
+    out["stock_strength_score"] = clip(out["pct_chg"] * 6.5 + volume_ratio * 6 + amount_ratio_5d * 8 + close_position * 0.25 + high_20d_break * 8 + hot_topic_flag * 4 + auction_strength_score * 0.08)
     out["acceptance_score"] = clip(
         close_position * 0.48
         + amount_ratio.clip(0, 4.5) * 12
         + turnover.clip(0, 18) * 1.15
         + intraday_vwap_position.clip(-5, 8) * 2.0
         + late_price_change_pct.clip(-5, 5) * 1.6
+        + auction_strength_score.clip(0, 100) * 0.08
         + volume_price_sync.astype(int) * 10
         - np.maximum(volume_ratio - 4.5, 0) * 7
         - pullback_pct * 4
@@ -103,6 +107,7 @@ def add_feature_scores(df: pd.DataFrame) -> pd.DataFrame:
         + dragon_tiger_flag * 5
         + np.maximum(dragon_tiger_net_rate, 0).clip(0, 20) * 0.35
         + np.maximum(sector_net_inflow, 0).clip(0, 1000000000) / 120000000
+        + auction_amount_ratio.clip(0, 0.25) * 80
     )
     out["pattern_score"] = clip(
         close_position * 0.40
@@ -115,6 +120,7 @@ def add_feature_scores(df: pd.DataFrame) -> pd.DataFrame:
         + volume_price_sync.astype(int) * 8
         + announcement_flag * 2
         + hot_topic_flag * 5
+        + np.where(auction_pct_chg > 0, 3, 0)
         - high_open_low_walk.astype(int) * 16
         - tail_lift_flag * 10
         - np.maximum(amplitude - 18, 0) * 0.8

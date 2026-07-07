@@ -35,7 +35,9 @@ SCHEMA = [
     "late_volume_ratio", "tail_lift_flag", "dragon_tiger_flag", "dragon_tiger_net_rate",
     "dragon_tiger_reason", "limit_touch_count", "open_board_count",
     "limitup_quality_score", "intraday_risk_score", "announcement_flag",
-    "hot_topic_flag", "stock_age_days", "suspended_flag", "delist_flag",
+    "hot_topic_flag", "auction_price", "auction_vol", "auction_amount",
+    "auction_pct_chg", "auction_amount_ratio", "auction_strength_score",
+    "stock_age_days", "suspended_flag", "delist_flag",
     "data_quality_flag",
 ]
 

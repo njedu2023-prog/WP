@@ -57,6 +57,8 @@ def add_risk_penalty(df: pd.DataFrame) -> pd.DataFrame:
     suspended_flag = numeric_series(out, ["suspended_flag"], 0)
     delist_flag = numeric_series(out, ["delist_flag"], 0)
     data_quality_flag = numeric_series(out, ["data_quality_flag"], 0)
+    auction_pct_chg = numeric_series(out, ["auction_pct_chg"], 0)
+    auction_amount_ratio = numeric_series(out, ["auction_amount_ratio"], 0)
     pullback_risk = np.maximum(70 - close_position, 0) * 0.45
     high_position_risk = np.maximum(ret_20d - rules["high_position_ret_20d"], 0) * 0.8
     volume_risk = np.maximum(volume_ratio - rules["excessive_volume_ratio"], 0) * 8 + np.maximum(amount_ratio_5d - rules["excessive_amount_ratio"], 0) * 8
@@ -70,6 +72,7 @@ def add_risk_penalty(df: pd.DataFrame) -> pd.DataFrame:
     trapped_pressure_risk = np.maximum(ret_20d - 55, 0) * 0.9 + np.maximum(ma20_position - rules["excessive_ma20_position"], 0) * 1.3
     sector_lag_risk = np.where((sector_strength >= 70) & (stock_strength < 45), 18, 0)
     announcement_risk = np.where(announcement_flag == 1, 8, 0)
+    auction_risk = np.where((auction_pct_chg >= 5) & (auction_amount_ratio < 0.01), 8, 0)
     hard_filter_risk = (
         np.where(stock_age_days < rules["min_stock_age_days"], 30, 0)
         + np.where(suspended_flag == 1, 80, 0)
@@ -90,6 +93,7 @@ def add_risk_penalty(df: pd.DataFrame) -> pd.DataFrame:
         + trapped_pressure_risk
         + sector_lag_risk
         + announcement_risk
+        + auction_risk
         + hard_filter_risk
     )
     return out

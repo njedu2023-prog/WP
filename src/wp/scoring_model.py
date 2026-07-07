@@ -92,6 +92,8 @@ def core_reason(row: pd.Series) -> str:
         reasons.append("属于当日热门题材")
     if row.get("intraday_vwap_position", 0) > 1:
         reasons.append("收盘强于日内均衡价格")
+    if row.get("auction_strength_score", 0) >= 60:
+        reasons.append("集合竞价承接较强")
     if row.get("self_learning_adjustment", 0) > 1:
         reasons.append("历史校准对概率有正向修正")
     return "，".join(reasons) + "。" if reasons else "满足涨幅和非涨停过滤条件，综合评分进入候选排序。"
@@ -119,6 +121,8 @@ def risk_reason(row: pd.Series) -> str:
         risks.append("板块强但个股相对掉队")
     if row.get("announcement_flag", 0) == 1:
         risks.append("存在公告或异动信息扰动")
+    if row.get("auction_pct_chg", 0) >= 5 and row.get("auction_amount_ratio", 0) < 0.01:
+        risks.append("集合竞价高开但成交承接不足")
     if row.get("self_learning_adjustment", 0) < -1:
         risks.append("历史校准对概率有负向修正")
     if not risks:
