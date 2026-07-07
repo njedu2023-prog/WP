@@ -81,10 +81,10 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
     .summary-table th, .summary-table td {{ padding: 10px 0; border-bottom: 1px solid #f1f1f3; vertical-align: middle; white-space: nowrap; }}
     .summary-table tr:last-child th, .summary-table tr:last-child td {{ border-bottom: 0; }}
     .summary-table th {{ width: 150px; color: #6e6e73; font-weight: 500; text-align: left; }}
-    .summary-table td {{ color: #1d1d1f; font-weight: 600; text-align: right; }}
+    .summary-table td {{ color: #1d1d1f; font-weight: 600; text-align: left; }}
     .sector-table th, .sector-table td {{ text-align: left; }}
     .sector-table th:nth-child(1), .sector-table td:nth-child(1) {{ width: 44px; color: #86868b; font-variant-numeric: tabular-nums; }}
-    .sector-table th:nth-child(3), .sector-table td:nth-child(3) {{ text-align: right; font-weight: 600; }}
+    .sector-table th:nth-child(3), .sector-table td:nth-child(3) {{ text-align: left; font-weight: 600; }}
     .status.ok {{ color: #0b7a3b; font-weight: 700; }}
     .status.bad {{ color: #b42318; font-weight: 700; }}
     .table-wrap {{ overflow-x: auto; border: 1px solid #d2d2d7; background: white; border-radius: 8px; }}
