@@ -37,6 +37,8 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
+    realtime_sources = health.get("realtime_sources") or []
+    realtime_source_text = ", ".join(str(item) for item in realtime_sources) if realtime_sources else "未标记"
     page = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -78,7 +80,8 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
       <div>数据更新时间：{html.escape(str(health.get("data_time")))}</div>
       <div>行情日期：{data_trade_date}；期望交易日：{expected_trade_date}</div>
       <div>候选池数量：{health.get("candidate_count", 0)}；入选 Top50 数量：{health.get("top50_count", 0)}；原始数据量：{health.get("raw_count", 0)}</div>
-      <div>数据健康检查：缺失字段 {html.escape(", ".join(health.get("missing_fields", [])) or "无")}；fallback={health.get("fallback_used")}</div>
+      <div>数据健康检查：缺失字段 {html.escape(", ".join(health.get("missing_fields", [])) or "无")}；读取缓存fallback={health.get("data_load_fallback_used", health.get("fallback_used"))}</div>
+      <div>实时行情来源：{html.escape(realtime_source_text)}；实时fallback={health.get("realtime_fallback_used", False)}</div>
     </section>
     <section class="panel">
       <strong>板块热度 Top10</strong>

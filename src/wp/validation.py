@@ -33,6 +33,16 @@ def build_healthcheck(
         dates = dates[dates.str.len() == 8]
         if not dates.empty:
             data_trade_date = str(sorted(dates.unique())[-1])
+    realtime_sources: list[str] = []
+    if "realtime_source" in raw.columns:
+        realtime_sources = sorted(
+            {
+                str(value).strip()
+                for value in raw["realtime_source"].dropna().tolist()
+                if str(value).strip()
+            }
+        )
+    realtime_fallback_used = any("fallback" in item.lower() for item in realtime_sources)
     source_metadata = source_metadata or {}
     status = "ok"
     if source_metadata.get("status") == "stale_data":
@@ -61,6 +71,9 @@ def build_healthcheck(
         "top50_count": int(len(top50)),
         "missing_fields": missing,
         "fallback_used": bool(fallback_used),
+        "data_load_fallback_used": bool(fallback_used),
+        "realtime_sources": realtime_sources,
+        "realtime_fallback_used": bool(realtime_fallback_used),
         "load_ok": bool(load_ok),
         "load_error": load_error,
         "source_status": source_metadata.get("status", ""),

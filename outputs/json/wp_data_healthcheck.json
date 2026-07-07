@@ -2,7 +2,7 @@
   "status": "ok",
   "is_trading_day": true,
   "is_trading_time": false,
-  "data_time": "2026-07-07 12:08:17",
+  "data_time": "2026-07-07 12:17:05",
   "data_trade_date": "20260707",
   "expected_trade_date": "20260707",
   "raw_count": 54,
@@ -10,10 +10,15 @@
   "top50_count": 45,
   "missing_fields": [],
   "fallback_used": false,
+  "data_load_fallback_used": false,
+  "realtime_sources": [
+    "realtime_quote_fallback"
+  ],
+  "realtime_fallback_used": true,
   "load_ok": true,
   "load_error": "",
   "source_status": "ok",
   "source_generated_at": "2026-07-07 12:03:20",
-  "generated_at": "2026-07-07T12:08:18",
+  "generated_at": "2026-07-07T12:17:07",
   "preserved_latest_html": false
 }
