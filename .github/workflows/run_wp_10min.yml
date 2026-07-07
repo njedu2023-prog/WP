@@ -19,6 +19,14 @@ on:
         description: "回测结束日期 YYYYMMDD"
         required: false
         type: string
+  push:
+    branches:
+      - main
+    paths:
+      - src/**
+      - .github/workflows/run_wp_10min.yml
+      - requirements.txt
+      - pyproject.toml
   schedule:
     - cron: "*/10 * * * 1-5"
 
