@@ -6,6 +6,18 @@ from zoneinfo import ZoneInfo
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
+A_SHARE_HOLIDAYS = {
+    # 2026 mainland China exchange holidays. Weekends remain closed even if
+    # they are working days for ordinary offices.
+    "20260101",
+    "20260216", "20260217", "20260218", "20260219", "20260220",
+    "20260406",
+    "20260501", "20260504", "20260505",
+    "20260619",
+    "20260925",
+    "20261001", "20261002", "20261005", "20261006", "20261007", "20261008",
+}
+
 
 def now_cn() -> datetime:
     return datetime.now(CN_TZ)
@@ -13,7 +25,7 @@ def now_cn() -> datetime:
 
 def is_a_share_trading_day(dt: datetime | None = None) -> bool:
     current = dt or now_cn()
-    return current.weekday() < 5
+    return current.weekday() < 5 and current.strftime("%Y%m%d") not in A_SHARE_HOLIDAYS
 
 
 def is_trading_time(dt: datetime | None = None) -> bool:

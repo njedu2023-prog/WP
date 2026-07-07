@@ -2,7 +2,7 @@
 
 WP 从上游 `njedu2023-prog/a-share-top3-data` 的 WP latest 数据读取候选输入，筛选“今日涨幅超过 6%、前一日未涨停、今日未涨停”的 A 股股票，并按次日涨停概率输出 Top50 报告。
 
-当前已实现的主要判断包括：成交额 5/20 日放大、收盘位置、冲高回落、高开低走、量价同步、5/20 日动量、近 20 日阶段新高/平台突破、龙虎榜资金线索和板块强弱。
+当前已实现的主要判断包括：成交额 5/20 日放大、收盘位置、冲高回落、高开低走、尾盘/VWAP、量价同步、3/5/10/20 日动量、均线位置、近 20 日阶段新高/平台突破、龙虎榜资金线索、热门题材口径、板块强弱和历史统计校准。
 
 ## 快速运行
 
@@ -36,6 +36,8 @@ outputs/backtests/<start>_<end>/summary.json
 outputs/json/wp_backtest_latest.json
 outputs/html_reports/backtest_latest.html
 ```
+
+当历史样本足够时，实时模型会读取 `outputs/backtests/*/trades.csv`，按概率区间历史命中率对规则模型概率做轻量统计校准。
 
 默认读取：
 

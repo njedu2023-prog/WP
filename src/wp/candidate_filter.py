@@ -37,6 +37,22 @@ def enrich_basic_fields(df: pd.DataFrame) -> pd.DataFrame:
     out.loc[out["today_limit_up_price"] <= 0, "today_limit_up_price"] = out["pre_close"] * (1 + out["limit_up_pct"] / 100)
     out.loc[out["prev_limit_up_price"] <= 0, "prev_limit_up_price"] = numeric_series(out, ["prev_pre_close", "pre_pre_close"], out["pre_close"]) * (1 + out["limit_up_pct"] / 100)
     out["is_st"] = out["name"].str.contains("ST", case=False, regex=False)
+    out["stock_age_days"] = numeric_series(out, ["stock_age_days"], np.nan)
+    if out["stock_age_days"].isna().all() and "list_date" in out.columns:
+        list_date = pd.to_datetime(out["list_date"].astype(str), format="%Y%m%d", errors="coerce")
+        trade_date = pd.to_datetime(out["trade_date"].astype(str), format="%Y%m%d", errors="coerce")
+        out["stock_age_days"] = (trade_date - list_date).dt.days
+    out["suspended_flag"] = numeric_series(out, ["suspended_flag", "is_suspended", "停牌"], 0).astype(int)
+    out.loc[(out["price"] <= 0) | (out["close"] <= 0) | (out["amount"].fillna(0) <= 0), "suspended_flag"] = 1
+    volume_col = first_existing(out, ["volume", "vol", "成交量"])
+    if volume_col is not None:
+        out.loc[pd.to_numeric(out[volume_col], errors="coerce").fillna(0) <= 0, "suspended_flag"] = 1
+    out["delist_flag"] = numeric_series(out, ["delist_flag", "is_delist"], 0).astype(int)
+    out.loc[out["name"].str.contains("退|退市", regex=True, na=False), "delist_flag"] = 1
+    out["data_quality_flag"] = numeric_series(out, ["data_quality_flag"], 0).astype(int)
+    required = ["ts_code", "name", "close", "pre_close", "pct_chg", "amount", "today_limit_up_price"]
+    out.loc[out[required].isna().any(axis=1), "data_quality_flag"] = 1
+    out.loc[(out["close"] <= 0) | (out["pre_close"] <= 0) | (out["amount"] <= 0) | (out["today_limit_up_price"] <= 0), "data_quality_flag"] = 1
     return out
 
 
@@ -56,13 +72,26 @@ def flag_limitup(df: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
-def filter_candidates(df: pd.DataFrame, min_pct_chg: float = 6.0, min_amount: float = 100000000, exclude_st: bool = True) -> pd.DataFrame:
+def filter_candidates(
+    df: pd.DataFrame,
+    min_pct_chg: float = 6.0,
+    min_amount: float = 100000000,
+    exclude_st: bool = True,
+    exclude_suspended: bool = True,
+    exclude_new_stock_days: int = 10,
+) -> pd.DataFrame:
     if df.empty:
         return enrich_basic_fields(df)
     out = flag_limitup(enrich_basic_fields(df))
     mask = (out["pct_chg"] > min_pct_chg) & (out["pre_day_limitup"] != 1) & (out["today_limitup"] != 1)
     if exclude_st:
         mask &= ~out["is_st"]
+    if exclude_suspended:
+        mask &= out["suspended_flag"] != 1
+    if exclude_new_stock_days > 0:
+        mask &= out["stock_age_days"].isna() | (out["stock_age_days"] >= exclude_new_stock_days)
+    mask &= out["delist_flag"] != 1
+    mask &= out["data_quality_flag"] != 1
     if min_amount > 0:
         mask &= out["amount"].fillna(0) >= min_amount
     return out.loc[mask].copy()

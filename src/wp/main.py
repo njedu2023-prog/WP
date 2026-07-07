@@ -68,6 +68,8 @@ def run() -> dict:
         min_pct_chg=float(config.get("min_pct_chg", 6.0)),
         min_amount=float(config.get("min_amount", 100000000)),
         exclude_st=bool(config.get("exclude_st", True)),
+        exclude_suspended=bool(config.get("exclude_suspended", True)),
+        exclude_new_stock_days=int(config.get("exclude_new_stock_days", 10)),
     )
     ranked_input = add_scores(add_feature_scores(candidates))
     top50, full_rank = rank_candidates(ranked_input, update_time, top_n=int(config.get("top_n", 50)))

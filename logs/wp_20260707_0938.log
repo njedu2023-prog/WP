@@ -1,0 +1,5 @@
+2026-07-07 09:38:04,824 INFO WP run started, source=/Users/moclh/Documents/尾盘/work/wp_impl/a-share-top3-data/data/wp/latest/wp_latest_rank_input.csv
+2026-07-07 09:38:04,881 INFO WP run completed: raw=124 candidates=103 top50=50 missing_fields=none fallback=False outputs=/Users/moclh/Documents/尾盘/work/wp_impl/WP/outputs log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260707_0938.log
+2026-07-07 09:38:39,481 INFO WP run started, source=/Users/moclh/Documents/尾盘/work/wp_impl/a-share-top3-data/data/wp/latest/wp_latest_rank_input.csv
+2026-07-07 09:38:39,490 ERROR Stale WP data: data_trade_date=20260706 expected=20260707
+2026-07-07 09:38:39,493 INFO WP run completed: raw=0 candidates=0 top50=0 missing_fields=none fallback=False outputs=/Users/moclh/Documents/尾盘/work/wp_impl/WP/outputs log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260707_0938.log

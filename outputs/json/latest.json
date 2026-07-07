@@ -1,12 +1,12 @@
 {
-  "generated_at": "2026-07-06 16:24:56",
+  "generated_at": "2026-07-07 09:38:39",
   "health": {
     "status": "数据日期过期",
     "is_trading_day": true,
-    "is_trading_time": false,
-    "data_time": "2026-07-06 16:24:56",
-    "data_trade_date": "20260703",
-    "expected_trade_date": "20260706",
+    "is_trading_time": true,
+    "data_time": "2026-07-07 09:38:39",
+    "data_trade_date": "20260706",
+    "expected_trade_date": "20260707",
     "raw_count": 0,
     "candidate_count": 0,
     "top50_count": 0,
@@ -15,8 +15,8 @@
     "load_ok": true,
     "load_error": "",
     "source_status": "stale_data",
-    "source_generated_at": "2026-07-06 16:24:21",
-    "generated_at": "2026-07-06T16:24:56",
+    "source_generated_at": "2026-07-07 09:38:29",
+    "generated_at": "2026-07-07T09:38:39",
     "preserved_latest_html": false
   },
   "top50": []

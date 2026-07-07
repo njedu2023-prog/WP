@@ -1,0 +1,5 @@
+2026-07-07 09:35:01,475 INFO WP run started, source=/Users/moclh/Documents/尾盘/work/wp_impl/a-share-top3-data/data/wp/latest/wp_latest_rank_input.csv
+2026-07-07 09:35:01,484 ERROR Stale WP data: data_trade_date=20260706 expected=20260707
+2026-07-07 09:35:01,489 INFO WP run completed: raw=0 candidates=0 top50=0 missing_fields=none fallback=False outputs=/Users/moclh/Documents/尾盘/work/wp_impl/WP/outputs log=/Users/moclh/Documents/尾盘/work/wp_impl/WP/logs/wp_20260707_0935.log
+2026-07-07 09:35:11,260 INFO WP backtest started, start=20260701 end=20260706
+2026-07-07 09:35:42,155 INFO WP backtest completed: {'mode': 'backtest', 'start_date': '20260701', 'end_date': '20260706', 'trade_days': 4, 'trade_count': 200, 'hit_top10': 0.025, 'hit_top20': 0.0375, 'hit_top50': 0.03, 'precision_at_10': 0.025, 'precision_at_20': 0.0375, 'precision_at_50': 0.03, 'auc': 0.6744, 'brier': 0.563703, 'avg_next_day_max_pct_top10': 2.5819, 'avg_next_day_close_pct_top10': -1.3649, 'max_drawdown_risk_top10': -10.7246, 'avg_next_day_max_pct_top50': 3.7973, 'avg_next_day_close_pct_top50': -0.8451, 'max_drawdown_risk_top50': -16.4248, 'generated_at': '2026-07-07T09:35:42'}
