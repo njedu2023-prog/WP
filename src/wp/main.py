@@ -98,7 +98,6 @@ def run() -> dict:
         buy_plan = buy_plan.iloc[0:0].copy()
         buy_decision_table = buy_decision_table.iloc[0:0].copy()
         buy_decision.summary["buy_count"] = 0
-        buy_decision.summary["target_total_position_pct"] = 0.0
     rule_errors = assert_top50_rules(top50)
     if rule_errors:
         health["status"] = "规则自检失败"
@@ -119,7 +118,6 @@ def run() -> dict:
     preserve_latest = (not load_result.ok) and (not load_result.fallback_used) and latest_html.exists()
     health["preserved_latest_html"] = bool(preserve_latest)
     health["buy_plan_count"] = int(len(buy_plan))
-    health["buy_plan_position_pct"] = float(buy_decision.summary.get("target_total_position_pct", 0.0))
     latest_payload = {
         "generated_at": update_time,
         "market_data_time": health.get("market_data_time", ""),

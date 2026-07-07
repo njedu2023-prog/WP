@@ -7,9 +7,6 @@ import pandas as pd
 
 DEFAULT_BUY_CONFIG = {
     "buy_max_count": 5,
-    "buy_target_total_position_pct": 50.0,
-    "buy_max_single_position_pct": 14.0,
-    "buy_min_single_position_pct": 6.0,
     "buy_max_sector_positions": 2,
     "buy_max_risk_score": 65.0,
     "buy_min_probability": 35.0,
@@ -24,7 +21,6 @@ DEFAULT_BUY_CONFIG = {
 BUY_COLUMNS = [
     "buy_rank",
     "portfolio_group",
-    "suggest_position_pct",
     "ts_code",
     "name",
     "rank",
@@ -67,10 +63,6 @@ def _txt(frame: pd.DataFrame, name: str, default: str = "") -> pd.Series:
     if name not in frame.columns:
         return pd.Series(default, index=frame.index, dtype="object")
     return frame[name].fillna(default).astype(str)
-
-
-def _clip(series: pd.Series, low: float = 0.0, high: float = 100.0) -> pd.Series:
-    return pd.to_numeric(series, errors="coerce").fillna(0.0).clip(low, high)
 
 
 def _sort_for_buy(frame: pd.DataFrame) -> pd.DataFrame:
@@ -129,32 +121,6 @@ def _reject_text() -> str:
     return "破8%/回落大/板块弱/难成交"
 
 
-def _portfolio_total(selected: pd.DataFrame, cfg: dict) -> float:
-    if selected.empty:
-        return 0.0
-    avg_score = float(selected["decision_score"].mean())
-    avg_risk = float(selected["risk_penalty_score"].mean())
-    target = float(cfg["buy_target_total_position_pct"])
-    if avg_score >= 70 and avg_risk <= 45 and len(selected) >= 4:
-        return target
-    if avg_score >= 60 and avg_risk <= 55:
-        return target * 0.8
-    return target * 0.55
-
-
-def _assign_positions(selected: pd.DataFrame, cfg: dict) -> pd.Series:
-    if selected.empty:
-        return pd.Series(dtype="float64")
-    total = _portfolio_total(selected, cfg)
-    scores = _clip(selected["decision_score"], 1, 100)
-    weights = scores / scores.sum() if float(scores.sum()) > 0 else pd.Series(1 / len(selected), index=selected.index)
-    raw = weights * total
-    raw = raw.clip(float(cfg["buy_min_single_position_pct"]), float(cfg["buy_max_single_position_pct"]))
-    if float(raw.sum()) > total and float(raw.sum()) > 0:
-        raw = raw / raw.sum() * total
-    return raw.round(1)
-
-
 def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -> BuyDecisionResult:
     cfg = DEFAULT_BUY_CONFIG.copy()
     cfg.update({key: value for key, value in (config or {}).items() if key in cfg})
@@ -166,7 +132,7 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     if ranked_input.empty:
         empty_plan = pd.DataFrame(columns=BUY_COLUMNS)
         empty_decision = pd.DataFrame(columns=DECISION_COLUMNS)
-        return BuyDecisionResult(empty_plan, empty_decision, {"buy_count": 0, "target_total_position_pct": 0.0})
+        return BuyDecisionResult(empty_plan, empty_decision, {"buy_count": 0})
 
     out = ranked_input.copy()
     if "rank" not in out.columns:
@@ -227,7 +193,6 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     selected = out.loc[selected_indexes].copy()
     if not selected.empty:
         selected["buy_rank"] = range(1, len(selected) + 1)
-        selected["suggest_position_pct"] = _assign_positions(selected, cfg).values
         selected["portfolio_group"] = selected["buy_rank"].map(lambda rank: "核心" if rank <= 2 else "标准")
         selected["confirm_before_buy"] = _confirm_text()
         selected["reject_if"] = _reject_text()
@@ -241,9 +206,6 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     decision["buy_rank"] = pd.Series([""] * len(decision), index=decision.index, dtype="object")
     if selected_indexes:
         decision.loc[selected_indexes, "buy_rank"] = list(range(1, len(selected_indexes) + 1))
-    decision["suggest_position_pct"] = 0.0
-    if selected_indexes:
-        decision.loc[selected_indexes, "suggest_position_pct"] = buy_plan["suggest_position_pct"].values
     decision["portfolio_group"] = pd.Series([""] * len(decision), index=decision.index, dtype="object")
     decision.loc[selected_indexes, "portfolio_group"] = buy_plan["portfolio_group"].values
     decision["confirm_before_buy"] = _confirm_text()
@@ -255,7 +217,6 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     decision_table = decision[DECISION_COLUMNS].copy()
     summary = {
         "buy_count": int(len(buy_plan)),
-        "target_total_position_pct": round(float(buy_plan["suggest_position_pct"].sum()), 1) if not buy_plan.empty else 0.0,
         "max_buy_count": max_count,
         "max_sector_positions": max_sector_positions,
         "selection_rule": "14:20生成最多5支买入观察池；14:50前人工确认尾盘承接后再执行。",

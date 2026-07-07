@@ -46,7 +46,6 @@ def render_html(
             "<tr>"
             + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
             + f"<td>{html.escape(str(row.get('portfolio_group', '')))}</td>"
-            + f"<td>{_fmt(row.get('suggest_position_pct', 0), 1)}%</td>"
             + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
             + f"<td>{html.escape(str(row.get('name', '')))}</td>"
             + f"<td>{_fmt(row.get('pct_chg', 0))}%</td>"
@@ -61,23 +60,25 @@ def render_html(
             + "</tr>"
         )
     if not buy_rows:
-        buy_rows.append("<tr><td colspan=\"14\" class=\"empty\">当前无买入观察计划</td></tr>")
+        buy_rows.append("<tr><td colspan=\"13\" class=\"empty\">当前无买入观察计划</td></tr>")
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
     realtime_sources = health.get("realtime_sources") or []
     realtime_source_text = ", ".join(str(item) for item in realtime_sources) if realtime_sources else "未标记"
+    market_data_time = html.escape(str(health.get("market_data_time") or health.get("data_time") or "-"))
+    wp_run_time = html.escape(str(health.get("wp_run_time") or health.get("data_time") or "-"))
+    status_text = html.escape(str(health.get("status")))
     status_rows = [
         ("运行状态", f"<span class=\"status {status_cls}\">{html.escape(str(health.get('status')))}</span>"),
-        ("市场数据时间", html.escape(str(health.get("market_data_time") or health.get("data_time")))),
+        ("市场数据时间", f"<span class=\"market-time\">{market_data_time}</span>"),
         ("上游生成时间", html.escape(str(health.get("source_generated_at") or "-"))),
-        ("WP运行时间", html.escape(str(health.get("wp_run_time") or health.get("data_time")))),
+        ("WP运行时间", wp_run_time),
         ("行情日期", data_trade_date),
         ("期望交易日", expected_trade_date),
         ("候选池数量", str(health.get("candidate_count", 0))),
         ("入选 Top50 数量", str(health.get("top50_count", 0))),
         ("买入观察数量", str(health.get("buy_plan_count", 0))),
-        ("建议总仓位", f"{_fmt(health.get('buy_plan_position_pct', 0), 1)}%"),
         ("原始数据量", str(health.get("raw_count", 0))),
         ("缺失字段", html.escape(", ".join(health.get("missing_fields", [])) or "无")),
         ("读取缓存 fallback", html.escape(str(health.get("data_load_fallback_used", health.get("fallback_used"))))),
@@ -99,13 +100,21 @@ def render_html(
   <title>WP 次日涨停概率 Top50</title>
   <style>
     * {{ box-sizing: border-box; }}
-    body {{ margin: 0; font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif; color: #1d1d1f; background: #f5f5f7; letter-spacing: 0; }}
+    body {{ margin: 0; font-family: "SF Pro SC", "SF Pro Text", "SF Pro Display", "SF Pro Icons", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1d1d1f; background: #f5f5f7; letter-spacing: 0; }}
     header {{ padding: 30px 32px 22px; background: rgba(255, 255, 255, 0.92); border-bottom: 1px solid #d2d2d7; }}
     h1 {{ margin: 0 0 10px; font-size: 30px; line-height: 1.18; font-weight: 700; }}
-    .meta {{ display: flex; gap: 10px 18px; flex-wrap: wrap; color: #6e6e73; font-size: 14px; line-height: 1.45; }}
     main {{ padding: 24px 32px 40px; }}
     section {{ margin-bottom: 22px; }}
     .summary-section {{ overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
+    .summary-toggle {{ list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px; user-select: none; }}
+    .summary-toggle::-webkit-details-marker {{ display: none; }}
+    .summary-toggle-title {{ display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }}
+    .summary-toggle-title strong {{ font-size: 18px; line-height: 1.25; font-weight: 700; color: #1d1d1f; }}
+    .summary-toggle-meta {{ color: #6e6e73; font-size: 13px; line-height: 1.4; }}
+    .summary-toggle-action {{ flex: 0 0 auto; color: #06c; font-size: 13px; font-weight: 600; }}
+    .summary-toggle-action::after {{ content: "展开"; }}
+    .summary-details[open] .summary-toggle-action::after {{ content: "收起"; }}
+    .summary-grid {{ border-top: 1px solid #f1f1f3; }}
     .summary-grid {{ display: grid; grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.84fr); }}
     .summary-pane {{ padding: 22px 24px; }}
     .summary-pane + .summary-pane {{ border-left: 1px solid #d2d2d7; }}
@@ -115,6 +124,7 @@ def render_html(
     .summary-table tr:last-child th, .summary-table tr:last-child td {{ border-bottom: 0; }}
     .summary-table th {{ width: 150px; color: #6e6e73; font-weight: 500; text-align: left; }}
     .summary-table td {{ color: #1d1d1f; font-weight: 600; text-align: left; }}
+    .market-time {{ color: #d70015; font-weight: 700; }}
     .sector-pane {{ display: flex; flex-direction: column; align-items: flex-start; }}
     .sector-table {{ width: auto; min-width: 260px; max-width: 360px; table-layout: auto; }}
     .sector-table th, .sector-table td {{ padding: 8px 18px 8px 0; text-align: left; }}
@@ -130,10 +140,10 @@ def render_html(
     .rank-table tbody tr:hover td {{ background: #f5f5f7; }}
     .rank-table tr.top10 td {{ background: #fff8dc; }}
     .rank-table tr.risk-high td {{ color: #9f1f1f; }}
-    .buy-table {{ border-collapse: collapse; min-width: 1500px; width: 100%; font-size: 13px; }}
+    .buy-table {{ border-collapse: collapse; min-width: 1380px; width: 100%; font-size: 13px; }}
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
-    .buy-table td:nth-child(12), .buy-table td:nth-child(13), .buy-table td:nth-child(14) {{ min-width: 150px; line-height: 1.45; }}
+    .buy-table td:nth-child(11), .buy-table td:nth-child(12), .buy-table td:nth-child(13) {{ min-width: 150px; line-height: 1.45; }}
     .section-block {{ background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }}
     .section-block strong {{ display: block; color: #1d1d1f; margin-bottom: 6px; }}
     .section-block p {{ margin: 0 0 14px; }}
@@ -143,6 +153,8 @@ def render_html(
       header {{ padding: 24px 18px 18px; }}
       h1 {{ font-size: 25px; }}
       main {{ padding: 18px 14px 30px; }}
+      .summary-toggle {{ align-items: flex-start; padding: 16px; }}
+      .summary-toggle-title {{ flex-direction: column; gap: 4px; }}
       .summary-grid {{ grid-template-columns: 1fr; }}
       .summary-pane {{ padding: 18px 16px; }}
       .summary-pane + .summary-pane {{ border-left: 0; border-top: 1px solid #d2d2d7; }}
@@ -156,22 +168,24 @@ def render_html(
 <body>
   <header>
     <h1>WP 次日涨停概率 Top50</h1>
-    <div class="meta">
-      <span>筛选条件：今日涨幅超过 8%，前一日未涨停，今日未涨停。</span>
-      <span>目标：预测下一交易日涨停概率。</span>
-      <span>刷新频率：每 10 分钟。</span>
-    </div>
   </header>
   <main>
-    <section class="summary-section" aria-label="运行状态与板块热度">
+    <details class="summary-section summary-details" aria-label="运行状态与板块热度">
+      <summary class="summary-toggle">
+        <span class="summary-toggle-title">
+          <strong>运行状态与板块热度</strong>
+          <span class="summary-toggle-meta">状态：<span class="status {status_cls}">{status_text}</span>；市场数据：<span class="market-time">{market_data_time}</span></span>
+        </span>
+        <span class="summary-toggle-action" aria-hidden="true"></span>
+      </summary>
       <div class="summary-grid">
-        <div class="summary-pane sector-pane">
+        <div class="summary-pane">
           <h2 class="summary-title">今日运行状态</h2>
           <table class="summary-table">
             <tbody>{status_html}</tbody>
           </table>
         </div>
-        <div class="summary-pane">
+        <div class="summary-pane sector-pane">
           <h2 class="summary-title">板块热度 Top10</h2>
           <table class="summary-table sector-table">
             <thead><tr><th>序号</th><th>板块</th><th>数量</th></tr></thead>
@@ -179,15 +193,14 @@ def render_html(
           </table>
         </div>
       </div>
-    </section>
+    </details>
     <section>
       <div class="section-block">
         <strong>14:20 尾盘买入观察计划</strong>
-        <p>系统最多给出 5 支买入观察票；14:20 生成计划后，人工观察到 14:50，只有仍满足确认条件才考虑执行。建议仓位是风险预算，不是必须满仓。</p>
       </div>
       <div class="table-wrap">
         <table class="buy-table">
-          <thead><tr><th>买入序</th><th>组合层级</th><th>建议仓位</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>次日概率</th><th>WP评分</th><th>决策分</th><th>风险分</th><th>14:50确认条件</th><th>放弃条件</th><th>买入理由</th></tr></thead>
+          <thead><tr><th>买入序</th><th>组合层级</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>次日概率</th><th>WP评分</th><th>决策分</th><th>风险分</th><th>14:50确认条件</th><th>放弃条件</th><th>买入理由</th></tr></thead>
           <tbody>{''.join(buy_rows)}</tbody>
         </table>
       </div>

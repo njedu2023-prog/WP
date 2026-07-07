@@ -32,7 +32,6 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
     buy_columns = [
         "buy_rank",
         "portfolio_group",
-        "suggest_position_pct",
         "ts_code",
         "name",
         "pct_chg",
