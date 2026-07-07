@@ -9,7 +9,7 @@ DEFAULT_BUY_CONFIG = {
     "buy_max_count": 5,
     "buy_max_sector_positions": 2,
     "buy_max_risk_score": 65.0,
-    "buy_min_probability": 35.0,
+    "buy_min_probability": 5.0,
     "buy_min_wp_score": 45.0,
     "buy_min_acceptance_score": 50.0,
     "buy_min_model_confidence": 55.0,

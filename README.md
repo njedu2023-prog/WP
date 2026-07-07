@@ -37,7 +37,7 @@ outputs/json/wp_backtest_latest.json
 outputs/html_reports/backtest_latest.html
 ```
 
-当历史样本足够时，实时模型会读取 `outputs/backtests/*/trades.csv`，按概率区间历史命中率对规则模型概率做轻量统计校准。
+当历史样本足够时，实时模型会读取 `outputs/backtests/*/trades.csv`，按概率区间历史命中率对规则模型概率做历史主导校准。
 
 默认读取：
 

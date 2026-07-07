@@ -58,8 +58,9 @@ def apply_statistical_calibration(df: pd.DataFrame, root: Path, min_samples: int
         else:
             empirical = global_rate
             count = int(len(history))
-        # Keep the rules model dominant until the historical sample grows.
-        adjusted = max(0.0, min(100.0, float(value) * 0.78 + empirical * 0.22))
+        reliability = min(0.90, count / (count + 25))
+        score_prior = max(0.0, min(35.0, float(value) * 0.25))
+        adjusted = max(0.0, min(100.0, score_prior * (1 - reliability) + empirical * reliability))
         calibrated.append(adjusted)
         samples.append(count)
         adjustments.append(adjusted - float(value))
