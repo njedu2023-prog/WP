@@ -29,7 +29,7 @@ on:
       - pyproject.toml
   schedule:
     # Run after the upstream a-share-top3-data job at 1/11/21/... has time to publish fresh input.
-    - cron: "8-59/10 * * * 1-5"
+    - cron: "8,18,28,38,48,58 * * * 1-5"
 
 permissions:
   contents: write
