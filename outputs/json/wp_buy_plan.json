@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-07 18:27:22",
+  "generated_at": "2026-07-07 18:30:04",
   "market_data_time": "2026-07-07 14:25:21",
-  "wp_run_time": "2026-07-07 18:27:22",
+  "wp_run_time": "2026-07-07 18:30:04",
   "summary": {
     "buy_count": 5,
     "max_buy_count": 5,
@@ -50,7 +50,7 @@
       "momentum_score": 67.24172921961446,
       "close_position": 82.45390972663704,
       "intraday_pullback_pct": 1.4452531811279146,
-      "intraday_vwap_position": 1.8144659676559316,
+      "intraday_vwap_position": 1.814465967655932,
       "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
       "reject_if": "破8%/回落大/板块弱/难成交",
       "buy_reason": "强板块、承接好、近高收"
