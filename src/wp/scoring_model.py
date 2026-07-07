@@ -73,58 +73,58 @@ def signal_level(row: pd.Series) -> str:
 def core_reason(row: pd.Series) -> str:
     reasons = []
     if row["sector_strength_score"] >= 70:
-        reasons.append("所属板块强度靠前")
+        reasons.append("板块强")
     if row["stock_strength_score"] >= 70:
-        reasons.append("个股涨幅和量价强度较高")
+        reasons.append("个股强")
     if row["acceptance_score"] >= 65:
-        reasons.append("收盘位置较好且资金承接较强")
+        reasons.append("承接好")
     if row["momentum_score"] >= 65:
-        reasons.append("短线动量保持向上")
+        reasons.append("动量上")
     if row.get("volume_price_sync_flag", 0) == 1:
-        reasons.append("量价结构同步")
+        reasons.append("量价齐")
     if row.get("high_20d_break", 0) == 1:
-        reasons.append("突破阶段高点")
+        reasons.append("新高")
     if row.get("platform_break_20d", 0) == 1:
-        reasons.append("突破近20日平台")
+        reasons.append("破平台")
     if row.get("dragon_tiger_flag", 0) == 1:
-        reasons.append("出现龙虎榜资金线索")
+        reasons.append("龙虎榜")
     if row.get("hot_topic_flag", 0) == 1:
-        reasons.append("属于当日热门题材")
+        reasons.append("热题材")
     if row.get("intraday_vwap_position", 0) > 1:
-        reasons.append("收盘强于日内均衡价格")
+        reasons.append("均价上")
     if row.get("auction_strength_score", 0) >= 60:
-        reasons.append("集合竞价承接较强")
+        reasons.append("竞价强")
     if row.get("self_learning_adjustment", 0) > 1:
-        reasons.append("历史校准对概率有正向修正")
-    return "，".join(reasons) + "。" if reasons else "满足涨幅和非涨停过滤条件，综合评分进入候选排序。"
+        reasons.append("校准+")
+    return "、".join(reasons[:3]) if reasons else "基础入选"
 
 
 def risk_reason(row: pd.Series) -> str:
     risks = []
     if row["risk_penalty_score"] >= 65:
-        risks.append("综合风险偏高")
+        risks.append("风险高")
     if row.get("close_position", 50) < 45:
-        risks.append("收盘位置不佳，存在冲高回落风险")
+        risks.append("位置差")
     if row.get("volume_ratio", 1) > 4:
-        risks.append("量能放大过快")
+        risks.append("放量急")
     if row.get("amount_ratio_5d", 1) > 5:
-        risks.append("成交额放大过度，存在爆量滞涨风险")
+        risks.append("爆量")
     if row.get("high_open_low_walk_flag", 0) == 1:
-        risks.append("高开低走结构偏弱")
+        risks.append("高开低走")
     if row.get("intraday_pullback_pct", 0) > 3:
-        risks.append("冲高回落幅度偏大")
+        risks.append("回落大")
     if row.get("tail_lift_flag", 0) == 1:
-        risks.append("尾盘放量拉升，需防次日承接不足")
+        risks.append("尾盘拉")
     if row.get("intraday_vwap_position", 0) < -1:
-        risks.append("收盘弱于日内均衡价格")
+        risks.append("均价下")
     if row.get("sector_strength_score", 50) >= 70 and row.get("stock_strength_score", 50) < 45:
-        risks.append("板块强但个股相对掉队")
+        risks.append("后排")
     if row.get("announcement_flag", 0) == 1:
-        risks.append("存在公告或异动信息扰动")
+        risks.append("公告扰动")
     if row.get("auction_pct_chg", 0) >= 5 and row.get("auction_amount_ratio", 0) < 0.01:
-        risks.append("集合竞价高开但成交承接不足")
+        risks.append("竞价弱")
     if row.get("self_learning_adjustment", 0) < -1:
-        risks.append("历史校准对概率有负向修正")
+        risks.append("校准-")
     if not risks:
-        return "当前主要风险可控，但次日仍需观察板块延续性。"
-    return "，".join(risks) + "。"
+        return "风险可控"
+    return "、".join(risks[:3])

@@ -1,14 +1,14 @@
 {
-  "generated_at": "2026-07-07 17:37:51",
+  "generated_at": "2026-07-07 17:38:54",
   "market_data_time": "2026-07-07 14:25:21",
-  "wp_run_time": "2026-07-07 17:37:51",
+  "wp_run_time": "2026-07-07 17:38:54",
   "health": {
     "status": "ok",
     "is_trading_day": true,
     "is_trading_time": false,
     "data_time": "2026-07-07 14:25:21",
     "market_data_time": "2026-07-07 14:25:21",
-    "wp_run_time": "2026-07-07 17:37:51",
+    "wp_run_time": "2026-07-07 17:38:54",
     "data_trade_date": "20260707",
     "expected_trade_date": "20260707",
     "raw_count": 17,
@@ -25,7 +25,7 @@
     "load_error": "",
     "source_status": "ok",
     "source_generated_at": "2026-07-07 14:25:59",
-    "generated_at": "2026-07-07T09:37:51",
+    "generated_at": "2026-07-07T17:38:56",
     "preserved_latest_html": false,
     "buy_plan_count": 5
   },
@@ -71,7 +71,7 @@
       "momentum_score": 67.24172921961446,
       "close_position": 82.45390972663704,
       "intraday_pullback_pct": 1.4452531811279146,
-      "intraday_vwap_position": 1.814465967655932,
+      "intraday_vwap_position": 1.8144659676559316,
       "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
       "reject_if": "破8%/回落大/板块弱/难成交",
       "buy_reason": "高概率、强板块、承接好"
@@ -152,7 +152,7 @@
       "ts_code": "688605.SH",
       "name": "先锋精科",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 111.0,
       "pct_chg": 13.12678353037098,
       "pre_day_limitup": 0,
@@ -168,15 +168,15 @@
       "wp_score": 78.42991988215381,
       "model_confidence": 70.04406178489702,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，量价结构同步，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "综合风险偏高，历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、承接好",
+      "risk_reason": "风险高、校准-"
     },
     {
       "rank": 2,
       "ts_code": "688261.SH",
       "name": "东微半导",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 100.07,
       "pct_chg": 17.494422918868135,
       "pre_day_limitup": 0,
@@ -192,15 +192,15 @@
       "wp_score": 77.18082170912561,
       "model_confidence": 78.27366704004481,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，量价结构同步，收盘强于日内均衡价格。",
-      "risk_reason": "历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、承接好",
+      "risk_reason": "校准-"
     },
     {
       "rank": 3,
       "ts_code": "603893.SH",
       "name": "瑞芯微",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 190.97,
       "pct_chg": 8.43175107880989,
       "pre_day_limitup": 0,
@@ -216,15 +216,15 @@
       "wp_score": 75.86154815368631,
       "model_confidence": 80.11500000000001,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，量价结构同步，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、承接好",
+      "risk_reason": "校准-"
     },
     {
       "rank": 4,
       "ts_code": "688584.SH",
       "name": "上海合晶",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 35.13,
       "pct_chg": 13.432353890862148,
       "pre_day_limitup": 0,
@@ -240,15 +240,15 @@
       "wp_score": 72.4234290483552,
       "model_confidence": 77.51338056680163,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，短线动量保持向上，收盘强于日内均衡价格。",
-      "risk_reason": "历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、动量上",
+      "risk_reason": "校准-"
     },
     {
       "rank": 5,
       "ts_code": "300745.SZ",
       "name": "欣锐科技",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 55.99,
       "pct_chg": 12.67860736566715,
       "pre_day_limitup": 0,
@@ -264,15 +264,15 @@
       "wp_score": 66.29926031602638,
       "model_confidence": 79.73215320802268,
       "signal_level": "C级",
-      "core_reason": "个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，量价结构同步，突破阶段高点，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "历史校准对概率有负向修正。"
+      "core_reason": "个股强、承接好、动量上",
+      "risk_reason": "校准-"
     },
     {
       "rank": 6,
       "ts_code": "688802.SH",
       "name": "沐曦股份",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 829.01,
       "pct_chg": 13.407660738714087,
       "pre_day_limitup": 0,
@@ -288,15 +288,15 @@
       "wp_score": 68.92416707886605,
       "model_confidence": 71.18425174116587,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，短线动量保持向上，量价结构同步，突破阶段高点，收盘强于日内均衡价格。",
-      "risk_reason": "综合风险偏高，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、动量上",
+      "risk_reason": "风险高、回落大、校准-"
     },
     {
       "rank": 7,
       "ts_code": "300103.SZ",
       "name": "达刚控股",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 7.93,
       "pct_chg": 9.833795013850422,
       "pre_day_limitup": 0,
@@ -312,15 +312,15 @@
       "wp_score": 67.9427305941076,
       "model_confidence": 76.10110435335739,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，量价结构同步，收盘强于日内均衡价格。",
-      "risk_reason": "冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、量价齐",
+      "risk_reason": "回落大、校准-"
     },
     {
       "rank": 8,
       "ts_code": "300717.SZ",
       "name": "华信新材",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 23.48,
       "pct_chg": 9.209302325581392,
       "pre_day_limitup": 0,
@@ -336,15 +336,15 @@
       "wp_score": 49.89707045718511,
       "model_confidence": 80.11500000000001,
       "signal_level": "C级",
-      "core_reason": "个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，量价结构同步，突破阶段高点，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "历史校准对概率有负向修正。"
+      "core_reason": "个股强、承接好、动量上",
+      "risk_reason": "校准-"
     },
     {
       "rank": 9,
       "ts_code": "300043.SZ",
       "name": "星辉娱乐",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 5.18,
       "pct_chg": 14.348785871964663,
       "pre_day_limitup": 0,
@@ -352,23 +352,23 @@
       "sector_name": "互联网",
       "sector_strength_score": 0.0,
       "stock_strength_score": 100.0,
-      "acceptance_score": 66.30103151171669,
+      "acceptance_score": 66.3010315117167,
       "momentum_score": 100.0,
       "capital_score": 100.0,
-      "risk_penalty_score": 71.84612353289114,
-      "p_limitup_t1": 61.74840719043789,
-      "wp_score": 44.493714838861955,
+      "risk_penalty_score": 71.84612353289113,
+      "p_limitup_t1": 61.7484071904379,
+      "wp_score": 44.49371483886196,
       "model_confidence": 72.66924441019898,
       "signal_level": "C级",
-      "core_reason": "个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，突破阶段高点，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "综合风险偏高，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "个股强、承接好、动量上",
+      "risk_reason": "风险高、回落大、校准-"
     },
     {
       "rank": 10,
       "ts_code": "300985.SZ",
       "name": "致远新能",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 55.31,
       "pct_chg": 12.077001013171218,
       "pre_day_limitup": 0,
@@ -384,15 +384,15 @@
       "wp_score": 47.68290158765673,
       "model_confidence": 60.0,
       "signal_level": "C级",
-      "core_reason": "个股涨幅和量价强度较高，短线动量保持向上，量价结构同步，突破阶段高点，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "综合风险偏高，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "个股强、动量上、量价齐",
+      "risk_reason": "风险高、回落大、校准-"
     },
     {
       "rank": 11,
       "ts_code": "688596.SH",
       "name": "正帆科技",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 78.57,
       "pct_chg": 10.661971830985916,
       "pre_day_limitup": 0,
@@ -400,7 +400,7 @@
       "sector_name": "专用机械",
       "sector_strength_score": 100.0,
       "stock_strength_score": 96.55558698348669,
-      "acceptance_score": 40.45586217374442,
+      "acceptance_score": 40.455862173744435,
       "momentum_score": 19.141982089350137,
       "capital_score": 100.0,
       "risk_penalty_score": 100.0,
@@ -408,15 +408,15 @@
       "wp_score": 52.09093588107004,
       "model_confidence": 60.0,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，量价结构同步，收盘强于日内均衡价格。",
-      "risk_reason": "综合风险偏高，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、量价齐",
+      "risk_reason": "风险高、回落大、校准-"
     },
     {
       "rank": 12,
       "ts_code": "300276.SZ",
       "name": "三丰智能",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 7.78,
       "pct_chg": 10.826210826210849,
       "pre_day_limitup": 0,
@@ -432,15 +432,15 @@
       "wp_score": 51.66620979155359,
       "model_confidence": 61.80825285858858,
       "signal_level": "C级",
-      "core_reason": "所属板块强度靠前，个股涨幅和量价强度较高，短线动量保持向上。",
-      "risk_reason": "综合风险偏高，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "板块强、个股强、动量上",
+      "risk_reason": "风险高、回落大、校准-"
     },
     {
       "rank": 13,
       "ts_code": "920527.BJ",
       "name": "夜光明",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 17.0,
       "pct_chg": 24.9081557678178,
       "pre_day_limitup": 0,
@@ -456,15 +456,15 @@
       "wp_score": 40.50575450144237,
       "model_confidence": 60.0,
       "signal_level": "C级",
-      "core_reason": "个股涨幅和量价强度较高，收盘位置较好且资金承接较强，短线动量保持向上，突破阶段高点，突破近20日平台，收盘强于日内均衡价格。",
-      "risk_reason": "综合风险偏高，成交额放大过度，存在爆量滞涨风险，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "个股强、承接好、动量上",
+      "risk_reason": "风险高、爆量、回落大"
     },
     {
       "rank": 14,
       "ts_code": "301237.SZ",
       "name": "和顺科技",
       "trade_date": "20260707",
-      "update_time": "2026-07-07 17:37:51",
+      "update_time": "2026-07-07 17:38:54",
       "price": 82.28,
       "pct_chg": 10.964261631827377,
       "pre_day_limitup": 0,
@@ -480,8 +480,8 @@
       "wp_score": 31.051177064065584,
       "model_confidence": 65.83861803065834,
       "signal_level": "C级",
-      "core_reason": "个股涨幅和量价强度较高，短线动量保持向上，突破阶段高点，突破近20日平台。",
-      "risk_reason": "综合风险偏高，冲高回落幅度偏大，历史校准对概率有负向修正。"
+      "core_reason": "个股强、动量上、新高",
+      "risk_reason": "风险高、回落大、校准-"
     }
   ]
 }
