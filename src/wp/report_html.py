@@ -13,9 +13,16 @@ def _fmt(value, digits: int = 2) -> str:
         return html.escape(str(value))
 
 
-def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, output_path: str | Path) -> None:
+def render_html(
+    top50: pd.DataFrame,
+    full_rank: pd.DataFrame,
+    health: dict,
+    output_path: str | Path,
+    buy_plan: pd.DataFrame | None = None,
+) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
+    buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
     sector_top = []
     if not full_rank.empty and "sector_name" in full_rank:
         sector_top = full_rank.groupby("sector_name").size().sort_values(ascending=False).head(10).items()
@@ -33,6 +40,28 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
         )
     if not rows:
         rows.append("<tr><td colspan=\"16\" class=\"empty\">无符合条件股票</td></tr>")
+    buy_rows = []
+    for _, row in buy_plan.iterrows():
+        buy_rows.append(
+            "<tr>"
+            + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('portfolio_group', '')))}</td>"
+            + f"<td>{_fmt(row.get('suggest_position_pct', 0), 1)}%</td>"
+            + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('name', '')))}</td>"
+            + f"<td>{_fmt(row.get('pct_chg', 0))}%</td>"
+            + f"<td>{html.escape(str(row.get('sector_name', '')))}</td>"
+            + f"<td>{_fmt(row.get('p_limitup_t1', 0))}%</td>"
+            + f"<td>{_fmt(row.get('wp_score', 0))}</td>"
+            + f"<td>{_fmt(row.get('decision_score', 0))}</td>"
+            + f"<td>{_fmt(row.get('risk_penalty_score', 0))}</td>"
+            + f"<td>{html.escape(str(row.get('confirm_before_buy', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('reject_if', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('buy_reason', '')))}</td>"
+            + "</tr>"
+        )
+    if not buy_rows:
+        buy_rows.append("<tr><td colspan=\"14\" class=\"empty\">当前无买入观察计划</td></tr>")
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
@@ -45,6 +74,8 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
         ("期望交易日", expected_trade_date),
         ("候选池数量", str(health.get("candidate_count", 0))),
         ("入选 Top50 数量", str(health.get("top50_count", 0))),
+        ("买入观察数量", str(health.get("buy_plan_count", 0))),
+        ("建议总仓位", f"{_fmt(health.get('buy_plan_position_pct', 0), 1)}%"),
         ("原始数据量", str(health.get("raw_count", 0))),
         ("缺失字段", html.escape(", ".join(health.get("missing_fields", [])) or "无")),
         ("读取缓存 fallback", html.escape(str(health.get("data_load_fallback_used", health.get("fallback_used"))))),
@@ -94,6 +125,10 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
     .rank-table tbody tr:hover td {{ background: #f5f5f7; }}
     .rank-table tr.top10 td {{ background: #fff8dc; }}
     .rank-table tr.risk-high td {{ color: #9f1f1f; }}
+    .buy-table {{ border-collapse: collapse; min-width: 1500px; width: 100%; font-size: 13px; }}
+    .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
+    .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
+    .buy-table td:nth-child(12), .buy-table td:nth-child(13), .buy-table td:nth-child(14) {{ min-width: 220px; line-height: 1.5; }}
     .section-block {{ background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }}
     .section-block strong {{ display: block; color: #1d1d1f; margin-bottom: 6px; }}
     .section-block p {{ margin: 0 0 14px; }}
@@ -136,6 +171,18 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
             <tbody>{sector_rows}</tbody>
           </table>
         </div>
+      </div>
+    </section>
+    <section>
+      <div class="section-block">
+        <strong>14:20 尾盘买入观察计划</strong>
+        <p>系统最多给出 5 支买入观察票；14:20 生成计划后，人工观察到 14:50，只有仍满足确认条件才考虑执行。建议仓位是风险预算，不是必须满仓。</p>
+      </div>
+      <div class="table-wrap">
+        <table class="buy-table">
+          <thead><tr><th>买入序</th><th>组合层级</th><th>建议仓位</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>次日概率</th><th>WP评分</th><th>决策分</th><th>风险分</th><th>14:50确认条件</th><th>放弃条件</th><th>买入理由</th></tr></thead>
+          <tbody>{''.join(buy_rows)}</tbody>
+        </table>
       </div>
     </section>
     <section>

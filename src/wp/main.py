@@ -8,6 +8,7 @@ from pathlib import Path
 import pandas as pd
 
 from .backtest import run_backtest
+from .buy_decision import build_buy_decision
 from .calendar import now_cn
 from .candidate_filter import filter_candidates
 from .data_loader import read_rank_input
@@ -73,6 +74,9 @@ def run() -> dict:
     )
     ranked_input = add_scores(add_feature_scores(candidates))
     top50, full_rank = rank_candidates(ranked_input, update_time, top_n=int(config.get("top_n", 50)))
+    buy_decision = build_buy_decision(ranked_input, config)
+    buy_plan = buy_decision.buy_plan
+    buy_decision_table = buy_decision.decision_table
     health = build_healthcheck(
         raw,
         candidates,
@@ -91,6 +95,10 @@ def run() -> dict:
         ranked_input = ranked_input.iloc[0:0].copy()
         health["candidate_count"] = 0
         health["top50_count"] = 0
+        buy_plan = buy_plan.iloc[0:0].copy()
+        buy_decision_table = buy_decision_table.iloc[0:0].copy()
+        buy_decision.summary["buy_count"] = 0
+        buy_decision.summary["target_total_position_pct"] = 0.0
     rule_errors = assert_top50_rules(top50)
     if rule_errors:
         health["status"] = "规则自检失败"
@@ -104,17 +112,35 @@ def run() -> dict:
     top50.to_csv(output_root / "csv" / "wp_top50.csv", index=False, encoding="utf-8-sig")
     full_rank.to_csv(output_root / "csv" / "wp_full_rank.csv", index=False, encoding="utf-8-sig")
     ranked_input.to_csv(output_root / "csv" / "wp_model_debug.csv", index=False, encoding="utf-8-sig")
+    buy_plan.to_csv(output_root / "csv" / "wp_buy_plan.csv", index=False, encoding="utf-8-sig")
+    buy_decision_table.to_csv(output_root / "csv" / "wp_buy_decision.csv", index=False, encoding="utf-8-sig")
     latest_html = output_root / "html_reports" / "latest.html"
     archive_html = archive_dir / f"{current.strftime('%H%M')}.html"
     preserve_latest = (not load_result.ok) and (not load_result.fallback_used) and latest_html.exists()
     health["preserved_latest_html"] = bool(preserve_latest)
-    latest_payload = {"generated_at": update_time, "health": health, "top50": top50.to_dict(orient="records")}
+    health["buy_plan_count"] = int(len(buy_plan))
+    health["buy_plan_position_pct"] = float(buy_decision.summary.get("target_total_position_pct", 0.0))
+    latest_payload = {
+        "generated_at": update_time,
+        "health": health,
+        "buy_plan": buy_plan.to_dict(orient="records"),
+        "top50": top50.to_dict(orient="records"),
+    }
     write_json(output_root / "json" / "latest.json", latest_payload)
+    write_json(
+        output_root / "json" / "wp_buy_plan.json",
+        {
+            "generated_at": update_time,
+            "summary": buy_decision.summary,
+            "buy_plan": buy_plan.to_dict(orient="records"),
+        },
+    )
     write_json(
         output_root / "json" / "wp_manifest.json",
         {
             "latest_update": update_time,
             "top50_count": len(top50),
+            "buy_plan_count": len(buy_plan),
             "health_status": health["status"],
             "preserved_latest_html": bool(preserve_latest),
         },
@@ -123,14 +149,15 @@ def run() -> dict:
     if preserve_latest:
         logging.error("Source failed; preserving existing latest.html. error=%s", load_result.error)
     else:
-        render_html(top50, full_rank, health, latest_html)
-    render_html(top50, full_rank, health, archive_html)
-    render_markdown(top50, output_root / "html_reports" / "latest.md")
+        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan)
+    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan)
+    render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan)
     logging.info(
-        "WP run completed: raw=%s candidates=%s top50=%s missing_fields=%s fallback=%s outputs=%s log=%s",
+        "WP run completed: raw=%s candidates=%s top50=%s buy_plan=%s missing_fields=%s fallback=%s outputs=%s log=%s",
         len(raw),
         len(candidates),
         len(top50),
+        len(buy_plan),
         ",".join(health.get("missing_fields", [])) or "none",
         health.get("fallback_used"),
         output_root,

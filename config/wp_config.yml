@@ -7,3 +7,15 @@ timezone: Asia/Shanghai
 exclude_st: true
 exclude_suspended: true
 exclude_new_stock_days: 10
+buy_max_count: 5
+buy_target_total_position_pct: 50
+buy_max_single_position_pct: 14
+buy_min_single_position_pct: 6
+buy_max_sector_positions: 2
+buy_max_risk_score: 65
+buy_min_probability: 35
+buy_min_wp_score: 45
+buy_min_acceptance_score: 50
+buy_min_model_confidence: 55
+buy_min_close_position: 55
+buy_max_intraday_pullback_pct: 8
