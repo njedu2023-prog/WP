@@ -122,6 +122,8 @@ def run() -> dict:
     health["buy_plan_position_pct"] = float(buy_decision.summary.get("target_total_position_pct", 0.0))
     latest_payload = {
         "generated_at": update_time,
+        "market_data_time": health.get("market_data_time", ""),
+        "wp_run_time": update_time,
         "health": health,
         "buy_plan": buy_plan.to_dict(orient="records"),
         "top50": top50.to_dict(orient="records"),
@@ -131,6 +133,8 @@ def run() -> dict:
         output_root / "json" / "wp_buy_plan.json",
         {
             "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "wp_run_time": update_time,
             "summary": buy_decision.summary,
             "buy_plan": buy_plan.to_dict(orient="records"),
         },
@@ -139,6 +143,8 @@ def run() -> dict:
         output_root / "json" / "wp_manifest.json",
         {
             "latest_update": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "wp_run_time": update_time,
             "top50_count": len(top50),
             "buy_plan_count": len(buy_plan),
             "health_status": health["status"],

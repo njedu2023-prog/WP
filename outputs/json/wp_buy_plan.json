@@ -1,5 +1,7 @@
 {
-  "generated_at": "2026-07-07 17:12:53",
+  "generated_at": "2026-07-07 17:24:03",
+  "market_data_time": "2026-07-07 14:25:21",
+  "wp_run_time": "2026-07-07 17:24:03",
   "summary": {
     "buy_count": 5,
     "target_total_position_pct": 27.6,
@@ -28,9 +30,9 @@
       "close_position": 84.57639391745106,
       "intraday_pullback_pct": 2.128510042969922,
       "intraday_vwap_position": 3.285625817105897,
-      "confirm_before_buy": "14:50前仍满足涨幅>8%、未涨停、尾盘不明显回落、成交承接不塌、同板块强势不退潮",
-      "reject_if": "跌破8%、冲高回落扩大、收盘位置明显下降、风险分升高、同板块快速转弱或临近涨停无法成交",
-      "buy_reason": "次日涨停概率靠前，板块强度靠前，收盘承接较好，收盘位置靠近高位，收盘强于日内均衡价格"
+      "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
+      "reject_if": "破8%/回落大/板块弱/难成交",
+      "buy_reason": "高概率、强板块、承接好"
     },
     {
       "buy_rank": 2,
@@ -51,10 +53,10 @@
       "momentum_score": 67.24172921961446,
       "close_position": 82.45390972663704,
       "intraday_pullback_pct": 1.4452531811279146,
-      "intraday_vwap_position": 1.814465967655932,
-      "confirm_before_buy": "14:50前仍满足涨幅>8%、未涨停、尾盘不明显回落、成交承接不塌、同板块强势不退潮",
-      "reject_if": "跌破8%、冲高回落扩大、收盘位置明显下降、风险分升高、同板块快速转弱或临近涨停无法成交",
-      "buy_reason": "次日涨停概率靠前，板块强度靠前，收盘承接较好，收盘位置靠近高位，收盘强于日内均衡价格"
+      "intraday_vwap_position": 1.8144659676559316,
+      "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
+      "reject_if": "破8%/回落大/板块弱/难成交",
+      "buy_reason": "高概率、强板块、承接好"
     },
     {
       "buy_rank": 3,
@@ -76,9 +78,9 @@
       "close_position": 80.64102564102565,
       "intraday_pullback_pct": 2.6969101625290204,
       "intraday_vwap_position": 2.929101047858329,
-      "confirm_before_buy": "14:50前仍满足涨幅>8%、未涨停、尾盘不明显回落、成交承接不塌、同板块强势不退潮",
-      "reject_if": "跌破8%、冲高回落扩大、收盘位置明显下降、风险分升高、同板块快速转弱或临近涨停无法成交",
-      "buy_reason": "次日涨停概率靠前，收盘承接较好，收盘位置靠近高位，收盘强于日内均衡价格"
+      "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
+      "reject_if": "破8%/回落大/板块弱/难成交",
+      "buy_reason": "高概率、承接好、近高收"
     },
     {
       "buy_rank": 4,
@@ -100,9 +102,9 @@
       "close_position": 69.02654867256638,
       "intraday_pullback_pct": 4.41361916771752,
       "intraday_vwap_position": 1.8407534246575263,
-      "confirm_before_buy": "14:50前仍满足涨幅>8%、未涨停、尾盘不明显回落、成交承接不塌、同板块强势不退潮",
-      "reject_if": "跌破8%、冲高回落扩大、收盘位置明显下降、风险分升高、同板块快速转弱或临近涨停无法成交",
-      "buy_reason": "次日涨停概率靠前，板块强度靠前，收盘强于日内均衡价格"
+      "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
+      "reject_if": "破8%/回落大/板块弱/难成交",
+      "buy_reason": "高概率、强板块、强均价"
     },
     {
       "buy_rank": 5,
@@ -124,9 +126,9 @@
       "close_position": 78.48101265822785,
       "intraday_pullback_pct": 2.8960817717206044,
       "intraday_vwap_position": 2.622377622377625,
-      "confirm_before_buy": "14:50前仍满足涨幅>8%、未涨停、尾盘不明显回落、成交承接不塌、同板块强势不退潮",
-      "reject_if": "跌破8%、冲高回落扩大、收盘位置明显下降、风险分升高、同板块快速转弱或临近涨停无法成交",
-      "buy_reason": "收盘承接较好，收盘位置靠近高位，收盘强于日内均衡价格"
+      "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
+      "reject_if": "破8%/回落大/板块弱/难成交",
+      "buy_reason": "承接好、近高收、强均价"
     }
   ]
 }

@@ -1,10 +1,46 @@
 from __future__ import annotations
 
 from datetime import datetime
+import re
 
 import pandas as pd
 
 from .calendar import is_a_share_trading_day, is_trading_time
+
+
+def _parse_time(value) -> datetime | None:
+    text = str(value).strip()
+    if not text or text.lower() in {"nan", "none", "nat"}:
+        return None
+    try:
+        if re.fullmatch(r"\d{8}\s+\d{2}:\d{2}:\d{2}", text):
+            return datetime.strptime(text, "%Y%m%d %H:%M:%S")
+        if re.fullmatch(r"\d{8}\s+\d{2}:\d{2}", text):
+            return datetime.strptime(text, "%Y%m%d %H:%M")
+        if re.fullmatch(r"\d{14}", text):
+            return datetime.strptime(text, "%Y%m%d%H%M%S")
+        parsed = pd.to_datetime(text, errors="coerce")
+        if pd.isna(parsed):
+            return None
+        return parsed.to_pydatetime()
+    except Exception:
+        return None
+
+
+def _market_data_time(raw: pd.DataFrame, source_metadata: dict, fallback: str) -> str:
+    times: list[datetime] = []
+    if "update_time" in raw.columns:
+        for value in raw["update_time"].dropna().tolist():
+            parsed = _parse_time(value)
+            if parsed is not None:
+                times.append(parsed)
+    if times:
+        return max(times).strftime("%Y-%m-%d %H:%M:%S")
+    generated_at = source_metadata.get("generated_at", "")
+    parsed_generated = _parse_time(generated_at)
+    if parsed_generated is not None:
+        return parsed_generated.strftime("%Y-%m-%d %H:%M:%S")
+    return str(generated_at or fallback)
 
 
 def build_healthcheck(
@@ -44,6 +80,7 @@ def build_healthcheck(
         )
     realtime_fallback_used = any("fallback" in item.lower() for item in realtime_sources)
     source_metadata = source_metadata or {}
+    market_data_time = _market_data_time(raw, source_metadata, update_time)
     status = "ok"
     if source_metadata.get("status") == "stale_data":
         data_trade_date = str(source_metadata.get("source_trade_date") or data_trade_date)
@@ -63,7 +100,9 @@ def build_healthcheck(
         "status": status,
         "is_trading_day": is_a_share_trading_day(),
         "is_trading_time": is_trading_time(),
-        "data_time": update_time,
+        "data_time": market_data_time,
+        "market_data_time": market_data_time,
+        "wp_run_time": update_time,
         "data_trade_date": data_trade_date,
         "expected_trade_date": expected_trade_date or "",
         "raw_count": int(len(raw)),

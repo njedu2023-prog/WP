@@ -69,7 +69,9 @@ def render_html(
     realtime_source_text = ", ".join(str(item) for item in realtime_sources) if realtime_sources else "未标记"
     status_rows = [
         ("运行状态", f"<span class=\"status {status_cls}\">{html.escape(str(health.get('status')))}</span>"),
-        ("数据更新时间", html.escape(str(health.get("data_time")))),
+        ("市场数据时间", html.escape(str(health.get("market_data_time") or health.get("data_time")))),
+        ("上游生成时间", html.escape(str(health.get("source_generated_at") or "-"))),
+        ("WP运行时间", html.escape(str(health.get("wp_run_time") or health.get("data_time")))),
         ("行情日期", data_trade_date),
         ("期望交易日", expected_trade_date),
         ("候选池数量", str(health.get("candidate_count", 0))),
@@ -113,9 +115,12 @@ def render_html(
     .summary-table tr:last-child th, .summary-table tr:last-child td {{ border-bottom: 0; }}
     .summary-table th {{ width: 150px; color: #6e6e73; font-weight: 500; text-align: left; }}
     .summary-table td {{ color: #1d1d1f; font-weight: 600; text-align: left; }}
-    .sector-table th, .sector-table td {{ text-align: left; }}
-    .sector-table th:nth-child(1), .sector-table td:nth-child(1) {{ width: 44px; color: #86868b; font-variant-numeric: tabular-nums; }}
-    .sector-table th:nth-child(3), .sector-table td:nth-child(3) {{ text-align: left; font-weight: 600; }}
+    .sector-pane {{ display: flex; flex-direction: column; align-items: flex-start; }}
+    .sector-table {{ width: auto; min-width: 260px; max-width: 360px; table-layout: auto; }}
+    .sector-table th, .sector-table td {{ padding: 8px 18px 8px 0; text-align: left; }}
+    .sector-table th:nth-child(1), .sector-table td:nth-child(1) {{ width: 48px; color: #86868b; font-variant-numeric: tabular-nums; }}
+    .sector-table th:nth-child(2), .sector-table td:nth-child(2) {{ min-width: 112px; }}
+    .sector-table th:nth-child(3), .sector-table td:nth-child(3) {{ width: 64px; padding-right: 0; text-align: left; font-weight: 600; }}
     .status.ok {{ color: #0b7a3b; font-weight: 700; }}
     .status.bad {{ color: #b42318; font-weight: 700; }}
     .table-wrap {{ overflow-x: auto; border: 1px solid #d2d2d7; background: white; border-radius: 8px; }}
@@ -128,7 +133,7 @@ def render_html(
     .buy-table {{ border-collapse: collapse; min-width: 1500px; width: 100%; font-size: 13px; }}
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
-    .buy-table td:nth-child(12), .buy-table td:nth-child(13), .buy-table td:nth-child(14) {{ min-width: 220px; line-height: 1.5; }}
+    .buy-table td:nth-child(12), .buy-table td:nth-child(13), .buy-table td:nth-child(14) {{ min-width: 150px; line-height: 1.45; }}
     .section-block {{ background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }}
     .section-block strong {{ display: block; color: #1d1d1f; margin-bottom: 6px; }}
     .section-block p {{ margin: 0 0 14px; }}
@@ -143,6 +148,8 @@ def render_html(
       .summary-pane + .summary-pane {{ border-left: 0; border-top: 1px solid #d2d2d7; }}
       .summary-table {{ font-size: 13px; }}
       .summary-table th {{ width: 128px; }}
+      .sector-table {{ min-width: 236px; max-width: 100%; }}
+      .sector-table th, .sector-table td {{ padding-top: 7px; padding-bottom: 7px; }}
     }}
   </style>
 </head>
@@ -158,7 +165,7 @@ def render_html(
   <main>
     <section class="summary-section" aria-label="运行状态与板块热度">
       <div class="summary-grid">
-        <div class="summary-pane">
+        <div class="summary-pane sector-pane">
           <h2 class="summary-title">今日运行状态</h2>
           <table class="summary-table">
             <tbody>{status_html}</tbody>

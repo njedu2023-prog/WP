@@ -84,18 +84,18 @@ def _sort_for_buy(frame: pd.DataFrame) -> pd.DataFrame:
 def _reason(row: pd.Series) -> str:
     reasons: list[str] = []
     if float(row.get("p_limitup_t1", 0) or 0) >= 70:
-        reasons.append("次日涨停概率靠前")
+        reasons.append("高概率")
     if float(row.get("sector_strength_score", 0) or 0) >= 70:
-        reasons.append("板块强度靠前")
+        reasons.append("强板块")
     if float(row.get("acceptance_score", 0) or 0) >= 65:
-        reasons.append("收盘承接较好")
+        reasons.append("承接好")
     if float(row.get("close_position", 50) or 50) >= 75:
-        reasons.append("收盘位置靠近高位")
+        reasons.append("近高收")
     if float(row.get("intraday_vwap_position", 0) or 0) > 0:
-        reasons.append("收盘强于日内均衡价格")
+        reasons.append("强均价")
     if float(row.get("risk_penalty_score", 0) or 0) <= 45:
-        reasons.append("风险惩罚较低")
-    return "，".join(reasons) or "综合评分进入买入观察池"
+        reasons.append("低风险")
+    return "、".join(reasons[:3]) or "综合入选"
 
 
 def _skip_reason(row: pd.Series, cfg: dict) -> str:
@@ -122,11 +122,11 @@ def _skip_reason(row: pd.Series, cfg: dict) -> str:
 
 
 def _confirm_text() -> str:
-    return "14:50前仍满足涨幅>8%、未涨停、尾盘不明显回落、成交承接不塌、同板块强势不退潮"
+    return "涨幅>8%、承接稳、板块不退"
 
 
 def _reject_text() -> str:
-    return "跌破8%、冲高回落扩大、收盘位置明显下降、风险分升高、同板块快速转弱或临近涨停无法成交"
+    return "破8%/回落大/板块弱/难成交"
 
 
 def _portfolio_total(selected: pd.DataFrame, cfg: dict) -> float:
