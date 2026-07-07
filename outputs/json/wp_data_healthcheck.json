@@ -2,7 +2,7 @@
   "status": "ok",
   "is_trading_day": true,
   "is_trading_time": true,
-  "data_time": "2026-07-07 14:14:09",
+  "data_time": "2026-07-07 14:18:07",
   "data_trade_date": "20260707",
   "expected_trade_date": "20260707",
   "raw_count": 49,
@@ -19,6 +19,6 @@
   "load_error": "",
   "source_status": "ok",
   "source_generated_at": "2026-07-07 14:01:11",
-  "generated_at": "2026-07-07T14:14:11",
+  "generated_at": "2026-07-07T06:18:07",
   "preserved_latest_html": false
 }
