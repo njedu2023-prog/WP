@@ -1,9 +1,15 @@
 {
-  "latest_update": "2026-07-07 17:46:35",
+  "latest_update": "2026-07-07 18:02:15",
   "market_data_time": "2026-07-07 14:25:21",
-  "wp_run_time": "2026-07-07 17:46:35",
+  "wp_run_time": "2026-07-07 18:02:15",
   "top50_count": 14,
   "buy_plan_count": 5,
+  "validation_summary": {
+    "total_records": 5,
+    "verified_records": 0,
+    "limit_up_records": 0,
+    "limit_up_rate": 0.0
+  },
   "health_status": "ok",
   "preserved_latest_html": false
 }

@@ -13,16 +13,30 @@ def _fmt(value, digits: int = 2) -> str:
         return html.escape(str(value))
 
 
+def _pct_cell(value) -> str:
+    try:
+        pct = float(value)
+    except Exception:
+        return "<span class=\"pct-pending\">待验证</span>"
+    cls = "pct-up" if pct > 0 else "pct-down" if pct < 0 else "pct-flat"
+    sign = "+" if pct > 0 else ""
+    return f"<span class=\"{cls}\">{sign}{pct:.2f}%</span>"
+
+
 def render_html(
     top50: pd.DataFrame,
     full_rank: pd.DataFrame,
     health: dict,
     output_path: str | Path,
     buy_plan: pd.DataFrame | None = None,
+    validation: pd.DataFrame | None = None,
+    validation_summary: dict | None = None,
 ) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
+    validation = validation if validation is not None else pd.DataFrame()
+    validation_summary = validation_summary or {}
     sector_top = []
     if not full_rank.empty and "sector_name" in full_rank:
         sector_top = full_rank.groupby("sector_name").size().sort_values(ascending=False).head(10).items()
@@ -61,6 +75,35 @@ def render_html(
         )
     if not buy_rows:
         buy_rows.append("<tr><td colspan=\"13\" class=\"empty\">当前无买入观察计划</td></tr>")
+    validation_rows = []
+    if not validation.empty:
+        view = validation.copy()
+        view["_rank_sort"] = pd.to_numeric(view.get("buy_rank"), errors="coerce").fillna(999)
+        view = view.sort_values(["plan_trade_date", "plan_time", "_rank_sort"], ascending=[False, False, True]).head(50)
+        for _, row in view.iterrows():
+            status = str(row.get("truth_status", ""))
+            is_lu = str(row.get("is_limit_up_t1", "")).lower() in {"true", "1", "yes"}
+            validation_rows.append(
+                "<tr>"
+                + f"<td>{html.escape(str(row.get('plan_trade_date', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('plan_time', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('target_trade_date', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('name', '')))}</td>"
+                + f"<td>{_fmt(row.get('pct_chg_plan', 0))}%</td>"
+                + f"<td>{_pct_cell(row.get('actual_pct_chg', ''))}</td>"
+                + f"<td>{'是' if is_lu else '否' if status == 'verified' else '待验证'}</td>"
+                + f"<td>{html.escape(status or 'pending')}</td>"
+                + "</tr>"
+            )
+    if not validation_rows:
+        validation_rows.append("<tr><td colspan=\"10\" class=\"empty\">暂无验证记录</td></tr>")
+    validation_summary_text = (
+        f"已验证 {int(validation_summary.get('verified_records', 0))}；"
+        f"涨停 {int(validation_summary.get('limit_up_records', 0))}；"
+        f"命中 {float(validation_summary.get('limit_up_rate', 0.0)):.2f}%"
+    )
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
@@ -125,6 +168,9 @@ def render_html(
     .summary-table th {{ width: 150px; color: #6e6e73; font-weight: 500; text-align: left; }}
     .summary-table td {{ color: #1d1d1f; font-weight: 600; text-align: left; }}
     .market-time {{ color: #d70015; font-weight: 700; }}
+    .pct-up {{ color: #d70015; font-weight: 700; }}
+    .pct-down {{ color: #008a00; font-weight: 700; }}
+    .pct-flat, .pct-pending {{ color: #86868b; font-weight: 600; }}
     .sector-pane {{ display: flex; flex-direction: column; align-items: flex-start; }}
     .sector-table {{ width: auto; min-width: 260px; max-width: 360px; table-layout: auto; }}
     .sector-table th, .sector-table td {{ padding: 8px 18px 8px 0; text-align: left; }}
@@ -144,6 +190,9 @@ def render_html(
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
     .buy-table td:nth-child(11), .buy-table td:nth-child(12), .buy-table td:nth-child(13) {{ min-width: 150px; line-height: 1.45; }}
+    .validation-table {{ border-collapse: collapse; min-width: 980px; width: 100%; font-size: 13px; }}
+    .validation-table th, .validation-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }}
+    .validation-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; }}
     .section-block {{ background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }}
     .section-block strong {{ display: block; color: #1d1d1f; margin-bottom: 6px; }}
     .section-block p {{ margin: 0 0 14px; }}
@@ -213,11 +262,17 @@ def render_html(
         </table>
       </div>
     </section>
-    <section class="section-block">
-      <strong>模型解释</strong>
-      <p>第一阶段采用规则评分模型，综合强资金板块、强个股、承接质量、动量、资金和形态，并扣除高位加速、冲高回落、爆量滞涨、板块后排和流动性不足等风险。</p>
-      <strong>风险提示</strong>
-      <p>S级不等于一定涨停；本系统仅用于辅助决策，不构成投资建议，不做自动交易。</p>
+    <section>
+      <div class="section-block">
+        <strong>14:20 观察名单真值验证</strong>
+        <p>{html.escape(validation_summary_text)}</p>
+      </div>
+      <div class="table-wrap">
+        <table class="validation-table">
+          <thead><tr><th>计划日</th><th>计划时间</th><th>验证日</th><th>买入序</th><th>代码</th><th>名称</th><th>计划涨幅</th><th>实际涨跌</th><th>涨停</th><th>状态</th></tr></thead>
+          <tbody>{''.join(validation_rows)}</tbody>
+        </table>
+      </div>
     </section>
   </main>
 </body>

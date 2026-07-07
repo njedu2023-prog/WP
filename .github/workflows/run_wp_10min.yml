@@ -101,6 +101,7 @@ jobs:
           WP_MODE: ${{ github.event.inputs.mode }}
           WP_BACKTEST_START: ${{ github.event.inputs.start_date }}
           WP_BACKTEST_END: ${{ github.event.inputs.end_date }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
       - name: Commit outputs through GitHub API
         if: env.RUN_WP != '0'
         run: python scripts/github_commit_paths.py "Update WP outputs" outputs logs data/cache

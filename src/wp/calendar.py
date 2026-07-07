@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 
@@ -38,3 +38,11 @@ def is_trading_time(dt: datetime | None = None) -> bool:
 
 def trade_date_str(dt: datetime | None = None) -> str:
     return (dt or now_cn()).strftime("%Y%m%d")
+
+
+def next_trading_day_str(trade_date: str) -> str:
+    current = datetime.strptime(str(trade_date), "%Y%m%d").replace(tzinfo=CN_TZ)
+    while True:
+        current = current + timedelta(days=1)
+        if is_a_share_trading_day(current):
+            return current.strftime("%Y%m%d")

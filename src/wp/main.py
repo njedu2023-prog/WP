@@ -9,6 +9,7 @@ import pandas as pd
 
 from .backtest import run_backtest
 from .buy_decision import build_buy_decision
+from .buy_validation import update_buy_plan_validation
 from .calendar import now_cn
 from .candidate_filter import filter_candidates
 from .data_loader import read_rank_input
@@ -108,6 +109,7 @@ def run() -> dict:
     ensure_dir(output_root / "json")
     archive_dir = output_root / "html_reports" / "archive" / current.strftime("%Y%m%d")
     ensure_dir(archive_dir)
+    validation_result = update_buy_plan_validation(buy_plan, health, output_root, current)
     top50.to_csv(output_root / "csv" / "wp_top50.csv", index=False, encoding="utf-8-sig")
     full_rank.to_csv(output_root / "csv" / "wp_full_rank.csv", index=False, encoding="utf-8-sig")
     ranked_input.to_csv(output_root / "csv" / "wp_model_debug.csv", index=False, encoding="utf-8-sig")
@@ -123,6 +125,8 @@ def run() -> dict:
         "market_data_time": health.get("market_data_time", ""),
         "wp_run_time": update_time,
         "health": health,
+        "buy_plan_validation": validation_result.table.to_dict(orient="records"),
+        "buy_plan_validation_summary": validation_result.summary,
         "buy_plan": buy_plan.to_dict(orient="records"),
         "top50": top50.to_dict(orient="records"),
     }
@@ -138,6 +142,16 @@ def run() -> dict:
         },
     )
     write_json(
+        output_root / "json" / "wp_buy_plan_validation.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "wp_run_time": update_time,
+            "summary": validation_result.summary,
+            "records": validation_result.table.to_dict(orient="records"),
+        },
+    )
+    write_json(
         output_root / "json" / "wp_manifest.json",
         {
             "latest_update": update_time,
@@ -145,6 +159,7 @@ def run() -> dict:
             "wp_run_time": update_time,
             "top50_count": len(top50),
             "buy_plan_count": len(buy_plan),
+            "validation_summary": validation_result.summary,
             "health_status": health["status"],
             "preserved_latest_html": bool(preserve_latest),
         },
@@ -153,8 +168,8 @@ def run() -> dict:
     if preserve_latest:
         logging.error("Source failed; preserving existing latest.html. error=%s", load_result.error)
     else:
-        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan)
-    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan)
+        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, validation=validation_result.table, validation_summary=validation_result.summary)
+    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, validation=validation_result.table, validation_summary=validation_result.summary)
     render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan)
     logging.info(
         "WP run completed: raw=%s candidates=%s top50=%s buy_plan=%s missing_fields=%s fallback=%s outputs=%s log=%s",
