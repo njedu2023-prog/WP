@@ -65,7 +65,7 @@ def run() -> dict:
     expected_trade_date = current.strftime("%Y%m%d")
     candidates = filter_candidates(
         raw,
-        min_pct_chg=float(config.get("min_pct_chg", 6.0)),
+        min_pct_chg=float(config.get("min_pct_chg", 8.0)),
         min_amount=float(config.get("min_amount", 100000000)),
         exclude_st=bool(config.get("exclude_st", True)),
         exclude_suspended=bool(config.get("exclude_suspended", True)),

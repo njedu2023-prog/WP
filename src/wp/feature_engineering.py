@@ -11,7 +11,7 @@ def add_feature_scores(df: pd.DataFrame) -> pd.DataFrame:
         return df.copy()
     out = df.copy()
     sector_rank = numeric_series(out, ["sector_rank", "板块排名"], 50)
-    sector_gt6 = numeric_series(out, ["sector_gt6_count", "板块6%以上家数"], 0)
+    sector_gt6 = numeric_series(out, ["sector_gt6_count", "板块8%以上家数", "板块6%以上家数"], 0)
     sector_lu = numeric_series(out, ["sector_limitup_count", "板块涨停家数"], 0)
     sector_amount_ratio = numeric_series(out, ["sector_amount_ratio", "板块成交额放大"], 1)
     sector_net_inflow = numeric_series(out, ["sector_net_inflow"], 0)

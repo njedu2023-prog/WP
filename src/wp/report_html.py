@@ -115,7 +115,7 @@ def render_html(top50: pd.DataFrame, full_rank: pd.DataFrame, health: dict, outp
   <header>
     <h1>WP 次日涨停概率 Top50</h1>
     <div class="meta">
-      <span>筛选条件：今日涨幅超过 6%，前一日未涨停，今日未涨停。</span>
+      <span>筛选条件：今日涨幅超过 8%，前一日未涨停，今日未涨停。</span>
       <span>目标：预测下一交易日涨停概率。</span>
       <span>刷新频率：每 10 分钟。</span>
     </div>

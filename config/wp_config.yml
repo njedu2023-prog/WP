@@ -1,6 +1,6 @@
 project_name: WP 次日涨停概率排序系统
 input_url: https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/latest/wp_latest_rank_input.csv
-min_pct_chg: 6.0
+min_pct_chg: 8.0
 min_amount: 100000000
 top_n: 50
 timezone: Asia/Shanghai

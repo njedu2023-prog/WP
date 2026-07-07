@@ -74,7 +74,7 @@ def flag_limitup(df: pd.DataFrame) -> pd.DataFrame:
 
 def filter_candidates(
     df: pd.DataFrame,
-    min_pct_chg: float = 6.0,
+    min_pct_chg: float = 8.0,
     min_amount: float = 100000000,
     exclude_st: bool = True,
     exclude_suspended: bool = True,
