@@ -50,6 +50,12 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
     out["model_confidence"] = (100 - out["risk_penalty_score"] * 0.45).clip(20, 95)
     if "calibration_sample_count" in out.columns:
         out["model_confidence"] = (out["model_confidence"] + (out["calibration_sample_count"].clip(0, 300) / 300) * 5).clip(20, 98)
+    source_penalty = pd.Series(0.0, index=out.index)
+    if "realtime_source" in out.columns:
+        fallback = out["realtime_source"].fillna("").astype(str).str.lower().str.contains("fallback")
+        source_penalty = source_penalty.mask(fallback, 10.0)
+    out["data_source_penalty"] = source_penalty
+    out["model_confidence"] = (out["model_confidence"] - source_penalty).clip(20, 98)
     out["signal_level"] = out.apply(signal_level, axis=1)
     out["core_reason"] = out.apply(core_reason, axis=1)
     out["risk_reason"] = out.apply(risk_reason, axis=1)
@@ -59,13 +65,13 @@ def add_scores(df: pd.DataFrame) -> pd.DataFrame:
 def signal_level(row: pd.Series) -> str:
     p = row["p_limitup_t1"]
     risk = row["risk_penalty_score"]
-    if p >= 45 and risk <= 30:
+    if p >= 8 and risk <= 30:
         return "S级"
-    if p >= 35 and risk <= 40:
+    if p >= 6.5 and risk <= 45:
         return "A级"
-    if p >= 25 and risk <= 50:
+    if p >= 5 and risk <= 65:
         return "B级"
-    if p >= 15:
+    if p >= 3:
         return "C级"
     return "D级"
 
@@ -101,6 +107,8 @@ def core_reason(row: pd.Series) -> str:
 
 def risk_reason(row: pd.Series) -> str:
     risks = []
+    if row.get("data_source_penalty", 0) > 0:
+        risks.append("分钟缺")
     if row["risk_penalty_score"] >= 65:
         risks.append("风险高")
     if row.get("close_position", 50) < 45:
