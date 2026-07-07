@@ -37,7 +37,7 @@ SCHEMA = [
     "limitup_quality_score", "intraday_risk_score", "announcement_flag",
     "hot_topic_flag", "auction_price", "auction_vol", "auction_amount",
     "auction_pct_chg", "auction_amount_ratio", "auction_strength_score",
-    "stock_age_days", "suspended_flag", "delist_flag",
+    "realtime_source", "stock_age_days", "suspended_flag", "delist_flag",
     "data_quality_flag",
 ]
 
