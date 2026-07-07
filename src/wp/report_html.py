@@ -97,7 +97,7 @@ def render_html(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WP 次日涨停概率 Top50</title>
+  <title>WP Top50</title>
   <style>
     * {{ box-sizing: border-box; }}
     body {{ margin: 0; font-family: "SF Pro SC", "SF Pro Text", "SF Pro Display", "SF Pro Icons", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1d1d1f; background: #f5f5f7; letter-spacing: 0; }}
@@ -167,7 +167,7 @@ def render_html(
 </head>
 <body>
   <header>
-    <h1>WP 次日涨停概率 Top50</h1>
+    <h1>WP Top50</h1>
   </header>
   <main>
     <details class="summary-section summary-details" aria-label="运行状态与板块热度">

@@ -27,7 +27,7 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
     output.parent.mkdir(parents=True, exist_ok=True)
     buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
     if top50.empty:
-        output.write_text("# WP 次日涨停概率 Top50\n\n无符合条件股票。\n", encoding="utf-8")
+        output.write_text("# WP Top50\n\n无符合条件股票。\n", encoding="utf-8")
         return
     buy_columns = [
         "buy_rank",
@@ -53,7 +53,7 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
         "core_reason",
         "risk_reason",
     ]
-    content = ["# WP 次日涨停概率 Top50", ""]
+    content = ["# WP Top50", ""]
     content.append("## 14:20 尾盘买入观察计划")
     if buy_plan.empty:
         content.append("")
