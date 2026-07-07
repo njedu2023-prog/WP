@@ -238,12 +238,13 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     buy_plan = selected[BUY_COLUMNS].copy()
 
     decision = out.copy()
-    decision["buy_rank"] = ""
-    decision.loc[selected_indexes, "buy_rank"] = range(1, len(selected_indexes) + 1)
+    decision["buy_rank"] = pd.Series([""] * len(decision), index=decision.index, dtype="object")
+    if selected_indexes:
+        decision.loc[selected_indexes, "buy_rank"] = list(range(1, len(selected_indexes) + 1))
     decision["suggest_position_pct"] = 0.0
     if selected_indexes:
         decision.loc[selected_indexes, "suggest_position_pct"] = buy_plan["suggest_position_pct"].values
-    decision["portfolio_group"] = ""
+    decision["portfolio_group"] = pd.Series([""] * len(decision), index=decision.index, dtype="object")
     decision.loc[selected_indexes, "portfolio_group"] = buy_plan["portfolio_group"].values
     decision["confirm_before_buy"] = _confirm_text()
     decision["reject_if"] = _reject_text()

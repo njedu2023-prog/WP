@@ -61,19 +61,31 @@ jobs:
 
           import tushare as ts
 
+          def skip(reason: str) -> None:
+              print(reason)
+              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
+                  handle.write("RUN_WP=0\n")
+
           now = datetime.now(ZoneInfo("Asia/Shanghai"))
           today = now.strftime("%Y%m%d")
           in_time = time(9, 25) <= now.time() <= time(11, 35) or time(12, 55) <= now.time() <= time(15, 10)
 
-          ts.set_token(os.environ["TUSHARE_TOKEN"])
-          pro = ts.pro_api()
-          cal = pro.trade_cal(exchange="SSE", start_date=today, end_date=today)
+          token = os.environ.get("TUSHARE_TOKEN", "").strip()
+          if not token:
+              skip("Skip WP schedule: TUSHARE_TOKEN is not configured.")
+              raise SystemExit(0)
+
+          try:
+              ts.set_token(token)
+              pro = ts.pro_api()
+              cal = pro.trade_cal(exchange="SSE", start_date=today, end_date=today)
+          except Exception as exc:
+              skip(f"Skip WP schedule: trade calendar check failed: {exc}")
+              raise SystemExit(0)
           in_day = bool(len(cal) and int(cal.iloc[0].get("is_open", 0)) == 1)
 
           if not (in_day and in_time):
-              print(f"Skip outside A-share trading calendar/window: {now:%Y-%m-%d %H:%M:%S}, in_day={in_day}, in_time={in_time}")
-              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
-                  handle.write("RUN_WP=0\n")
+              skip(f"Skip outside A-share trading calendar/window: {now:%Y-%m-%d %H:%M:%S}, in_day={in_day}, in_time={in_time}")
               raise SystemExit(0)
           print(f"Run window ok by Tushare trade_cal: {now:%Y-%m-%d %H:%M:%S}")
           with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
