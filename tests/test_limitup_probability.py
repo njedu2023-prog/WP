@@ -5,7 +5,7 @@ from wp.scoring_model import add_scores
 
 
 def test_probability_range():
-    df = pd.DataFrame([{"ts_code": "000001.SZ", "name": "A", "open": 10.2, "high": 10.9, "low": 10.1, "close": 10.6, "pre_close": 10, "pct_chg": 6.1, "amount": 200000000, "sector_name": "测试", "pre_day_limitup": 0, "today_limitup": 0}])
+    df = pd.DataFrame([{"ts_code": "000001.SZ", "name": "A", "open": 10.2, "high": 10.9, "low": 10.1, "close": 10.6, "pre_close": 10, "pct_chg": 8.1, "amount": 200000000, "sector_name": "测试", "pre_day_limitup": 0, "today_limitup": 0}])
     out = add_scores(add_feature_scores(df))
     assert 0 <= out.loc[0, "p_limitup_t1"] <= 100
     assert out.loc[0, "signal_level"] in {"S级", "A级", "B级", "C级", "D级"}
@@ -13,7 +13,7 @@ def test_probability_range():
 
 def test_high_open_pullback_raises_risk():
     strong = pd.DataFrame([{"ts_code": "A", "name": "A", "open": 10.2, "high": 10.9, "low": 10.1, "close": 10.85, "pre_close": 10, "pct_chg": 8.5, "amount": 300000000, "amount_ratio_5d": 2, "volume_ratio": 2, "sector_name": "测试", "sector_rank": 5}])
-    weak = pd.DataFrame([{"ts_code": "B", "name": "B", "open": 10.8, "high": 10.9, "low": 10.0, "close": 10.15, "pre_close": 10, "pct_chg": 6.2, "amount": 300000000, "amount_ratio_5d": 6, "volume_ratio": 5, "sector_name": "测试", "sector_rank": 5}])
+    weak = pd.DataFrame([{"ts_code": "B", "name": "B", "open": 10.8, "high": 10.9, "low": 10.0, "close": 10.15, "pre_close": 10, "pct_chg": 8.2, "amount": 300000000, "amount_ratio_5d": 6, "volume_ratio": 5, "sector_name": "测试", "sector_rank": 5}])
     strong_out = add_scores(add_feature_scores(strong))
     weak_out = add_scores(add_feature_scores(weak))
     assert strong_out.loc[0, "risk_penalty_score"] < weak_out.loc[0, "risk_penalty_score"]

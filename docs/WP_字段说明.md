@@ -41,7 +41,6 @@
 
 - `buy_rank`: 买入观察优先级，最多 5 支。
 - `portfolio_group`: 组合层级，核心或标准。
-- `suggest_position_pct`: 建议仓位百分比，属于风险预算，不代表必须满仓。
 - `decision_score`: 买入决策分，综合次日概率、WP 评分、承接、板块、动量、置信度和风险惩罚。
 - `confirm_before_buy`: 14:50 前需要人工确认仍然成立的条件。
 - `reject_if`: 触发后应放弃买入的条件。
