@@ -24,86 +24,46 @@ on:
       - main
     paths:
       - src/**
+      - scripts/run_wp_session.py
       - .github/workflows/run_wp_10min.yml
       - requirements.txt
       - pyproject.toml
   schedule:
-    # Run after the upstream a-share-top3-data job at 1/11/21/... has time to publish fresh input.
-    - cron: "8,18,28,38,48,58 * * * 1-5"
+    # Beijing time startup guards: 09:08/09:18/09:28 and 12:38/12:48/12:58.
+    # The runner then loops every 10 minutes, slightly behind upstream data.
+    - cron: "8,18,28 1 * * 1-5"
+    - cron: "38,48,58 4 * * 1-5"
 
 permissions:
   contents: write
   pages: write
   id-token: write
 
+concurrency:
+  group: wp-session-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   run-wp:
     runs-on: ubuntu-latest
-    timeout-minutes: 8
+    timeout-minutes: 220
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Initialize run flag
-        run: echo "RUN_WP=1" >> "$GITHUB_ENV"
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Check A-share run window
-        if: github.event_name == 'schedule'
-        run: |
-          python - <<'PY'
-          import os
-          from datetime import datetime, time
-          from zoneinfo import ZoneInfo
-
-          import tushare as ts
-
-          def skip(reason: str) -> None:
-              print(reason)
-              with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
-                  handle.write("RUN_WP=0\n")
-
-          now = datetime.now(ZoneInfo("Asia/Shanghai"))
-          today = now.strftime("%Y%m%d")
-          in_time = time(9, 25) <= now.time() <= time(11, 35) or time(12, 55) <= now.time() <= time(15, 10)
-
-          token = os.environ.get("TUSHARE_TOKEN", "").strip()
-          if not token:
-              skip("Skip WP schedule: TUSHARE_TOKEN is not configured.")
-              raise SystemExit(0)
-
-          try:
-              ts.set_token(token)
-              pro = ts.pro_api()
-              cal = pro.trade_cal(exchange="SSE", start_date=today, end_date=today)
-          except Exception as exc:
-              skip(f"Skip WP schedule: trade calendar check failed: {exc}")
-              raise SystemExit(0)
-          in_day = bool(len(cal) and int(cal.iloc[0].get("is_open", 0)) == 1)
-
-          if not (in_day and in_time):
-              skip(f"Skip outside A-share trading calendar/window: {now:%Y-%m-%d %H:%M:%S}, in_day={in_day}, in_time={in_time}")
-              raise SystemExit(0)
-          print(f"Run window ok by Tushare trade_cal: {now:%Y-%m-%d %H:%M:%S}")
-          with open(os.environ["GITHUB_ENV"], "a", encoding="utf-8") as handle:
-              handle.write("RUN_WP=1\n")
-          PY
-        env:
-          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
-      - name: Run WP
-        if: env.RUN_WP != '0'
-        run: python -m wp.main
+      - name: Run WP session
+        run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
-          WP_MODE: ${{ github.event.inputs.mode }}
+          WP_MODE: ${{ github.event.inputs.mode || 'live' }}
           WP_BACKTEST_START: ${{ github.event.inputs.start_date }}
           WP_BACKTEST_END: ${{ github.event.inputs.end_date }}
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
-      - name: Commit outputs through GitHub API
-        if: env.RUN_WP != '0'
-        run: python scripts/github_commit_paths.py "Update WP outputs" outputs logs data/cache
-        env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          WP_SESSION_INTERVAL_SECONDS: "600"
