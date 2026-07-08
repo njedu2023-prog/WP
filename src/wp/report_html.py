@@ -140,6 +140,7 @@ def render_html(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta http-equiv="refresh" content="600">
   <title>WP Top50</title>
   <style>
     * {{ box-sizing: border-box; }}
