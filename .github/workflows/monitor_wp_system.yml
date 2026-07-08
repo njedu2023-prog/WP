@@ -1,0 +1,33 @@
+name: Monitor WP System
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Every 10 minutes on weekdays during the broad A-share daytime window.
+    # The Python monitor enforces the exact Beijing trading windows.
+    - cron: "*/10 1-7 * * 1-5"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: wp-system-monitor
+  cancel-in-progress: true
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Check WP system freshness
+        run: python scripts/monitor_wp_system.py
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          WP_MONITOR_MAX_UPSTREAM_AGE_MIN: "25"
+          WP_MONITOR_MAX_WP_AGE_MIN: "25"
+          WP_MONITOR_MAX_PAGE_LAG_MIN: "20"
+          WP_MONITOR_SESSION_GRACE_MIN: "20"
