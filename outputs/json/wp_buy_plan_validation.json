@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-07 18:35:38",
-  "market_data_time": "2026-07-07 14:25:21",
-  "wp_run_time": "2026-07-07 18:35:38",
+  "generated_at": "2026-07-08 11:13:59",
+  "market_data_time": "2026-07-08 11:08:01",
+  "wp_run_time": "2026-07-08 11:13:59",
   "summary": {
     "total_records": 5,
     "verified_records": 0,
@@ -23,14 +23,14 @@
       "p_limitup_t1": 5.387412069543894,
       "wp_score": 77.18082170912561,
       "decision_score": 49.909264061442656,
-      "risk_penalty_score": 59.391851022122644,
-      "actual_trade_date": "20260708",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
+      "risk_penalty_score": 59.39185102212264,
+      "actual_trade_date": 20260708,
+      "actual_close": NaN,
+      "actual_pct_chg": NaN,
+      "is_limit_up_t1": NaN,
       "truth_status": "pending",
-      "truth_error": "",
-      "truth_updated_at": ""
+      "truth_error": NaN,
+      "truth_updated_at": NaN
     },
     {
       "plan_trade_date": "20260707",
@@ -47,13 +47,13 @@
       "wp_score": 75.86154815368631,
       "decision_score": 48.47718268234986,
       "risk_penalty_score": 55.3,
-      "actual_trade_date": "20260708",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
+      "actual_trade_date": 20260708,
+      "actual_close": NaN,
+      "actual_pct_chg": NaN,
+      "is_limit_up_t1": NaN,
       "truth_status": "pending",
-      "truth_error": "",
-      "truth_updated_at": ""
+      "truth_error": NaN,
+      "truth_updated_at": NaN
     },
     {
       "plan_trade_date": "20260707",
@@ -70,13 +70,13 @@
       "wp_score": 66.29926031602638,
       "decision_score": 44.81404894757244,
       "risk_penalty_score": 56.15077064883849,
-      "actual_trade_date": "20260708",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
+      "actual_trade_date": 20260708,
+      "actual_close": NaN,
+      "actual_pct_chg": NaN,
+      "is_limit_up_t1": NaN,
       "truth_status": "pending",
-      "truth_error": "",
-      "truth_updated_at": ""
+      "truth_error": NaN,
+      "truth_updated_at": NaN
     },
     {
       "plan_trade_date": "20260707",
@@ -89,17 +89,17 @@
       "name": "达刚控股",
       "pct_chg_plan": 9.833795013850422,
       "sector_name": "专用机械",
-      "p_limitup_t1": 5.3284244476871585,
+      "p_limitup_t1": 5.328424447687159,
       "wp_score": 67.9427305941076,
       "decision_score": 39.43315682702157,
       "risk_penalty_score": 64.21976810365025,
-      "actual_trade_date": "20260708",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
+      "actual_trade_date": 20260708,
+      "actual_close": NaN,
+      "actual_pct_chg": NaN,
+      "is_limit_up_t1": NaN,
       "truth_status": "pending",
-      "truth_error": "",
-      "truth_updated_at": ""
+      "truth_error": NaN,
+      "truth_updated_at": NaN
     },
     {
       "plan_trade_date": "20260707",
@@ -116,13 +116,13 @@
       "wp_score": 49.89707045718511,
       "decision_score": 33.87703524573582,
       "risk_penalty_score": 55.3,
-      "actual_trade_date": "20260708",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
+      "actual_trade_date": 20260708,
+      "actual_close": NaN,
+      "actual_pct_chg": NaN,
+      "is_limit_up_t1": NaN,
       "truth_status": "pending",
-      "truth_error": "",
-      "truth_updated_at": ""
+      "truth_error": NaN,
+      "truth_updated_at": NaN
     }
   ]
 }
