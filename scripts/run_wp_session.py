@@ -54,15 +54,14 @@ def run_once() -> None:
 
 def run_session() -> None:
     token = os.environ.get("TUSHARE_TOKEN", "").strip()
-    if not token:
-        print("Skip WP session: TUSHARE_TOKEN is not configured.")
-        return
-
     current = now_cn()
     trade_date = current.strftime("%Y%m%d")
-    if not is_trade_day(token, trade_date):
-        print(f"Skip WP session: {trade_date} is not an A-share trading day.")
-        return
+    if token:
+        if not is_trade_day(token, trade_date):
+            print(f"Skip WP session: {trade_date} is not an A-share trading day.")
+            return
+    else:
+        print("WP session calendar fallback: TUSHARE_TOKEN is not configured; upstream data freshness will gate outputs.")
 
     session = today_session(current)
     if session is None:
