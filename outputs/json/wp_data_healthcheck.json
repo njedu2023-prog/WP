@@ -2,9 +2,9 @@
   "status": "ok",
   "is_trading_day": true,
   "is_trading_time": false,
-  "data_time": "2026-07-09 11:32:12",
-  "market_data_time": "2026-07-09 11:32:12",
-  "wp_run_time": "2026-07-09 11:52:13",
+  "data_time": "2026-07-09 11:34:57",
+  "market_data_time": "2026-07-09 11:34:57",
+  "wp_run_time": "2026-07-09 12:00:56",
   "data_trade_date": "20260709",
   "expected_trade_date": "20260709",
   "raw_count": 39,
@@ -20,8 +20,8 @@
   "load_ok": true,
   "load_error": "",
   "source_status": "ok",
-  "source_generated_at": "2026-07-09 11:33:05",
-  "generated_at": "2026-07-09T03:52:14",
+  "source_generated_at": "2026-07-09 11:57:58",
+  "generated_at": "2026-07-09T04:00:56",
   "preserved_latest_html": false,
   "buy_plan_count": 5
 }
