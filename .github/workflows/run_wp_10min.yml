@@ -71,5 +71,5 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_SCHEDULE_GRACE_SECONDS: "300"
+          WP_SCHEDULE_GRACE_SECONDS: "600"
           WP_RUN_MODE: "once"

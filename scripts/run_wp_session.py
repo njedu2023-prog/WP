@@ -12,7 +12,7 @@ import tushare as ts
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 INTERVAL_SECONDS = int(os.environ.get("WP_SESSION_INTERVAL_SECONDS", "600"))
-SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "300"))
+SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "600"))
 PREP_START = time(9, 0)
 RUN_START = time(9, 28)
 LUNCH_START = time(11, 38)
