@@ -17,6 +17,10 @@ RUN_START = time(9, 28)
 LUNCH_START = time(11, 38)
 LUNCH_END = time(12, 58)
 RUN_END = time(15, 12)
+MORNING_START = time(9, 25)
+MORNING_END = time(11, 35)
+AFTERNOON_START = time(12, 55)
+AFTERNOON_END = time(15, 10)
 
 
 def now_cn() -> datetime:
@@ -33,6 +37,11 @@ def today_window(now: datetime) -> tuple[datetime, datetime, datetime, datetime]
     if prep_dt <= now <= end_dt:
         return start_dt, lunch_start_dt, lunch_end_dt, end_dt
     return None
+
+
+def in_run_window(now: datetime) -> bool:
+    current = now.time()
+    return MORNING_START <= current <= MORNING_END or AFTERNOON_START <= current <= AFTERNOON_END
 
 
 def is_trade_day(token: str, day: str) -> bool:
@@ -52,6 +61,25 @@ def run_once() -> None:
         check=True,
         env=env,
     )
+
+
+def run_once_if_due() -> None:
+    token = os.environ.get("TUSHARE_TOKEN", "").strip()
+    current = now_cn()
+    trade_date = current.strftime("%Y%m%d")
+    if token:
+        if not is_trade_day(token, trade_date):
+            print(f"Skip WP update: {trade_date} is not an A-share trading day.")
+            return
+    else:
+        print("WP calendar fallback: TUSHARE_TOKEN is not configured; upstream data freshness will gate outputs.")
+
+    if not in_run_window(current):
+        print(f"Skip WP update outside A-share trading window: {current:%Y-%m-%d %H:%M:%S}")
+        return
+
+    print(f"WP single update started: {current:%Y-%m-%d %H:%M:%S}")
+    run_once()
 
 
 def run_session() -> None:
@@ -102,7 +130,10 @@ def main() -> None:
     if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or mode == "backtest":
         run_once()
         return
-    run_session()
+    if os.environ.get("WP_RUN_MODE", "once").strip().lower() == "session":
+        run_session()
+        return
+    run_once_if_due()
 
 
 if __name__ == "__main__":
