@@ -1,15 +1,15 @@
 {
-  "latest_update": "2026-07-09 10:54:38",
-  "market_data_time": "2026-07-08 15:08:42",
-  "wp_run_time": "2026-07-09 10:54:38",
-  "top50_count": 0,
-  "buy_plan_count": 0,
+  "latest_update": "2026-07-09 11:04:38",
+  "market_data_time": "2026-07-09 10:56:33",
+  "wp_run_time": "2026-07-09 11:04:38",
+  "top50_count": 26,
+  "buy_plan_count": 5,
   "validation_summary": {
     "total_records": 5,
     "verified_records": 5,
     "limit_up_records": 0,
     "limit_up_rate": 0.0
   },
-  "health_status": "数据日期过期",
+  "health_status": "ok",
   "preserved_latest_html": false
 }
