@@ -3,11 +3,13 @@ from __future__ import annotations
 import os
 from dataclasses import dataclass
 from datetime import datetime, time
+from io import StringIO
 from pathlib import Path
 
 import pandas as pd
 
 from .calendar import CN_TZ, next_trading_day_str
+from .data_loader import _read_remote_text
 
 
 VALIDATION_COLUMNS = [
@@ -78,7 +80,11 @@ def _is_truth_due(target_trade_date: str, current: datetime) -> bool:
 def _existing_table(path: Path) -> pd.DataFrame:
     if path.exists():
         try:
-            frame = pd.read_csv(path, dtype={"plan_trade_date": str, "target_trade_date": str})
+            frame = pd.read_csv(
+                path,
+                dtype={"plan_trade_date": str, "target_trade_date": str, "actual_trade_date": str},
+                keep_default_na=False,
+            )
             for col in VALIDATION_COLUMNS:
                 if col not in frame.columns:
                     frame[col] = ""
@@ -129,9 +135,13 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
 
 
 def _fetch_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None, str]:
+    upstream_truth, upstream_error = _fetch_upstream_truth_by_date(trade_date)
+    if upstream_truth is not None:
+        return upstream_truth, ""
+
     token = os.environ.get("TUSHARE_TOKEN", "").strip()
     if not token:
-        return None, "TUSHARE_TOKEN not configured"
+        return None, f"upstream daily truth unavailable: {upstream_error}; TUSHARE_TOKEN not configured"
     try:
         import tushare as ts
 
@@ -140,6 +150,36 @@ def _fetch_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None, str]:
         frame = pro.daily(trade_date=trade_date)
         if frame is None or frame.empty:
             return None, f"no daily truth for {trade_date}"
+        return frame, ""
+    except Exception as exc:
+        return None, str(exc)
+
+
+def _fetch_upstream_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None, str]:
+    if len(str(trade_date)) != 8:
+        return None, f"invalid trade_date {trade_date!r}"
+    template = os.environ.get("WP_TRUTH_DAILY_URL_TEMPLATE", "").strip()
+    if template:
+        url = template.format(trade_date=trade_date, year=trade_date[:4])
+    else:
+        repo = os.environ.get("WP_TRUTH_REPO", "njedu2023-prog/a-share-top3-data").strip()
+        url = f"https://raw.githubusercontent.com/{repo}/main/data/raw/{trade_date[:4]}/{trade_date}/daily.csv"
+    try:
+        text = _read_remote_text(url, timeout=30)
+        frame = pd.read_csv(StringIO(text), dtype={"trade_date": str})
+        if frame.empty:
+            return None, f"empty upstream daily truth for {trade_date}"
+        if "ts_code" not in frame.columns:
+            return None, f"upstream daily truth missing ts_code for {trade_date}"
+        if "pct_chg" not in frame.columns and {"close", "pre_close"}.issubset(frame.columns):
+            close = pd.to_numeric(frame["close"], errors="coerce")
+            pre_close = pd.to_numeric(frame["pre_close"], errors="coerce")
+            frame["pct_chg"] = (close / pre_close.replace(0, pd.NA) - 1) * 100
+        if "pct_chg" not in frame.columns:
+            return None, f"upstream daily truth missing pct_chg for {trade_date}"
+        if "close" not in frame.columns:
+            frame["close"] = ""
+        frame["ts_code"] = frame["ts_code"].astype(str).str.strip()
         return frame, ""
     except Exception as exc:
         return None, str(exc)

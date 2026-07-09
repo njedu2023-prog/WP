@@ -18,6 +18,8 @@ def _pct_cell(value) -> str:
         pct = float(value)
     except Exception:
         return "<span class=\"pct-pending\">待验证</span>"
+    if pd.isna(pct):
+        return "<span class=\"pct-pending\">待验证</span>"
     cls = "pct-up" if pct > 0 else "pct-down" if pct < 0 else "pct-flat"
     sign = "+" if pct > 0 else ""
     return f"<span class=\"{cls}\">{sign}{pct:.2f}%</span>"
