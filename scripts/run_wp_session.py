@@ -132,7 +132,8 @@ def run_session() -> None:
 
 def main() -> None:
     mode = os.environ.get("WP_MODE", "").strip().lower()
-    if os.environ.get("GITHUB_EVENT_NAME") == "workflow_dispatch" or mode == "backtest":
+    event_name = os.environ.get("GITHUB_EVENT_NAME", "").strip()
+    if event_name in {"workflow_dispatch", "push"} or mode == "backtest":
         run_once()
         return
     if os.environ.get("WP_RUN_MODE", "once").strip().lower() == "session":
