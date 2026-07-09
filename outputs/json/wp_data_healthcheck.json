@@ -1,10 +1,10 @@
 {
   "status": "ok",
   "is_trading_day": true,
-  "is_trading_time": false,
+  "is_trading_time": true,
   "data_time": "2026-07-09 11:34:57",
   "market_data_time": "2026-07-09 11:34:57",
-  "wp_run_time": "2026-07-09 12:00:56",
+  "wp_run_time": "2026-07-09 14:05:59",
   "data_trade_date": "20260709",
   "expected_trade_date": "20260709",
   "raw_count": 39,
@@ -21,7 +21,7 @@
   "load_error": "",
   "source_status": "ok",
   "source_generated_at": "2026-07-09 11:57:58",
-  "generated_at": "2026-07-09T04:00:56",
+  "generated_at": "2026-07-09T06:06:00",
   "preserved_latest_html": false,
   "buy_plan_count": 5
 }
