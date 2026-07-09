@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-07 18:33:27",
-  "market_data_time": "2026-07-07 14:25:21",
-  "wp_run_time": "2026-07-07 18:33:27",
+  "generated_at": "2026-07-09 09:34:38",
+  "market_data_time": "2026-07-08 15:08:42",
+  "wp_run_time": "2026-07-09 09:34:38",
   "summary": {
     "total_records": 5,
     "verified_records": 5,
@@ -89,7 +89,7 @@
       "name": "达刚控股",
       "pct_chg_plan": 9.833795013850422,
       "sector_name": "专用机械",
-      "p_limitup_t1": 5.3284244476871585,
+      "p_limitup_t1": 5.328424447687159,
       "wp_score": 67.9427305941076,
       "decision_score": 39.43315682702157,
       "risk_penalty_score": 64.21976810365025,
