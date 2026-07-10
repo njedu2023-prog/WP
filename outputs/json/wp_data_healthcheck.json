@@ -1,15 +1,15 @@
 {
-  "status": "ok",
+  "status": "数据日期过期",
   "is_trading_day": true,
   "is_trading_time": true,
   "data_time": "2026-07-09 14:43:14",
   "market_data_time": "2026-07-09 14:43:14",
-  "wp_run_time": "2026-07-09 14:53:46",
+  "wp_run_time": "2026-07-10 13:12:21",
   "data_trade_date": "20260709",
-  "expected_trade_date": "20260709",
+  "expected_trade_date": "20260710",
   "raw_count": 150,
-  "candidate_count": 139,
-  "top50_count": 50,
+  "candidate_count": 0,
+  "top50_count": 0,
   "missing_fields": [],
   "fallback_used": false,
   "data_load_fallback_used": false,
@@ -21,7 +21,7 @@
   "load_error": "",
   "source_status": "ok",
   "source_generated_at": "2026-07-09 14:45:57",
-  "generated_at": "2026-07-09T06:53:46",
+  "generated_at": "2026-07-10T05:12:22",
   "preserved_latest_html": false,
-  "buy_plan_count": 5
+  "buy_plan_count": 0
 }
