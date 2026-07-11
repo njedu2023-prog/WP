@@ -2,6 +2,11 @@
 
 - `p_limitup_t1`: 下一交易日涨停概率。
 - `wp_score`: 综合排序分。
+- `ranking_score`: V2.1 最终排序证据分，`70% capital_score + 30% wp_score`。
+- `liquidity_score`: 候选池内成交活跃度的稳健横截面分。
+- `capital_score`: 成交活跃度、成交额放大、量比、板块成交和可用资金线索的综合分。
+- `feature_coverage`: 核心输入字段覆盖率。
+- `model_version`: 生成结果的模型版本。
 - `sector_strength_score`: 板块强度分。
 - `stock_strength_score`: 个股强度分。
 - `acceptance_score`: 资金承接质量分。
@@ -34,8 +39,10 @@
 - `high_open_low_walk_flag`: 是否出现高开低走弱结构。
 - `volume_price_sync_flag`: 是否量价结构同步。
 - `p_limitup_t1_raw`: 统计校准前的规则模型概率。
-- `calibration_sample_count`: 当前概率区间用于统计校准的历史样本数。
-- `self_learning_adjustment`: 历史统计校准对概率的修正幅度。
+- `calibration_sample_count`: 同版本、无未来泄漏、去重后的有效校准样本数。
+- `calibration_method`: 当前使用的概率校准方法；无合格样本时为 `none`。
+- `self_learning_adjustment`: 保序统计校准对概率的修正幅度。
+- `data_source_probability_factor`: 实时行情来源对概率的可信度系数；fallback 时低于 1。
 
 ## 买入观察计划字段
 

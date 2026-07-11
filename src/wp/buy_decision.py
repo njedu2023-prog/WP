@@ -9,7 +9,7 @@ DEFAULT_BUY_CONFIG = {
     "buy_max_count": 5,
     "buy_max_sector_positions": 2,
     "buy_max_risk_score": 65.0,
-    "buy_min_probability": 5.0,
+    "buy_min_probability": 3.0,
     "buy_min_wp_score": 45.0,
     "buy_min_acceptance_score": 50.0,
     "buy_min_model_confidence": 55.0,
@@ -66,26 +66,32 @@ def _txt(frame: pd.DataFrame, name: str, default: str = "") -> pd.Series:
 
 
 def _sort_for_buy(frame: pd.DataFrame) -> pd.DataFrame:
-    sort_cols = ["p_limitup_t1", "wp_score", "decision_score", "acceptance_score", "amount"]
+    sort_cols = ["decision_score", "p_limitup_t1", "acceptance_score", "model_confidence", "risk_penalty_score", "amount"]
     for col in sort_cols:
         if col not in frame.columns:
             frame[col] = 0.0
-    return frame.sort_values(sort_cols, ascending=[False, False, False, False, False]).reset_index(drop=True)
+        frame[col] = pd.to_numeric(frame[col], errors="coerce").fillna(0.0)
+    return frame.sort_values(sort_cols, ascending=[False, False, False, False, True, False], kind="mergesort").reset_index(drop=True)
+
+
+def _row_float(row: pd.Series, name: str, default: float = 0.0) -> float:
+    value = pd.to_numeric(pd.Series([row.get(name, default)]), errors="coerce").iloc[0]
+    return float(value) if pd.notna(value) else float(default)
 
 
 def _reason(row: pd.Series) -> str:
     reasons: list[str] = []
-    if float(row.get("p_limitup_t1", 0) or 0) >= 70:
+    if _row_float(row, "p_limitup_t1") >= 8:
         reasons.append("高概率")
-    if float(row.get("sector_strength_score", 0) or 0) >= 70:
+    if _row_float(row, "sector_strength_score") >= 70:
         reasons.append("强板块")
-    if float(row.get("acceptance_score", 0) or 0) >= 65:
+    if _row_float(row, "acceptance_score") >= 65:
         reasons.append("承接好")
-    if float(row.get("close_position", 50) or 50) >= 75:
+    if _row_float(row, "close_position", 50) >= 75:
         reasons.append("近高收")
-    if float(row.get("intraday_vwap_position", 0) or 0) > 0:
+    if _row_float(row, "intraday_vwap_position") > 0:
         reasons.append("强均价")
-    if float(row.get("risk_penalty_score", 0) or 0) <= 45:
+    if _row_float(row, "risk_penalty_score") <= 45:
         reasons.append("低风险")
     return "、".join(reasons[:3]) or "综合入选"
 
@@ -157,7 +163,7 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     out["pre_day_limitup"] = _num(out, "pre_day_limitup").astype(int)
     out["today_limitup"] = _num(out, "today_limitup").astype(int)
     out["decision_score"] = (
-        out["p_limitup_t1"] * 0.26
+        out["p_limitup_t1"] * 2.00
         + out["wp_score"] * 0.20
         + out["acceptance_score"] * 0.16
         + out["sector_strength_score"] * 0.12

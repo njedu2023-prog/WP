@@ -62,7 +62,8 @@ def add_risk_penalty(df: pd.DataFrame) -> pd.DataFrame:
     pullback_risk = np.maximum(70 - close_position, 0) * 0.45
     high_position_risk = np.maximum(ret_20d - rules["high_position_ret_20d"], 0) * 0.8
     volume_risk = np.maximum(volume_ratio - rules["excessive_volume_ratio"], 0) * 8 + np.maximum(amount_ratio_5d - rules["excessive_amount_ratio"], 0) * 8
-    rear_sector_risk = np.maximum(sector_rank - 20, 0) * 0.7
+    sector_rank_known = sector_rank.between(1, 50)
+    rear_sector_risk = np.where(sector_rank_known, np.maximum(sector_rank - 20, 0) * 0.7, 0.0)
     liquidity_risk = np.where(amount < rules["min_liquidity_amount"], 25, 0)
     high_open_low_walk_risk = np.where(((gap_open_pct >= 3) & (open_to_close_pct <= -2)) | ((gap_open_pct >= 5) & (close_position < 45)), 18, 0)
     intraday_pullback_risk = np.maximum(pullback_pct - rules["late_pullback_pct"], 0) * 6
@@ -79,6 +80,19 @@ def add_risk_penalty(df: pd.DataFrame) -> pd.DataFrame:
         + np.where(delist_flag == 1, 80, 0)
         + np.where(data_quality_flag == 1, 35, 0)
     )
+    out["risk_rear_sector"] = rear_sector_risk
+    out["risk_liquidity"] = liquidity_risk
+    out["risk_price_structure"] = (
+        pullback_risk
+        + high_position_risk
+        + high_open_low_walk_risk
+        + intraday_pullback_risk
+        + vwap_risk
+        + wide_amplitude_risk
+        + trapped_pressure_risk
+    )
+    out["risk_volume"] = volume_risk + late_attack_risk
+    out["risk_data"] = hard_filter_risk
     out["risk_penalty_score"] = clip(
         pullback_risk
         + high_position_risk

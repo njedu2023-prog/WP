@@ -14,10 +14,10 @@ from .calendar import now_cn
 from .candidate_filter import filter_candidates
 from .data_loader import read_rank_input
 from .feature_engineering import add_feature_scores
-from .ranking import rank_candidates
+from .ranking import build_ranked_pool, rank_candidates
 from .report_html import render_html
 from .report_md import render_markdown
-from .scoring_model import add_scores
+from .scoring_model import MODEL_VERSION, add_scores
 from .utils import ensure_dir, load_yaml, write_json
 from .validation import assert_top50_rules, build_healthcheck
 
@@ -74,8 +74,10 @@ def run() -> dict:
         exclude_new_stock_days=int(config.get("exclude_new_stock_days", 10)),
     )
     ranked_input = add_scores(add_feature_scores(candidates))
-    top50, full_rank = rank_candidates(ranked_input, update_time, top_n=int(config.get("top_n", 50)))
-    buy_decision = build_buy_decision(ranked_input, config)
+    top_n = int(config.get("top_n", 50))
+    top50, full_rank = rank_candidates(ranked_input, update_time, top_n=top_n)
+    buy_pool = build_ranked_pool(ranked_input, full_rank, top_n)
+    buy_decision = build_buy_decision(buy_pool, config)
     buy_plan = buy_decision.buy_plan
     buy_decision_table = buy_decision.decision_table
     health = build_healthcheck(
@@ -89,6 +91,7 @@ def run() -> dict:
         expected_trade_date,
         load_result.metadata,
     )
+    health["model_version"] = MODEL_VERSION
     if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
         logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
         top50 = top50.iloc[0:0].copy()
@@ -160,6 +163,7 @@ def run() -> dict:
             "top50_count": len(top50),
             "buy_plan_count": len(buy_plan),
             "validation_summary": validation_result.summary,
+            "model_version": MODEL_VERSION,
             "health_status": health["status"],
             "preserved_latest_html": bool(preserve_latest),
         },

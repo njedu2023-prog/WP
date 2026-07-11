@@ -6,6 +6,17 @@ import pandas as pd
 from .utils import first_existing, numeric_series, text_series
 
 
+TRUE_FLAGS = {"1", "true", "yes", "y", "是", "涨停", "停牌", "退市"}
+
+
+def _flag_series(series: pd.Series) -> pd.Series:
+    numeric = pd.to_numeric(series, errors="coerce")
+    text = series.fillna("").astype(str).str.strip().str.lower()
+    values = numeric.notna() & numeric.ne(0)
+    values |= numeric.isna() & text.isin(TRUE_FLAGS)
+    return values.astype(int)
+
+
 def estimate_limit_up_pct(ts_code: pd.Series, name: pd.Series) -> pd.Series:
     code = ts_code.fillna("").astype(str)
     stock_name = name.fillna("").astype(str)
@@ -53,6 +64,7 @@ def enrich_basic_fields(df: pd.DataFrame) -> pd.DataFrame:
     required = ["ts_code", "name", "close", "pre_close", "pct_chg", "amount", "today_limit_up_price"]
     out.loc[out[required].isna().any(axis=1), "data_quality_flag"] = 1
     out.loc[(out["close"] <= 0) | (out["pre_close"] <= 0) | (out["amount"] <= 0) | (out["today_limit_up_price"] <= 0), "data_quality_flag"] = 1
+    out.loc[out["ts_code"].str.strip().eq("") | out["name"].str.strip().eq(""), "data_quality_flag"] = 1
     return out
 
 
@@ -61,12 +73,12 @@ def flag_limitup(df: pd.DataFrame) -> pd.DataFrame:
     prev_flag = first_existing(out, ["pre_day_limitup", "prev_is_limit_up", "is_limit_up_yesterday", "前一日涨停"])
     today_flag = first_existing(out, ["today_limitup", "is_limit_up_today", "is_limit_up", "今日涨停"])
     if prev_flag:
-        out["pre_day_limitup"] = pd.to_numeric(out[prev_flag], errors="coerce").fillna(0).astype(int)
+        out["pre_day_limitup"] = _flag_series(out[prev_flag])
     else:
         prev_close = numeric_series(out, ["prev_close", "yesterday_close", "前收盘"], out["pre_close"])
         out["pre_day_limitup"] = (prev_close >= out["prev_limit_up_price"] * 0.999).astype(int)
     if today_flag:
-        out["today_limitup"] = pd.to_numeric(out[today_flag], errors="coerce").fillna(0).astype(int)
+        out["today_limitup"] = _flag_series(out[today_flag])
     else:
         out["today_limitup"] = (out["close"] >= out["today_limit_up_price"] * 0.999).astype(int)
     return out
@@ -83,6 +95,16 @@ def filter_candidates(
     if df.empty:
         return enrich_basic_fields(df)
     out = flag_limitup(enrich_basic_fields(df))
+    sort_columns = ["ts_code"]
+    ascending = [True]
+    if "update_time" in out.columns:
+        out["_sort_update_time"] = out["update_time"].fillna("").astype(str)
+        sort_columns.append("_sort_update_time")
+        ascending.append(True)
+    sort_columns.append("amount")
+    ascending.append(True)
+    out = out.sort_values(sort_columns, ascending=ascending, kind="mergesort").drop_duplicates("ts_code", keep="last")
+    out = out.drop(columns=["_sort_update_time"], errors="ignore")
     mask = (out["pct_chg"] > min_pct_chg) & (out["pre_day_limitup"] != 1) & (out["today_limitup"] != 1)
     if exclude_st:
         mask &= ~out["is_st"]

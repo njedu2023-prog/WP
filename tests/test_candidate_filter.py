@@ -28,3 +28,16 @@ def test_candidate_filter_excludes_new_suspended_delist_and_bad_data():
     )
     out = filter_candidates(df)
     assert out["ts_code"].tolist() == ["000011.SZ"]
+
+
+def test_candidate_filter_parses_text_flags_and_rejects_blank_identity():
+    df = pd.DataFrame(
+        [
+            {"ts_code": "000021.SZ", "name": "正常股份", "close": 10.9, "pre_close": 10, "pct_chg": 9, "amount": 200000000, "pre_day_limitup": "false", "today_limitup": "0"},
+            {"ts_code": "000022.SZ", "name": "昨日涨停", "close": 10.9, "pre_close": 10, "pct_chg": 9, "amount": 200000000, "pre_day_limitup": "true", "today_limitup": "false"},
+            {"ts_code": "000023.SZ", "name": "今日涨停", "close": 10.9, "pre_close": 10, "pct_chg": 9, "amount": 200000000, "pre_day_limitup": "否", "today_limitup": "是"},
+            {"ts_code": "159999.SZ", "name": "", "close": 10.9, "pre_close": 10, "pct_chg": 9, "amount": 200000000, "pre_day_limitup": 0, "today_limitup": 0},
+        ]
+    )
+    out = filter_candidates(df)
+    assert out["ts_code"].tolist() == ["000021.SZ"]

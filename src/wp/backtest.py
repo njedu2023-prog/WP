@@ -12,9 +12,10 @@ import numpy as np
 import pandas as pd
 
 from .candidate_filter import filter_candidates
+from .buy_decision import build_buy_decision
 from .feature_engineering import add_feature_scores
-from .ranking import rank_candidates
-from .scoring_model import add_scores
+from .ranking import build_ranked_pool, rank_candidates
+from .scoring_model import MODEL_VERSION, add_scores
 from .utils import ensure_dir, write_json
 
 
@@ -338,9 +339,16 @@ def build_label_frame(today_rank: pd.DataFrame, next_day: pd.DataFrame) -> pd.Da
         return pd.DataFrame()
     merged = today_rank.merge(next_day, on="ts_code", how="left", suffixes=("", "_next"))
     if "next_day_limitup_price" in merged and "next_day_high" in merged:
-        merged["label_t1_limitup"] = (merged["next_day_high"] >= merged["next_day_limitup_price"] * 0.999).astype(int)
+        available = merged["next_day_high"].notna() & merged["next_day_limitup_price"].notna()
+        merged["label_available"] = available
+        merged["label_t1_limitup"] = np.where(
+            available,
+            (merged["next_day_high"] >= merged["next_day_limitup_price"] * 0.999).astype(int),
+            np.nan,
+        )
     else:
-        merged["label_t1_limitup"] = 0
+        merged["label_available"] = False
+        merged["label_t1_limitup"] = np.nan
     return merged
 
 
@@ -350,7 +358,8 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
     next_date = _next_available_date(_date_key(trade_date))
     out = today_rank.copy()
     out["next_trade_date"] = next_date or ""
-    out["label_t1_limitup"] = 0
+    out["label_t1_limitup"] = np.nan
+    out["label_available"] = False
     out["next_day_high"] = np.nan
     out["next_day_close"] = np.nan
     out["next_day_low"] = np.nan
@@ -373,7 +382,13 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
     next_frame["next_low"] = pd.to_numeric(next_frame["low"], errors="coerce") if "low" in next_frame.columns else np.nan
     next_frame["next_up_limit"] = pd.to_numeric(next_frame["up_limit"], errors="coerce")
     merged = out.merge(next_frame[["ts_code", "next_high", "next_close", "next_low", "next_up_limit"]], on="ts_code", how="left")
-    merged["label_t1_limitup"] = ((merged["next_up_limit"] > 0) & (merged["next_high"] >= merged["next_up_limit"] * 0.999)).astype(int)
+    available = (merged["next_up_limit"] > 0) & merged["next_high"].notna()
+    merged["label_available"] = available
+    merged["label_t1_limitup"] = np.where(
+        available,
+        (merged["next_high"] >= merged["next_up_limit"] * 0.999).astype(int),
+        np.nan,
+    )
     price = pd.to_numeric(merged.get("price", merged.get("close", 0)), errors="coerce")
     merged["next_day_high"] = merged["next_high"]
     merged["next_day_close"] = merged["next_close"]
@@ -470,32 +485,57 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     cache_root = output_root.parent / "data" / "cache" / "history"
     dates = _available_trade_dates(start, end)
     all_trades: list[pd.DataFrame] = []
+    all_buy_trades: list[pd.DataFrame] = []
     daily_rows: list[dict] = []
 
     for trade_date in dates:
         rank_input = build_rank_input_for_date(trade_date, cache_root)
         candidates = filter_candidates(rank_input)
-        scored = add_scores(add_feature_scores(candidates))
+        scored = add_scores(add_feature_scores(candidates), calibration_enabled=False)
         top50, full_rank = rank_candidates(scored, _date_dash(trade_date), top_n=top_n)
+        buy_pool = build_ranked_pool(scored, full_rank, top_n)
+        buy_plan = build_buy_decision(buy_pool).buy_plan
         labeled = add_t1_labels(top50, trade_date, cache_root)
-        if not labeled.empty:
-            labeled["backtest_trade_date"] = trade_date
-            all_trades.append(labeled)
+        verified = labeled[labeled.get("label_available", pd.Series(False, index=labeled.index)).fillna(False)].copy()
+        if not verified.empty:
+            verified["backtest_trade_date"] = trade_date
+            verified["backtest_data_mode"] = "eod_proxy"
+            verified["calibration_eligible"] = False
+            all_trades.append(verified)
+        buy_labeled = add_t1_labels(buy_plan, trade_date, cache_root)
+        buy_verified = buy_labeled[
+            buy_labeled.get("label_available", pd.Series(False, index=buy_labeled.index)).fillna(False)
+        ].copy()
+        if not buy_verified.empty:
+            buy_verified["backtest_trade_date"] = trade_date
+            buy_verified["backtest_data_mode"] = "eod_proxy"
+            buy_verified["calibration_eligible"] = False
+            all_buy_trades.append(buy_verified)
         daily_rows.append({
             "trade_date": trade_date,
             "raw_count": int(len(rank_input)),
             "candidate_count": int(len(candidates)),
             "top_count": int(len(top50)),
-            "hit_top10": _hit_rate(labeled, 10),
-            "hit_top20": _hit_rate(labeled, 20),
-            "hit_top50": _hit_rate(labeled, 50),
+            "verified_count": int(len(verified)),
+            "buy_count": int(len(buy_plan)),
+            "buy_verified_count": int(len(buy_verified)),
+            "buy_limitup_rate": _hit_rate(buy_verified, len(buy_verified)),
+            "buy_avg_close_pct": _mean_metric(buy_verified, "next_day_close_pct"),
+            "hit_top10": _hit_rate(verified, 10),
+            "hit_top20": _hit_rate(verified, 20),
+            "hit_top50": _hit_rate(verified, 50),
             "next_trade_date": str(labeled["next_trade_date"].iloc[0]) if not labeled.empty and "next_trade_date" in labeled.columns else "",
         })
 
     trades = pd.concat(all_trades, ignore_index=True, sort=False) if all_trades else pd.DataFrame()
+    buy_trades = pd.concat(all_buy_trades, ignore_index=True, sort=False) if all_buy_trades else pd.DataFrame()
     daily_summary = pd.DataFrame(daily_rows)
     summary = {
         "mode": "backtest",
+        "model_version": MODEL_VERSION,
+        "backtest_data_mode": "eod_proxy",
+        "calibration_eligible": False,
+        "warning": "使用收盘日线代理14:20状态，仅用于方向审计，不进入实时概率校准。",
         "start_date": start,
         "end_date": end,
         "trade_days": int(len(dates)),
@@ -508,6 +548,12 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
         "precision_at_50": _period_hit_rate(trades, 50),
         "auc": _auc_score(trades),
         "brier": _brier_score(trades),
+        "buy_trade_count": int(len(buy_trades)),
+        "buy_limitup_rate": round(float(buy_trades["label_t1_limitup"].mean()), 4) if not buy_trades.empty else 0.0,
+        "buy_positive_close_rate": round(float(pd.to_numeric(buy_trades.get("next_day_close_pct"), errors="coerce").gt(0).mean()), 4) if not buy_trades.empty else 0.0,
+        "buy_avg_next_day_max_pct": _mean_metric(buy_trades, "next_day_max_pct"),
+        "buy_avg_next_day_close_pct": _mean_metric(buy_trades, "next_day_close_pct"),
+        "buy_worst_drawdown_pct": _min_metric(buy_trades, "next_day_drawdown_pct"),
         "avg_next_day_max_pct_top10": _mean_metric(_period_top_samples(trades, 10), "next_day_max_pct"),
         "avg_next_day_close_pct_top10": _mean_metric(_period_top_samples(trades, 10), "next_day_close_pct"),
         "max_drawdown_risk_top10": _min_metric(_period_top_samples(trades, 10), "next_day_drawdown_pct"),
@@ -520,6 +566,7 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     out_dir = output_root / "backtests" / f"{start}_{end}"
     ensure_dir(out_dir)
     trades.to_csv(out_dir / "trades.csv", index=False, encoding="utf-8-sig")
+    buy_trades.to_csv(out_dir / "buy_trades.csv", index=False, encoding="utf-8-sig")
     daily_summary.to_csv(out_dir / "daily_summary.csv", index=False, encoding="utf-8-sig")
     write_json(out_dir / "summary.json", summary)
     write_json(output_root / "json" / "wp_backtest_latest.json", summary)
@@ -569,6 +616,10 @@ def render_backtest_html(summary: dict, daily_summary: pd.DataFrame, trades: pd.
       <div>Top50 命中：<strong>{summary["hit_top50"]:.2%}</strong></div>
       <div>AUC：<strong>{summary["auc"] if summary["auc"] is not None else "-"}</strong></div>
       <div>Brier：<strong>{summary["brier"] if summary["brier"] is not None else "-"}</strong></div>
+      <div>买入观察样本：<strong>{summary["buy_trade_count"]}</strong></div>
+      <div>买入观察涨停：<strong>{summary["buy_limitup_rate"]:.2%}</strong></div>
+      <div>买入观察上涨：<strong>{summary["buy_positive_close_rate"]:.2%}</strong></div>
+      <div>买入观察平均收盘：<strong>{f'{summary["buy_avg_next_day_close_pct"]:.2f}%' if summary["buy_avg_next_day_close_pct"] is not None else "-"}</strong></div>
       <div>Top10 平均次日最高涨幅：<strong>{f'{summary["avg_next_day_max_pct_top10"]:.2f}%' if summary["avg_next_day_max_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 平均次日收盘涨幅：<strong>{f'{summary["avg_next_day_close_pct_top10"]:.2f}%' if summary["avg_next_day_close_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 最大回撤风险：<strong>{f'{summary["max_drawdown_risk_top10"]:.2f}%' if summary["max_drawdown_risk_top10"] is not None else "-"}</strong></div>

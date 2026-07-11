@@ -13,7 +13,13 @@ wp_score =
 - 0.25 * risk_penalty_score
 ```
 
-`p_limitup_t1` 先由规则分做初始映射；当历史样本足够时，再按历史分层命中率做主导校准，避免把规则高分误读为真实高概率。
+V2.1 排序分为：
+
+```text
+ranking_score = 0.70 * capital_score + 0.30 * wp_score
+```
+
+其中 `capital_score` 综合绝对成交活跃度、5/20 日成交额放大、量比质量、板块成交与可用资金线索，并不是按绝对成交额直接排名。`p_limitup_t1` 对 `ranking_score` 做单调概率映射，基础先验为 1%；字段覆盖不足或实时行情 fallback 时，概率向基础先验收缩或降级。
 
 当前已落地的判断模块：
 
@@ -28,11 +34,11 @@ wp_score =
 - 动量：使用真实 `ret_3d`、`ret_5d`、`ret_10d`、`ret_20d`，结合 `ma5_position`、`ma10_position`、`ma20_position`，并识别 `high_20d_break`、`platform_break_20d`。
 - 龙虎榜：`dragon_tiger_flag` 和 `dragon_tiger_net_rate` 进入资金分和解释。
 - 热门题材与公告：`hot_topic_flag`、`announcement_flag` 已接入口径；没有上游数据时按 0 处理。
-- 统计校准：当 `outputs/backtests/*/trades.csv` 历史样本足够时，会按概率分层命中率对 `p_limitup_t1` 做主导校准，并输出 `p_limitup_t1_raw`、`calibration_sample_count`、`self_learning_adjustment`。
+- 统计校准：只读取同模型版本、早于当前交易日、`backtest_data_mode=intraday_1420` 且允许校准的样本；先按交易日和代码去重，再用保序 Logit 截距校准。收盘日线代理回测不会进入实时校准。
 
 ## 买入观察决策
 
-买入观察计划在 Top 排序之后执行，不改变原始 Top50 排名。系统会综合 `p_limitup_t1`、`wp_score`、`acceptance_score`、`sector_strength_score`、`momentum_score`、`model_confidence`、`capital_score`，并扣减 `risk_penalty_score` 形成 `decision_score`。
+买入观察计划严格在 Top50 内执行，不改变原始 Top50 排名。系统会综合 `p_limitup_t1`、`wp_score`、`acceptance_score`、`sector_strength_score`、`momentum_score`、`model_confidence`、`capital_score`，并扣减 `risk_penalty_score` 形成 `decision_score`。
 
 组合约束：
 
@@ -42,4 +48,4 @@ wp_score =
 - 承接、置信度、收盘位置、日内回撤必须达到配置门槛；
 - 输出 14:50 前人工确认条件、放弃条件和买入理由。
 
-尚未接入 LogisticRegression、RandomForest、LightGBM/XGBoost 等复杂机器学习模型；当前是规则模型 + 历史统计校准 + 历史验证指标。
+尚未接入 LogisticRegression、RandomForest、LightGBM/XGBoost 等监督学习模型。当前是可解释规则模型、保序统计校准和时间分段历史验证；收盘代理回测不能证明 14:20 实盘收益。
