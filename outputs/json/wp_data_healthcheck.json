@@ -4,7 +4,7 @@
   "is_trading_time": false,
   "data_time": "2026-07-09 14:43:14",
   "market_data_time": "2026-07-09 14:43:14",
-  "wp_run_time": "2026-07-11 16:09:29",
+  "wp_run_time": "2026-07-11 16:34:15",
   "data_trade_date": "20260709",
   "expected_trade_date": "20260711",
   "raw_count": 150,
@@ -21,7 +21,7 @@
   "load_error": "",
   "source_status": "ok",
   "source_generated_at": "2026-07-09 14:45:57",
-  "generated_at": "2026-07-11T08:09:30",
+  "generated_at": "2026-07-11T08:34:16",
   "model_version": "wp_rule_v2_1",
   "preserved_latest_html": false,
   "buy_plan_count": 0
