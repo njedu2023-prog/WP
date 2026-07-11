@@ -1,7 +1,7 @@
 {
-  "latest_update": "2026-07-11 14:56:55",
+  "latest_update": "2026-07-11 16:09:29",
   "market_data_time": "2026-07-09 14:43:14",
-  "wp_run_time": "2026-07-11 14:56:55",
+  "wp_run_time": "2026-07-11 16:09:29",
   "top50_count": 0,
   "buy_plan_count": 0,
   "validation_summary": {
@@ -21,6 +21,7 @@
     "plan_day_win_rate": 0.0,
     "cumulative_pct_chg": -7.71
   },
+  "model_version": "wp_rule_v2_1",
   "health_status": "数据日期过期",
   "preserved_latest_html": false
 }
