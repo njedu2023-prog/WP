@@ -25,6 +25,113 @@ def _pct_cell(value) -> str:
     return f"<span class=\"{cls}\">{sign}{pct:.2f}%</span>"
 
 
+def _date_text(value: object) -> str:
+    text = str(value or "").strip()
+    if len(text) == 8 and text.isdigit():
+        text = f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return html.escape(text or "-")
+
+
+def _summary_int(summary: dict, key: str) -> int:
+    try:
+        return int(summary.get(key, 0))
+    except (TypeError, ValueError):
+        return 0
+
+
+def _validation_overview(summary: dict) -> str:
+    total_days = _summary_int(summary, "total_plan_days")
+    verified_days = _summary_int(summary, "verified_plan_days")
+    total_records = _summary_int(summary, "total_records")
+    verified_records = _summary_int(summary, "verified_records")
+    positive_records = _summary_int(summary, "positive_records")
+    limit_up_records = _summary_int(summary, "limit_up_records")
+    positive_rate = float(summary.get("positive_rate", 0.0) or 0.0)
+    limit_up_rate = float(summary.get("limit_up_rate", 0.0) or 0.0)
+    has_verified_days = verified_days > 0
+    daily_average = _pct_cell(summary.get("daily_average_pct_chg")) if has_verified_days else "<span class=\"pct-pending\">待验证</span>"
+    cumulative = _pct_cell(summary.get("cumulative_pct_chg")) if has_verified_days else "<span class=\"pct-pending\">待验证</span>"
+    metrics = [
+        ("已验证日", f"{verified_days} / {total_days}"),
+        ("已验证票", f"{verified_records} / {total_records}"),
+        ("上涨", f"{positive_records} / {verified_records}<small>{positive_rate:.2f}%</small>"),
+        ("涨停", f"{limit_up_records} / {verified_records}<small>{limit_up_rate:.2f}%</small>"),
+        ("日均组合", daily_average),
+        ("累计组合", cumulative),
+    ]
+    return "".join(
+        f"<div class=\"validation-kpi\"><span>{label}</span><strong>{value}</strong></div>" for label, value in metrics
+    )
+
+
+def _validation_days(validation: pd.DataFrame) -> str:
+    if validation.empty:
+        return "<div class=\"empty\">暂无验证记录</div>"
+
+    view = validation.copy()
+    view["plan_trade_date"] = view.get("plan_trade_date", "").fillna("").astype(str)
+    view["_rank_sort"] = pd.to_numeric(view.get("buy_rank"), errors="coerce").fillna(999)
+    view["_actual_pct"] = pd.to_numeric(view.get("actual_pct_chg"), errors="coerce")
+    view = view.sort_values(["plan_trade_date", "plan_time", "_rank_sort"], ascending=[False, False, True])
+    groups = []
+    for plan_date, day in view.groupby("plan_trade_date", sort=False):
+        day = day.sort_values(["plan_time", "_rank_sort"], ascending=[False, True])
+        verified_mask = day.get("truth_status", "").fillna("").astype(str).eq("verified")
+        verified_count = int(verified_mask.sum())
+        total_count = int(len(day))
+        actual_pct = day.loc[verified_mask, "_actual_pct"].dropna()
+        average_cell = _pct_cell(actual_pct.mean()) if len(actual_pct) else "<span class=\"pct-pending\">待验证</span>"
+        positive_count = int(actual_pct.gt(0).sum())
+        limit_up_count = int(
+            day.loc[verified_mask, "is_limit_up_t1"].astype(str).str.lower().isin({"true", "1", "yes"}).sum()
+        )
+        if verified_count == total_count and total_count:
+            status_label = "已验证"
+            status_class = "verified"
+        elif verified_count:
+            status_label = "部分验证"
+            status_class = "partial"
+        else:
+            status_label = "待验证"
+            status_class = "pending"
+        target_dates = [str(value) for value in day.get("target_trade_date", pd.Series(dtype=str)).tolist() if str(value)]
+        target_date = target_dates[0] if target_dates else ""
+        positive_text = f"{positive_count} / {verified_count}" if verified_count else "-"
+        limit_up_text = f"{limit_up_count} / {verified_count}" if verified_count else "-"
+        detail_rows = []
+        for _, row in day.iterrows():
+            truth_status = str(row.get("truth_status", ""))
+            is_limit_up = str(row.get("is_limit_up_t1", "")).lower() in {"true", "1", "yes"}
+            detail_rows.append(
+                "<tr>"
+                + f"<td>{html.escape(str(row.get('plan_time', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
+                + f"<td>{html.escape(str(row.get('name', '')))}</td>"
+                + f"<td>{_fmt(row.get('pct_chg_plan', 0))}%</td>"
+                + f"<td>{_pct_cell(row.get('actual_pct_chg', ''))}</td>"
+                + f"<td>{'是' if is_limit_up else '否' if truth_status == 'verified' else '待验证'}</td>"
+                + "</tr>"
+            )
+        groups.append(
+            "<details class=\"validation-day-details\">"
+            + "<summary class=\"validation-day-summary validation-grid\">"
+            + f"<span>{_date_text(plan_date)}</span>"
+            + f"<span>{_date_text(target_date)}</span>"
+            + f"<span>{total_count}</span>"
+            + f"<span>{average_cell}</span>"
+            + f"<span>{positive_text}</span>"
+            + f"<span>{limit_up_text}</span>"
+            + f"<span class=\"validation-status {status_class}\">{status_label}</span>"
+            + "<span class=\"validation-day-action\" aria-hidden=\"true\"></span>"
+            + "</summary>"
+            + "<div class=\"validation-detail-wrap\"><table class=\"validation-detail-table\">"
+            + "<thead><tr><th>计划时间</th><th>买入序</th><th>代码</th><th>名称</th><th>计划涨幅</th><th>实际涨跌</th><th>涨停</th></tr></thead>"
+            + f"<tbody>{''.join(detail_rows)}</tbody></table></div></details>"
+        )
+    return "".join(groups)
+
+
 def render_html(
     top50: pd.DataFrame,
     full_rank: pd.DataFrame,
@@ -77,35 +184,8 @@ def render_html(
         )
     if not buy_rows:
         buy_rows.append("<tr><td colspan=\"13\" class=\"empty\">当前无买入观察计划</td></tr>")
-    validation_rows = []
-    if not validation.empty:
-        view = validation.copy()
-        view["_rank_sort"] = pd.to_numeric(view.get("buy_rank"), errors="coerce").fillna(999)
-        view = view.sort_values(["plan_trade_date", "plan_time", "_rank_sort"], ascending=[False, False, True]).head(50)
-        for _, row in view.iterrows():
-            status = str(row.get("truth_status", ""))
-            is_lu = str(row.get("is_limit_up_t1", "")).lower() in {"true", "1", "yes"}
-            validation_rows.append(
-                "<tr>"
-                + f"<td>{html.escape(str(row.get('plan_trade_date', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('plan_time', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('target_trade_date', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('name', '')))}</td>"
-                + f"<td>{_fmt(row.get('pct_chg_plan', 0))}%</td>"
-                + f"<td>{_pct_cell(row.get('actual_pct_chg', ''))}</td>"
-                + f"<td>{'是' if is_lu else '否' if status == 'verified' else '待验证'}</td>"
-                + f"<td>{html.escape(status or 'pending')}</td>"
-                + "</tr>"
-            )
-    if not validation_rows:
-        validation_rows.append("<tr><td colspan=\"10\" class=\"empty\">暂无验证记录</td></tr>")
-    validation_summary_text = (
-        f"已验证 {int(validation_summary.get('verified_records', 0))}；"
-        f"涨停 {int(validation_summary.get('limit_up_records', 0))}；"
-        f"命中 {float(validation_summary.get('limit_up_rate', 0.0)):.2f}%"
-    )
+    validation_overview = _validation_overview(validation_summary)
+    validation_days = _validation_days(validation)
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
@@ -146,11 +226,12 @@ def render_html(
   <title>WP Top50</title>
   <style>
     * {{ box-sizing: border-box; }}
+    html, body {{ width: 100%; max-width: 100%; overflow-x: hidden; }}
     body {{ margin: 0; font-family: "SF Pro SC", "SF Pro Text", "SF Pro Display", "SF Pro Icons", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1d1d1f; background: #f5f5f7; letter-spacing: 0; }}
     header {{ padding: 30px 32px 22px; background: rgba(255, 255, 255, 0.92); border-bottom: 1px solid #d2d2d7; }}
     h1 {{ margin: 0 0 10px; font-size: 30px; line-height: 1.18; font-weight: 700; }}
-    main {{ padding: 24px 32px 40px; }}
-    section {{ margin-bottom: 22px; }}
+    main {{ min-width: 0; max-width: 100%; padding: 24px 32px 40px; }}
+    section {{ min-width: 0; max-width: 100%; margin-bottom: 22px; }}
     .summary-section {{ overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
     .summary-toggle {{ list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px; user-select: none; }}
     .summary-toggle::-webkit-details-marker {{ display: none; }}
@@ -182,7 +263,7 @@ def render_html(
     .sector-table th:nth-child(3), .sector-table td:nth-child(3) {{ width: 64px; padding-right: 0; text-align: left; font-weight: 600; }}
     .status.ok {{ color: #0b7a3b; font-weight: 700; }}
     .status.bad {{ color: #b42318; font-weight: 700; }}
-    .table-wrap {{ overflow-x: auto; border: 1px solid #d2d2d7; background: white; border-radius: 8px; }}
+    .table-wrap {{ display: block; width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid #d2d2d7; background: white; border-radius: 8px; -webkit-overflow-scrolling: touch; }}
     .rank-table {{ border-collapse: collapse; min-width: 1680px; width: 100%; font-size: 13px; }}
     .rank-table th, .rank-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }}
     .rank-table th {{ background: #fbfbfd; color: #6e6e73; position: sticky; top: 0; font-weight: 600; }}
@@ -193,9 +274,33 @@ def render_html(
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
     .buy-table td:nth-child(11), .buy-table td:nth-child(12), .buy-table td:nth-child(13) {{ min-width: 150px; line-height: 1.45; }}
-    .validation-table {{ border-collapse: collapse; min-width: 980px; width: 100%; font-size: 13px; }}
-    .validation-table th, .validation-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }}
-    .validation-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; }}
+    .validation-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
+    .validation-heading {{ padding: 18px 20px 14px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }}
+    .validation-heading strong {{ font-size: 16px; }}
+    .validation-heading span {{ color: #6e6e73; font-size: 12px; }}
+    .validation-kpis {{ display: grid; grid-template-columns: repeat(6, minmax(120px, 1fr)); gap: 1px; background: #e5e5ea; border-top: 1px solid #e5e5ea; border-bottom: 1px solid #e5e5ea; }}
+    .validation-kpi {{ min-width: 0; padding: 14px 16px; background: #fff; }}
+    .validation-kpi > span {{ display: block; margin-bottom: 5px; color: #6e6e73; font-size: 12px; font-weight: 500; }}
+    .validation-kpi > strong {{ display: flex; align-items: baseline; gap: 7px; color: #1d1d1f; font-size: 18px; line-height: 1.2; white-space: nowrap; }}
+    .validation-kpi small {{ color: #6e6e73; font-size: 11px; font-weight: 500; }}
+    .validation-days {{ width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }}
+    .validation-day-list {{ min-width: 860px; }}
+    .validation-grid {{ display: grid; grid-template-columns: 1.05fr 1.05fr 0.55fr 0.85fr 0.7fr 0.7fr 0.78fr 30px; align-items: center; column-gap: 12px; }}
+    .validation-day-header {{ padding: 10px 16px; color: #6e6e73; background: #fbfbfd; border-bottom: 1px solid #e5e5ea; font-size: 12px; font-weight: 600; }}
+    .validation-day-summary {{ list-style: none; min-height: 50px; padding: 10px 16px; border-bottom: 1px solid #f1f1f3; cursor: pointer; font-size: 13px; font-weight: 600; user-select: none; }}
+    .validation-day-summary::-webkit-details-marker {{ display: none; }}
+    .validation-day-summary:hover {{ background: #f5f5f7; }}
+    .validation-day-action {{ width: 24px; height: 24px; border: 1px solid #d2d2d7; border-radius: 50%; display: inline-grid; place-items: center; color: #1d1d1f; font-size: 17px; font-weight: 500; }}
+    .validation-day-action::after {{ content: "+"; transform: translateY(-1px); }}
+    .validation-day-details[open] .validation-day-action::after {{ content: "-"; transform: translateY(-2px); }}
+    .validation-status.verified {{ color: #0b7a3b; }}
+    .validation-status.partial {{ color: #b26a00; }}
+    .validation-status.pending {{ color: #86868b; }}
+    .validation-detail-wrap {{ padding: 0 16px 14px; background: #fbfbfd; border-bottom: 1px solid #e5e5ea; overflow-x: auto; }}
+    .validation-detail-table {{ border-collapse: collapse; min-width: 760px; width: 100%; font-size: 12px; }}
+    .validation-detail-table th, .validation-detail-table td {{ padding: 9px 10px; border-bottom: 1px solid #e5e5ea; text-align: left; white-space: nowrap; }}
+    .validation-detail-table th {{ color: #6e6e73; font-weight: 600; }}
+    .validation-detail-table tr:last-child td {{ border-bottom: 0; }}
     .section-block {{ background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }}
     .section-block strong {{ display: block; color: #1d1d1f; margin-bottom: 6px; }}
     .section-block p {{ margin: 0 0 14px; }}
@@ -205,6 +310,7 @@ def render_html(
       header {{ padding: 24px 18px 18px; }}
       h1 {{ font-size: 25px; }}
       main {{ padding: 18px 14px 30px; }}
+      .summary-section {{ width: 100%; min-width: 0; max-width: 100%; }}
       .summary-toggle {{ align-items: flex-start; padding: 16px; }}
       .summary-toggle-title {{ flex-direction: column; gap: 4px; }}
       .summary-grid {{ grid-template-columns: 1fr; }}
@@ -214,6 +320,10 @@ def render_html(
       .summary-table th {{ width: 128px; }}
       .sector-table {{ min-width: 236px; max-width: 100%; }}
       .sector-table th, .sector-table td {{ padding-top: 7px; padding-bottom: 7px; }}
+      .validation-heading {{ padding: 16px; }}
+      .validation-kpis {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .validation-kpi {{ padding: 12px 14px; }}
+      .validation-kpi > strong {{ font-size: 16px; }}
     }}
   </style>
 </head>
@@ -265,16 +375,17 @@ def render_html(
         </table>
       </div>
     </section>
-    <section>
-      <div class="section-block">
-        <strong>14:20 观察名单真值验证</strong>
-        <p>{html.escape(validation_summary_text)}</p>
+    <section class="validation-section">
+      <div class="validation-heading">
+        <strong>14:20 观察名单累计验证</strong>
+        <span>按每个计划日最后一份名单统计</span>
       </div>
-      <div class="table-wrap">
-        <table class="validation-table">
-          <thead><tr><th>计划日</th><th>计划时间</th><th>验证日</th><th>买入序</th><th>代码</th><th>名称</th><th>计划涨幅</th><th>实际涨跌</th><th>涨停</th><th>状态</th></tr></thead>
-          <tbody>{''.join(validation_rows)}</tbody>
-        </table>
+      <div class="validation-kpis">{validation_overview}</div>
+      <div class="validation-days">
+        <div class="validation-day-list">
+          <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>名单</span><span>平均涨跌</span><span>上涨</span><span>涨停</span><span>状态</span><span></span></div>
+          {validation_days}
+        </div>
       </div>
     </section>
   </main>

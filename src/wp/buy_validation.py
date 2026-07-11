@@ -228,16 +228,63 @@ def _fill_truth(table: pd.DataFrame, current: datetime) -> pd.DataFrame:
 
 
 def _summary(table: pd.DataFrame) -> dict:
+    empty_summary = {
+        "total_plan_days": 0,
+        "verified_plan_days": 0,
+        "pending_plan_days": 0,
+        "total_records": 0,
+        "verified_records": 0,
+        "pending_records": 0,
+        "positive_records": 0,
+        "positive_rate": 0.0,
+        "limit_up_records": 0,
+        "limit_up_rate": 0.0,
+        "average_pct_chg": 0.0,
+        "daily_average_pct_chg": 0.0,
+        "positive_plan_days": 0,
+        "plan_day_win_rate": 0.0,
+        "cumulative_pct_chg": 0.0,
+    }
     if table.empty:
-        return {"total_records": 0, "verified_records": 0, "limit_up_records": 0, "limit_up_rate": 0.0}
-    verified = table[table["truth_status"].fillna("").astype(str).eq("verified")]
+        return empty_summary
+
+    normalized = table.copy()
+    normalized["plan_trade_date"] = normalized["plan_trade_date"].fillna("").astype(str).str.strip()
+    normalized["_actual_pct"] = pd.to_numeric(normalized["actual_pct_chg"], errors="coerce")
+    verified = normalized[normalized["truth_status"].fillna("").astype(str).eq("verified")].copy()
+    verified_pct = verified["_actual_pct"].dropna()
     limit_up = verified[verified["is_limit_up_t1"].astype(str).str.lower().isin({"true", "1", "yes"})]
-    rate = round(len(limit_up) / len(verified) * 100, 2) if len(verified) else 0.0
+    positive = verified[verified["_actual_pct"].gt(0)]
+
+    valid_dates = normalized[normalized["plan_trade_date"].ne("")]
+    total_plan_days = int(valid_dates["plan_trade_date"].nunique())
+    daily_returns: list[float] = []
+    for _, day in valid_dates.groupby("plan_trade_date", sort=True):
+        day_verified = day["truth_status"].fillna("").astype(str).eq("verified")
+        day_pct = day.loc[day_verified, "_actual_pct"].dropna()
+        if len(day) and day_verified.all() and len(day_pct) == len(day):
+            daily_returns.append(float(day_pct.mean()))
+
+    verified_plan_days = len(daily_returns)
+    daily_series = pd.Series(daily_returns, dtype="float64")
+    positive_plan_days = int(daily_series.gt(0).sum())
+    cumulative_pct_chg = float(((1 + daily_series / 100).prod() - 1) * 100) if verified_plan_days else 0.0
     return {
-        "total_records": int(len(table)),
+        "total_plan_days": total_plan_days,
+        "verified_plan_days": verified_plan_days,
+        "pending_plan_days": max(total_plan_days - verified_plan_days, 0),
+        "total_records": int(len(normalized)),
         "verified_records": int(len(verified)),
+        "pending_records": int(len(normalized) - len(verified)),
+        "positive_records": int(len(positive)),
+        "positive_rate": round(len(positive) / len(verified) * 100, 2) if len(verified) else 0.0,
         "limit_up_records": int(len(limit_up)),
-        "limit_up_rate": rate,
+        "limit_up_rate": round(len(limit_up) / len(verified) * 100, 2) if len(verified) else 0.0,
+        "average_pct_chg": round(float(verified_pct.mean()), 2) if len(verified_pct) else 0.0,
+        "daily_average_pct_chg": round(float(daily_series.mean()), 2) if verified_plan_days else 0.0,
+        "positive_plan_days": positive_plan_days,
+        "plan_day_win_rate": round(positive_plan_days / verified_plan_days * 100, 2) if verified_plan_days else 0.0,
+        "cumulative_pct_chg": round(cumulative_pct_chg, 2),
     }
 
 
