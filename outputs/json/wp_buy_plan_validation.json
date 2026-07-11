@@ -1,12 +1,23 @@
 {
-  "generated_at": "2026-07-10 14:51:50",
+  "generated_at": "2026-07-11 14:56:55",
   "market_data_time": "2026-07-09 14:43:14",
-  "wp_run_time": "2026-07-10 14:51:50",
+  "wp_run_time": "2026-07-11 14:56:55",
   "summary": {
+    "total_plan_days": 2,
+    "verified_plan_days": 2,
+    "pending_plan_days": 0,
     "total_records": 10,
-    "verified_records": 5,
+    "verified_records": 10,
+    "pending_records": 0,
+    "positive_records": 3,
+    "positive_rate": 30.0,
     "limit_up_records": 0,
-    "limit_up_rate": 0.0
+    "limit_up_rate": 0.0,
+    "average_pct_chg": -3.93,
+    "daily_average_pct_chg": -3.93,
+    "positive_plan_days": 0,
+    "plan_day_win_rate": 0.0,
+    "cumulative_pct_chg": -7.71
   },
   "records": [
     {
@@ -140,12 +151,12 @@
       "decision_score": 57.51428000626018,
       "risk_penalty_score": 55.3,
       "actual_trade_date": "20260710",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
-      "truth_status": "pending",
+      "actual_close": 40.53,
+      "actual_pct_chg": 0.4959,
+      "is_limit_up_t1": false,
+      "truth_status": "verified",
       "truth_error": "",
-      "truth_updated_at": ""
+      "truth_updated_at": "2026-07-11 14:56:55"
     },
     {
       "plan_trade_date": "20260709",
@@ -163,12 +174,12 @@
       "decision_score": 57.05749704207345,
       "risk_penalty_score": 55.3,
       "actual_trade_date": "20260710",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
-      "truth_status": "pending",
+      "actual_close": 135.71,
+      "actual_pct_chg": -1.6523,
+      "is_limit_up_t1": false,
+      "truth_status": "verified",
       "truth_error": "",
-      "truth_updated_at": ""
+      "truth_updated_at": "2026-07-11 14:56:55"
     },
     {
       "plan_trade_date": "20260709",
@@ -186,12 +197,12 @@
       "decision_score": 56.81595056823688,
       "risk_penalty_score": 59.4411192214112,
       "actual_trade_date": "20260710",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
-      "truth_status": "pending",
+      "actual_close": 44.0,
+      "actual_pct_chg": -5.5997,
+      "is_limit_up_t1": false,
+      "truth_status": "verified",
       "truth_error": "",
-      "truth_updated_at": ""
+      "truth_updated_at": "2026-07-11 14:56:55"
     },
     {
       "plan_trade_date": "20260709",
@@ -209,12 +220,12 @@
       "decision_score": 56.639765682443766,
       "risk_penalty_score": 55.3,
       "actual_trade_date": "20260710",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
-      "truth_status": "pending",
+      "actual_close": 701.01,
+      "actual_pct_chg": -7.6403,
+      "is_limit_up_t1": false,
+      "truth_status": "verified",
       "truth_error": "",
-      "truth_updated_at": ""
+      "truth_updated_at": "2026-07-11 14:56:55"
     },
     {
       "plan_trade_date": "20260709",
@@ -232,12 +243,12 @@
       "decision_score": 56.44738054651296,
       "risk_penalty_score": 55.3,
       "actual_trade_date": "20260710",
-      "actual_close": "",
-      "actual_pct_chg": "",
-      "is_limit_up_t1": "",
-      "truth_status": "pending",
+      "actual_close": 15.06,
+      "actual_pct_chg": -10.782,
+      "is_limit_up_t1": false,
+      "truth_status": "verified",
       "truth_error": "",
-      "truth_updated_at": ""
+      "truth_updated_at": "2026-07-11 14:56:55"
     }
   ]
 }
