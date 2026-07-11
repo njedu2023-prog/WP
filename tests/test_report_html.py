@@ -65,3 +65,33 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
     assert page.count('class="validation-day-details"') == 2
     assert "2026-07-09" in page
     assert "按每个计划日最后一份名单统计" in page
+
+
+def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
+    path = tmp_path / "latest.html"
+    render_html(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {"status": "ok", "data_time": "now"},
+        path,
+        backtests=[
+            {
+                "model_version": "wp_rule_v2_1",
+                "start_date": "20260427",
+                "end_date": "20260522",
+                "trade_days": 20,
+                "trade_count": 736,
+                "auc": 0.6209,
+                "hit_top10": 0.05,
+                "avg_next_day_close_pct_top10": 0.6215,
+                "buy_trade_count": 70,
+                "buy_limitup_rate": 0.0429,
+                "buy_avg_next_day_close_pct": 0.2133,
+            }
+        ],
+    )
+    page = path.read_text(encoding="utf-8")
+    assert "模型回测验证" in page
+    assert "2026-04-27 至 2026-05-22" in page
+    assert "0.6209" in page
+    assert "../backtests/20260427_20260522/trades.csv" in page

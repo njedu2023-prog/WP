@@ -39,6 +39,38 @@ def _summary_int(summary: dict, key: str) -> int:
         return 0
 
 
+def _rate(value: object) -> str:
+    try:
+        return f"{float(value) * 100:.2f}%"
+    except (TypeError, ValueError):
+        return "-"
+
+
+def _backtest_rows(backtests: list[dict]) -> str:
+    rows = []
+    for summary in backtests:
+        start = str(summary.get("start_date", ""))
+        end = str(summary.get("end_date", ""))
+        folder = f"{start}_{end}"
+        rows.append(
+            "<tr>"
+            + f"<td>{_date_text(start)} 至 {_date_text(end)}</td>"
+            + f"<td>{_summary_int(summary, 'trade_days')}</td>"
+            + f"<td>{_summary_int(summary, 'trade_count')}</td>"
+            + f"<td>{_fmt(summary.get('auc', '-'), 4)}</td>"
+            + f"<td>{_rate(summary.get('hit_top10'))}</td>"
+            + f"<td>{_pct_cell(summary.get('avg_next_day_close_pct_top10'))}</td>"
+            + f"<td>{_summary_int(summary, 'buy_trade_count')}</td>"
+            + f"<td>{_rate(summary.get('buy_limitup_rate'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_avg_next_day_close_pct'))}</td>"
+            + f"<td><a href=\"../backtests/{html.escape(folder)}/summary.json\">汇总</a> · "
+            + f"<a href=\"../backtests/{html.escape(folder)}/trades.csv\">Top50</a> · "
+            + f"<a href=\"../backtests/{html.escape(folder)}/buy_trades.csv\">观察名单</a></td>"
+            + "</tr>"
+        )
+    return "".join(rows) or "<tr><td colspan=\"10\" class=\"empty\">暂无回测数据</td></tr>"
+
+
 def _validation_overview(summary: dict) -> str:
     total_days = _summary_int(summary, "total_plan_days")
     verified_days = _summary_int(summary, "verified_plan_days")
@@ -140,12 +172,15 @@ def render_html(
     buy_plan: pd.DataFrame | None = None,
     validation: pd.DataFrame | None = None,
     validation_summary: dict | None = None,
+    backtests: list[dict] | None = None,
 ) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
     validation = validation if validation is not None else pd.DataFrame()
     validation_summary = validation_summary or {}
+    backtests = sorted(backtests or [], key=lambda item: str(item.get("start_date", "")))
+    backtest_rows = _backtest_rows(backtests)
     sector_top = []
     if not full_rank.empty and "sector_name" in full_rank:
         sector_top = full_rank.groupby("sector_name").size().sort_values(ascending=False).head(10).items()
@@ -274,6 +309,13 @@ def render_html(
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
     .buy-table td:nth-child(11), .buy-table td:nth-child(12), .buy-table td:nth-child(13) {{ min-width: 150px; line-height: 1.45; }}
+    .backtest-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
+    .backtest-scroll {{ width: 100%; overflow-x: auto; border-top: 1px solid #e5e5ea; -webkit-overflow-scrolling: touch; }}
+    .backtest-table {{ border-collapse: collapse; min-width: 1120px; width: 100%; font-size: 13px; }}
+    .backtest-table th, .backtest-table td {{ padding: 10px 12px; border-bottom: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }}
+    .backtest-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; }}
+    .backtest-table a {{ color: #06c; text-decoration: none; }}
+    .backtest-table a:hover {{ text-decoration: underline; }}
     .validation-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
     .validation-heading {{ padding: 18px 20px 14px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }}
     .validation-heading strong {{ font-size: 16px; }}
@@ -360,7 +402,7 @@ def render_html(
       <div class="section-block">
         <strong>14:20 尾盘买入观察计划</strong>
       </div>
-      <div class="table-wrap">
+      <div class="backtest-scroll">
         <table class="buy-table">
           <thead><tr><th>买入序</th><th>组合层级</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>次日概率</th><th>WP评分</th><th>决策分</th><th>风险分</th><th>14:50确认条件</th><th>放弃条件</th><th>买入理由</th></tr></thead>
           <tbody>{''.join(buy_rows)}</tbody>
@@ -386,6 +428,18 @@ def render_html(
           <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>名单</span><span>平均涨跌</span><span>上涨</span><span>涨停</span><span>状态</span><span></span></div>
           {validation_days}
         </div>
+      </div>
+    </section>
+    <section class="backtest-section">
+      <div class="validation-heading">
+        <strong>模型回测验证</strong>
+        <span>收盘日线代理 14:20，仅用于方向审计</span>
+      </div>
+      <div class="table-wrap">
+        <table class="backtest-table">
+          <thead><tr><th>区间</th><th>交易日</th><th>样本</th><th>AUC</th><th>Top10 涨停</th><th>Top10 收盘</th><th>观察样本</th><th>观察涨停</th><th>观察收盘</th><th>原始数据</th></tr></thead>
+          <tbody>{backtest_rows}</tbody>
+        </table>
       </div>
     </section>
   </main>
