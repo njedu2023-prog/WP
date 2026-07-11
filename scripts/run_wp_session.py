@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time as time_module
 from datetime import datetime, time, timedelta
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import tushare as ts
@@ -22,6 +23,22 @@ MORNING_START = time(9, 25)
 MORNING_END = time(11, 35)
 AFTERNOON_START = time(12, 55)
 AFTERNOON_END = time(15, 10)
+LIVE_COMMIT_PATHS = [
+    "outputs/html_reports/latest.html",
+    "outputs/html_reports/latest.md",
+    "outputs/csv/wp_top50.csv",
+    "outputs/csv/wp_full_rank.csv",
+    "outputs/csv/wp_model_debug.csv",
+    "outputs/csv/wp_buy_plan.csv",
+    "outputs/csv/wp_buy_decision.csv",
+    "outputs/csv/wp_buy_plan_validation.csv",
+    "outputs/json/latest.json",
+    "outputs/json/wp_buy_plan.json",
+    "outputs/json/wp_buy_plan_validation.json",
+    "outputs/json/wp_manifest.json",
+    "outputs/json/wp_data_healthcheck.json",
+    "data/cache/wp_latest_rank_input.csv",
+]
 
 
 def now_cn() -> datetime:
@@ -56,13 +73,40 @@ def is_trade_day(token: str, day: str) -> bool:
     return bool(len(cal) and int(cal.iloc[0].get("is_open", 0)) == 1)
 
 
+def _latest_file(pattern: str) -> str | None:
+    matches = [path for path in Path.cwd().glob(pattern) if path.is_file()]
+    if not matches:
+        return None
+    return max(matches, key=lambda path: path.stat().st_mtime).as_posix()
+
+
+def output_commit_paths(mode: str) -> list[str]:
+    paths = list(LIVE_COMMIT_PATHS)
+    latest_archive = _latest_file("outputs/html_reports/archive/*/*.html")
+    latest_log = _latest_file("logs/wp_*.log")
+    if latest_archive:
+        paths.append(latest_archive)
+    if latest_log:
+        paths.append(latest_log)
+    if mode == "backtest":
+        paths.extend(
+            [
+                "outputs/backtests",
+                "outputs/html_reports/backtest_latest.html",
+                "outputs/json/wp_backtest_latest.json",
+            ]
+        )
+    return paths
+
+
 def run_once() -> None:
     env = os.environ.copy()
     if not env.get("WP_MODE", "").strip():
         env["WP_MODE"] = "live"
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
+    commit_paths = output_commit_paths(env["WP_MODE"].strip().lower())
     subprocess.run(
-        [sys.executable, "scripts/github_commit_paths.py", "Update WP outputs", "outputs", "logs", "data/cache"],
+        [sys.executable, "scripts/github_commit_paths.py", "Update WP outputs", *commit_paths],
         check=True,
         env=env,
     )

@@ -5,6 +5,7 @@ import json
 import mimetypes
 import os
 import sys
+import time
 from pathlib import Path
 from urllib.error import HTTPError
 from urllib.request import Request, urlopen
@@ -16,28 +17,38 @@ IGNORE_SUFFIXES = {".pyc", ".pyo"}
 
 def request(method: str, url: str, token: str, payload: dict | None = None) -> dict:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    req = Request(
-        url,
-        data=data,
-        method=method,
-        headers={
-            "Authorization": f"Bearer {token}",
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "Content-Type": "application/json",
-        },
-    )
-    try:
-        with urlopen(req, timeout=60) as resp:
-            body = resp.read().decode("utf-8")
-            return json.loads(body) if body else {}
-    except HTTPError as exc:
-        body = exc.read().decode("utf-8", errors="replace")
-        raise RuntimeError(f"{method} {url} failed: {exc.code} {body}") from exc
+    for attempt in range(4):
+        req = Request(
+            url,
+            data=data,
+            method=method,
+            headers={
+                "Authorization": f"Bearer {token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "Content-Type": "application/json",
+            },
+        )
+        try:
+            with urlopen(req, timeout=60) as resp:
+                body = resp.read().decode("utf-8")
+                return json.loads(body) if body else {}
+        except HTTPError as exc:
+            body = exc.read().decode("utf-8", errors="replace")
+            retryable = exc.code in {403, 429} and "secondary rate limit" in body.lower()
+            if retryable and attempt < 3:
+                retry_after = exc.headers.get("Retry-After", "")
+                delay = int(retry_after) if retry_after.isdigit() else 5 * (2**attempt)
+                print(f"GitHub secondary rate limit; retrying in {delay}s.", flush=True)
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"{method} {url} failed: {exc.code} {body}") from exc
+    raise RuntimeError(f"{method} {url} failed after retries")
 
 
 def iter_files(paths: list[str]):
     cwd = Path.cwd().resolve()
+    seen: set[str] = set()
     for raw_path in paths:
         root = Path(raw_path).resolve()
         if not root.exists():
@@ -51,7 +62,11 @@ def iter_files(paths: list[str]):
                 continue
             if path.suffix in IGNORE_SUFFIXES:
                 continue
-            yield path, rel.as_posix()
+            rel_posix = rel.as_posix()
+            if rel_posix in seen:
+                continue
+            seen.add(rel_posix)
+            yield path, rel_posix
 
 
 def is_binary(path: Path) -> bool:
@@ -83,17 +98,18 @@ def main() -> None:
     for path, rel in iter_files(paths):
         if is_binary(path):
             content = base64.b64encode(path.read_bytes()).decode("ascii")
-            encoding = "base64"
+            blob = request(
+                "POST",
+                f"https://api.github.com/repos/{repo}/git/blobs",
+                token,
+                {"content": content, "encoding": "base64"},
+            )
+            tree.append({"path": rel, "mode": "100644", "type": "blob", "sha": blob["sha"]})
         else:
             content = path.read_text(encoding="utf-8")
-            encoding = "utf-8"
-        blob = request(
-            "POST",
-            f"https://api.github.com/repos/{repo}/git/blobs",
-            token,
-            {"content": content, "encoding": encoding},
-        )
-        tree.append({"path": rel, "mode": "100644", "type": "blob", "sha": blob["sha"]})
+            # The Trees API accepts inline UTF-8 content and creates the blobs
+            # server-side, avoiding one API request per generated text file.
+            tree.append({"path": rel, "mode": "100644", "type": "blob", "content": content})
 
     if not tree:
         print("No files found for API commit.")
