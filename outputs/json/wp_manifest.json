@@ -1,7 +1,7 @@
 {
-  "latest_update": "2026-07-11 16:34:15",
+  "latest_update": "2026-07-13 04:09:28",
   "market_data_time": "2026-07-09 14:43:14",
-  "wp_run_time": "2026-07-11 16:34:15",
+  "wp_run_time": "2026-07-13 04:09:28",
   "top50_count": 0,
   "buy_plan_count": 0,
   "validation_summary": {
@@ -13,13 +13,18 @@
     "pending_records": 0,
     "positive_records": 3,
     "positive_rate": 30.0,
-    "limit_up_records": 0,
-    "limit_up_rate": 0.0,
-    "average_pct_chg": -3.93,
-    "daily_average_pct_chg": -3.93,
+    "limit_up_records": 1,
+    "limit_up_rate": 10.0,
+    "average_open_return_pct": -0.22,
+    "average_high_return_pct": 3.19,
+    "average_low_return_pct": -6.02,
+    "average_close_return_pct": -3.84,
+    "average_pct_chg": -3.84,
+    "daily_average_pct_chg": -3.84,
     "positive_plan_days": 0,
     "plan_day_win_rate": 0.0,
-    "cumulative_pct_chg": -7.71
+    "cumulative_pct_chg": -7.55,
+    "return_basis": "plan_price_to_next_trade_day"
   },
   "model_version": "wp_rule_v2_1",
   "backtest_window_count": 3,
