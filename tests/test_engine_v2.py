@@ -1,6 +1,6 @@
 import pandas as pd
 
-from wp.backtest import build_label_frame
+from wp.backtest import _buy_portfolio_metrics, build_label_frame
 from wp.buy_decision import build_buy_decision
 from wp.ranking import build_ranked_pool
 
@@ -32,3 +32,23 @@ def test_missing_market_truth_is_not_counted_as_a_miss():
     labeled = build_label_frame(today, next_day)
     assert not bool(labeled.loc[0, "label_available"])
     assert pd.isna(labeled.loc[0, "label_t1_limitup"])
+
+
+def test_buy_portfolio_metrics_equal_weight_each_plan_day():
+    trades = pd.DataFrame(
+        [
+            {"backtest_trade_date": "20260701", "next_day_open_pct": 1, "next_day_max_pct": 5, "next_day_drawdown_pct": -2, "next_day_close_pct": 2},
+            {"backtest_trade_date": "20260701", "next_day_open_pct": 3, "next_day_max_pct": 7, "next_day_drawdown_pct": -4, "next_day_close_pct": 4},
+            {"backtest_trade_date": "20260702", "next_day_open_pct": -2, "next_day_max_pct": 2, "next_day_drawdown_pct": -5, "next_day_close_pct": -1},
+            {"backtest_trade_date": "20260702", "next_day_open_pct": 0, "next_day_max_pct": 4, "next_day_drawdown_pct": -3, "next_day_close_pct": -3},
+        ]
+    )
+
+    metrics = _buy_portfolio_metrics(trades)
+
+    assert metrics["buy_plan_days"] == 2
+    assert metrics["buy_average_count_per_day"] == 2.0
+    assert metrics["buy_daily_avg_next_day_open_pct"] == 0.5
+    assert metrics["buy_daily_avg_next_day_close_pct"] == 0.5
+    assert metrics["buy_plan_day_win_rate"] == 0.5
+    assert metrics["buy_cumulative_next_day_close_pct"] == 0.94

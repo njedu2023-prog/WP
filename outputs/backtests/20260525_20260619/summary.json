@@ -22,11 +22,19 @@
   "buy_avg_next_day_max_pct": 4.6516,
   "buy_avg_next_day_close_pct": 0.5435,
   "buy_worst_drawdown_pct": -11.3926,
+  "buy_plan_days": 18,
+  "buy_average_count_per_day": 4.56,
+  "buy_daily_avg_next_day_open_pct": -0.6705,
+  "buy_daily_avg_next_day_high_pct": 4.6394,
+  "buy_daily_avg_next_day_low_pct": -3.6582,
+  "buy_daily_avg_next_day_close_pct": 0.5378,
+  "buy_plan_day_win_rate": 0.5,
+  "buy_cumulative_next_day_close_pct": 9.0074,
   "avg_next_day_max_pct_top10": 4.875,
   "avg_next_day_close_pct_top10": 0.7198,
   "max_drawdown_risk_top10": -29.1313,
   "avg_next_day_max_pct_top50": 4.2899,
   "avg_next_day_close_pct_top50": 0.0449,
   "max_drawdown_risk_top50": -35.5499,
-  "generated_at": "2026-07-11T16:03:22"
+  "generated_at": "2026-07-13T04:05:03"
 }

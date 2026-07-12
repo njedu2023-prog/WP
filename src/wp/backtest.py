@@ -360,10 +360,12 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
     out["next_trade_date"] = next_date or ""
     out["label_t1_limitup"] = np.nan
     out["label_available"] = False
+    out["next_day_open"] = np.nan
     out["next_day_high"] = np.nan
     out["next_day_close"] = np.nan
     out["next_day_low"] = np.nan
     out["next_day_limitup_price"] = np.nan
+    out["next_day_open_pct"] = np.nan
     out["next_day_max_pct"] = np.nan
     out["next_day_close_pct"] = np.nan
     out["next_day_drawdown_pct"] = np.nan
@@ -374,14 +376,15 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
     limit_next = _read_remote_csv(f"{base}/stk_limit.csv", cache_root)
     if daily_next.empty or limit_next.empty:
         return out
-    keep_daily = [col for col in ["ts_code", "high", "close", "low"] if col in daily_next.columns]
+    keep_daily = [col for col in ["ts_code", "open", "high", "close", "low"] if col in daily_next.columns]
     next_frame = daily_next[keep_daily].merge(limit_next[["ts_code", "up_limit"]], on="ts_code", how="left")
     next_frame["ts_code"] = next_frame["ts_code"].astype(str).str.strip()
+    next_frame["next_open"] = pd.to_numeric(next_frame["open"], errors="coerce") if "open" in next_frame.columns else np.nan
     next_frame["next_high"] = pd.to_numeric(next_frame["high"], errors="coerce")
     next_frame["next_close"] = pd.to_numeric(next_frame["close"], errors="coerce") if "close" in next_frame.columns else np.nan
     next_frame["next_low"] = pd.to_numeric(next_frame["low"], errors="coerce") if "low" in next_frame.columns else np.nan
     next_frame["next_up_limit"] = pd.to_numeric(next_frame["up_limit"], errors="coerce")
-    merged = out.merge(next_frame[["ts_code", "next_high", "next_close", "next_low", "next_up_limit"]], on="ts_code", how="left")
+    merged = out.merge(next_frame[["ts_code", "next_open", "next_high", "next_close", "next_low", "next_up_limit"]], on="ts_code", how="left")
     available = (merged["next_up_limit"] > 0) & merged["next_high"].notna()
     merged["label_available"] = available
     merged["label_t1_limitup"] = np.where(
@@ -390,10 +393,12 @@ def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | 
         np.nan,
     )
     price = pd.to_numeric(merged.get("price", merged.get("close", 0)), errors="coerce")
+    merged["next_day_open"] = merged["next_open"]
     merged["next_day_high"] = merged["next_high"]
     merged["next_day_close"] = merged["next_close"]
     merged["next_day_low"] = merged["next_low"]
     merged["next_day_limitup_price"] = merged["next_up_limit"]
+    merged["next_day_open_pct"] = np.where(price > 0, (merged["next_day_open"] / price - 1) * 100, np.nan)
     merged["next_day_max_pct"] = np.where(price > 0, (merged["next_day_high"] / price - 1) * 100, np.nan)
     merged["next_day_close_pct"] = np.where(price > 0, (merged["next_day_close"] / price - 1) * 100, np.nan)
     merged["next_day_drawdown_pct"] = np.where(price > 0, (merged["next_day_low"] / price - 1) * 100, np.nan)
@@ -478,6 +483,53 @@ def _min_metric(frame: pd.DataFrame, column: str) -> float | None:
     return round(float(values.min()), 4)
 
 
+def _buy_portfolio_metrics(frame: pd.DataFrame) -> dict:
+    empty = {
+        "buy_plan_days": 0,
+        "buy_average_count_per_day": 0.0,
+        "buy_daily_avg_next_day_open_pct": None,
+        "buy_daily_avg_next_day_high_pct": None,
+        "buy_daily_avg_next_day_low_pct": None,
+        "buy_daily_avg_next_day_close_pct": None,
+        "buy_plan_day_win_rate": 0.0,
+        "buy_cumulative_next_day_close_pct": 0.0,
+    }
+    if frame.empty or "backtest_trade_date" not in frame.columns:
+        return empty
+    metric_columns = [
+        "next_day_open_pct",
+        "next_day_max_pct",
+        "next_day_drawdown_pct",
+        "next_day_close_pct",
+    ]
+    available = [column for column in metric_columns if column in frame.columns]
+    if "next_day_close_pct" not in available:
+        return empty
+    work = frame[["backtest_trade_date", *available]].copy()
+    for column in available:
+        work[column] = pd.to_numeric(work[column], errors="coerce")
+    daily = work.groupby("backtest_trade_date", sort=True)[available].mean()
+    close_return = daily["next_day_close_pct"].dropna()
+    if close_return.empty:
+        return empty
+    counts = frame.groupby("backtest_trade_date").size()
+    metric_map = {
+        "next_day_open_pct": "buy_daily_avg_next_day_open_pct",
+        "next_day_max_pct": "buy_daily_avg_next_day_high_pct",
+        "next_day_drawdown_pct": "buy_daily_avg_next_day_low_pct",
+        "next_day_close_pct": "buy_daily_avg_next_day_close_pct",
+    }
+    result = empty.copy()
+    result["buy_plan_days"] = int(len(close_return))
+    result["buy_average_count_per_day"] = round(float(counts.mean()), 2)
+    for source, target in metric_map.items():
+        if source in daily.columns and daily[source].notna().any():
+            result[target] = round(float(daily[source].dropna().mean()), 4)
+    result["buy_plan_day_win_rate"] = round(float(close_return.gt(0).mean()), 4)
+    result["buy_cumulative_next_day_close_pct"] = round(float(((1 + close_return / 100).prod() - 1) * 100), 4)
+    return result
+
+
 def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n: int = 50) -> BacktestResult:
     start = _date_key(start_date)
     end = _date_key(end_date)
@@ -530,6 +582,7 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     trades = pd.concat(all_trades, ignore_index=True, sort=False) if all_trades else pd.DataFrame()
     buy_trades = pd.concat(all_buy_trades, ignore_index=True, sort=False) if all_buy_trades else pd.DataFrame()
     daily_summary = pd.DataFrame(daily_rows)
+    buy_portfolio_metrics = _buy_portfolio_metrics(buy_trades)
     summary = {
         "mode": "backtest",
         "model_version": MODEL_VERSION,
@@ -554,6 +607,7 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
         "buy_avg_next_day_max_pct": _mean_metric(buy_trades, "next_day_max_pct"),
         "buy_avg_next_day_close_pct": _mean_metric(buy_trades, "next_day_close_pct"),
         "buy_worst_drawdown_pct": _min_metric(buy_trades, "next_day_drawdown_pct"),
+        **buy_portfolio_metrics,
         "avg_next_day_max_pct_top10": _mean_metric(_period_top_samples(trades, 10), "next_day_max_pct"),
         "avg_next_day_close_pct_top10": _mean_metric(_period_top_samples(trades, 10), "next_day_close_pct"),
         "max_drawdown_risk_top10": _min_metric(_period_top_samples(trades, 10), "next_day_drawdown_pct"),
@@ -617,9 +671,13 @@ def render_backtest_html(summary: dict, daily_summary: pd.DataFrame, trades: pd.
       <div>AUC：<strong>{summary["auc"] if summary["auc"] is not None else "-"}</strong></div>
       <div>Brier：<strong>{summary["brier"] if summary["brier"] is not None else "-"}</strong></div>
       <div>买入观察样本：<strong>{summary["buy_trade_count"]}</strong></div>
+      <div>买入观察计划日：<strong>{summary["buy_plan_days"]}</strong></div>
       <div>买入观察涨停：<strong>{summary["buy_limitup_rate"]:.2%}</strong></div>
       <div>买入观察上涨：<strong>{summary["buy_positive_close_rate"]:.2%}</strong></div>
-      <div>买入观察平均收盘：<strong>{f'{summary["buy_avg_next_day_close_pct"]:.2f}%' if summary["buy_avg_next_day_close_pct"] is not None else "-"}</strong></div>
+      <div>观察组合次日开盘：<strong>{f'{summary["buy_daily_avg_next_day_open_pct"]:.2f}%' if summary["buy_daily_avg_next_day_open_pct"] is not None else "-"}</strong></div>
+      <div>观察组合次日最高：<strong>{f'{summary["buy_daily_avg_next_day_high_pct"]:.2f}%' if summary["buy_daily_avg_next_day_high_pct"] is not None else "-"}</strong></div>
+      <div>观察组合次日收盘：<strong>{f'{summary["buy_daily_avg_next_day_close_pct"]:.2f}%' if summary["buy_daily_avg_next_day_close_pct"] is not None else "-"}</strong></div>
+      <div>观察组合累计收盘：<strong>{summary["buy_cumulative_next_day_close_pct"]:.2f}%</strong></div>
       <div>Top10 平均次日最高涨幅：<strong>{f'{summary["avg_next_day_max_pct_top10"]:.2f}%' if summary["avg_next_day_max_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 平均次日收盘涨幅：<strong>{f'{summary["avg_next_day_close_pct_top10"]:.2f}%' if summary["avg_next_day_close_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 最大回撤风险：<strong>{f'{summary["max_drawdown_risk_top10"]:.2f}%' if summary["max_drawdown_risk_top10"] is not None else "-"}</strong></div>

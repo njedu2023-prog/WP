@@ -32,8 +32,13 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
                 "buy_rank": 1,
                 "ts_code": "000002.SZ",
                 "name": "乙",
+                "plan_price": 10.0,
                 "pct_chg_plan": 8.8,
                 "actual_pct_chg": 5.0,
+                "return_open_pct": 1.0,
+                "return_high_pct": 8.0,
+                "return_low_pct": -2.0,
+                "return_close_pct": 4.0,
                 "is_limit_up_t1": False,
                 "truth_status": "verified",
             },
@@ -48,8 +53,10 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
         "positive_rate": 100.0,
         "limit_up_records": 0,
         "limit_up_rate": 0.0,
-        "daily_average_pct_chg": 5.0,
-        "cumulative_pct_chg": 5.0,
+        "average_open_return_pct": 1.0,
+        "average_high_return_pct": 8.0,
+        "daily_average_pct_chg": 4.0,
+        "cumulative_pct_chg": 4.0,
     }
     render_html(
         pd.DataFrame(),
@@ -61,10 +68,12 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
     )
     page = path.read_text(encoding="utf-8")
     assert "14:20 观察名单累计验证" in page
-    assert "累计组合" in page
+    assert "累计收盘收益" in page
     assert page.count('class="validation-day-details"') == 2
     assert "2026-07-09" in page
-    assert "按每个计划日最后一份名单统计" in page
+    assert "按计划价买入，统计下一交易日实际收益" in page
+    assert "次日收益（开 / 高 / 收）" in page
+    assert "次日最低" in page
 
 
 def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
@@ -84,9 +93,15 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
                 "auc": 0.6209,
                 "hit_top10": 0.05,
                 "avg_next_day_close_pct_top10": 0.6215,
+                "buy_plan_days": 20,
                 "buy_trade_count": 70,
+                "buy_average_count_per_day": 3.5,
+                "buy_positive_close_rate": 0.5286,
                 "buy_limitup_rate": 0.0429,
-                "buy_avg_next_day_close_pct": 0.2133,
+                "buy_daily_avg_next_day_open_pct": 0.11,
+                "buy_daily_avg_next_day_high_pct": 4.2,
+                "buy_daily_avg_next_day_close_pct": 0.2133,
+                "buy_cumulative_next_day_close_pct": 4.34,
             }
         ],
     )
@@ -94,4 +109,6 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
     assert "模型回测验证" in page
     assert "2026-04-27 至 2026-05-22" in page
     assert "0.6209" in page
+    assert "日均支数" in page
+    assert "+4.34%" in page
     assert "../backtests/20260427_20260522/trades.csv" in page

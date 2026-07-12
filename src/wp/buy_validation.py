@@ -21,6 +21,7 @@ VALIDATION_COLUMNS = [
     "portfolio_group",
     "ts_code",
     "name",
+    "plan_price",
     "pct_chg_plan",
     "sector_name",
     "p_limitup_t1",
@@ -28,8 +29,15 @@ VALIDATION_COLUMNS = [
     "decision_score",
     "risk_penalty_score",
     "actual_trade_date",
+    "actual_open",
+    "actual_high",
+    "actual_low",
     "actual_close",
     "actual_pct_chg",
+    "return_open_pct",
+    "return_high_pct",
+    "return_low_pct",
+    "return_close_pct",
     "is_limit_up_t1",
     "truth_status",
     "truth_error",
@@ -116,6 +124,7 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
                 "portfolio_group": row.get("portfolio_group", ""),
                 "ts_code": row.get("ts_code", ""),
                 "name": row.get("name", ""),
+                "plan_price": row.get("price", ""),
                 "pct_chg_plan": row.get("pct_chg", ""),
                 "sector_name": row.get("sector_name", ""),
                 "p_limitup_t1": row.get("p_limitup_t1", ""),
@@ -123,8 +132,15 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
                 "decision_score": row.get("decision_score", ""),
                 "risk_penalty_score": row.get("risk_penalty_score", ""),
                 "actual_trade_date": target_trade_date,
+                "actual_open": "",
+                "actual_high": "",
+                "actual_low": "",
                 "actual_close": "",
                 "actual_pct_chg": "",
+                "return_open_pct": "",
+                "return_high_pct": "",
+                "return_low_pct": "",
+                "return_close_pct": "",
                 "is_limit_up_t1": "",
                 "truth_status": "pending",
                 "truth_error": "",
@@ -150,9 +166,29 @@ def _fetch_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None, str]:
         frame = pro.daily(trade_date=trade_date)
         if frame is None or frame.empty:
             return None, f"no daily truth for {trade_date}"
+        try:
+            limit_frame = pro.stk_limit(trade_date=trade_date)
+            frame = _merge_limit_prices(frame, limit_frame)
+        except Exception:
+            if "up_limit" not in frame.columns:
+                frame["up_limit"] = pd.NA
         return frame, ""
     except Exception as exc:
         return None, str(exc)
+
+
+def _merge_limit_prices(frame: pd.DataFrame, limit_frame: pd.DataFrame | None) -> pd.DataFrame:
+    out = frame.copy()
+    if limit_frame is None or limit_frame.empty or not {"ts_code", "up_limit"}.issubset(limit_frame.columns):
+        if "up_limit" not in out.columns:
+            out["up_limit"] = pd.NA
+        return out
+    limits = limit_frame[["ts_code", "up_limit"]].drop_duplicates("ts_code").copy()
+    limits["ts_code"] = limits["ts_code"].astype(str).str.strip()
+    out["ts_code"] = out["ts_code"].astype(str).str.strip()
+    if "up_limit" in out.columns:
+        out = out.drop(columns=["up_limit"])
+    return out.merge(limits, on="ts_code", how="left")
 
 
 def _fetch_upstream_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None, str]:
@@ -161,9 +197,12 @@ def _fetch_upstream_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None,
     template = os.environ.get("WP_TRUTH_DAILY_URL_TEMPLATE", "").strip()
     if template:
         url = template.format(trade_date=trade_date, year=trade_date[:4])
+        limit_template = os.environ.get("WP_TRUTH_LIMIT_URL_TEMPLATE", "").strip()
+        limit_url = limit_template.format(trade_date=trade_date, year=trade_date[:4]) if limit_template else url.replace("/daily.csv", "/stk_limit.csv")
     else:
         repo = os.environ.get("WP_TRUTH_REPO", "njedu2023-prog/a-share-top3-data").strip()
         url = f"https://raw.githubusercontent.com/{repo}/main/data/raw/{trade_date[:4]}/{trade_date}/daily.csv"
+        limit_url = f"https://raw.githubusercontent.com/{repo}/main/data/raw/{trade_date[:4]}/{trade_date}/stk_limit.csv"
     try:
         text = _read_remote_text(url, timeout=30)
         frame = pd.read_csv(StringIO(text), dtype={"trade_date": str})
@@ -180,50 +219,132 @@ def _fetch_upstream_truth_by_date(trade_date: str) -> tuple[pd.DataFrame | None,
         if "close" not in frame.columns:
             frame["close"] = ""
         frame["ts_code"] = frame["ts_code"].astype(str).str.strip()
+        try:
+            limit_text = _read_remote_text(limit_url, timeout=30)
+            limit_frame = pd.read_csv(StringIO(limit_text), dtype={"trade_date": str})
+        except Exception:
+            limit_frame = pd.DataFrame()
+        frame = _merge_limit_prices(frame, limit_frame)
         return frame, ""
     except Exception as exc:
         return None, str(exc)
+
+
+def _number(value: object) -> float | None:
+    parsed = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+    return float(parsed) if pd.notna(parsed) else None
+
+
+def _return_pct(value: object, entry_price: float | None) -> float | str:
+    exit_price = _number(value)
+    if entry_price is None or entry_price <= 0 or exit_price is None:
+        return ""
+    return round((exit_price / entry_price - 1) * 100, 4)
+
+
+def _reconstruct_plan_price(row: pd.Series, source_truth: pd.DataFrame | None) -> float | None:
+    stored = _number(row.get("plan_price"))
+    if stored is not None and stored > 0:
+        return stored
+    if source_truth is None or source_truth.empty:
+        return None
+    match = source_truth[source_truth["ts_code"].astype(str).eq(str(row.get("ts_code", "")))]
+    if match.empty:
+        return None
+    pre_close = _number(match.iloc[0].get("pre_close"))
+    pct_chg_plan = _number(row.get("pct_chg_plan"))
+    if pre_close is None or pre_close <= 0 or pct_chg_plan is None:
+        return None
+    return pre_close * (1 + pct_chg_plan / 100)
 
 
 def _fill_truth(table: pd.DataFrame, current: datetime) -> pd.DataFrame:
     if table.empty:
         return table
     out = table.copy()
-    pending = out["truth_status"].fillna("").astype(str).ne("verified")
-    due_dates = sorted(
+    plan_price = pd.to_numeric(out["plan_price"], errors="coerce")
+    close_return = pd.to_numeric(out["return_close_pct"], errors="coerce")
+    needs_refresh = (
+        out["truth_status"].fillna("").astype(str).ne("verified")
+        | plan_price.isna()
+        | plan_price.le(0)
+        | close_return.isna()
+    )
+    due_rows = out.loc[needs_refresh].copy()
+    due_rows = due_rows[
+        due_rows["target_trade_date"].astype(str).map(
+            lambda value: len(value) == 8 and _is_truth_due(value, current)
+        )
+    ]
+    if due_rows.empty:
+        return out
+
+    dates = sorted(
         {
             str(value)
-            for value in out.loc[pending, "target_trade_date"].dropna().tolist()
-            if len(str(value)) == 8 and _is_truth_due(str(value), current)
+            for column in ("plan_trade_date", "target_trade_date")
+            for value in due_rows[column].dropna().tolist()
+            if len(str(value)) == 8
         }
     )
-    if not due_dates:
-        return out
-    truth_cache: dict[str, tuple[pd.DataFrame | None, str]] = {}
-    for trade_date in due_dates:
-        truth_cache[trade_date] = _fetch_truth_by_date(trade_date)
-    for idx, row in out.loc[pending].iterrows():
+    truth_cache = {trade_date: _fetch_truth_by_date(trade_date) for trade_date in dates}
+    for idx, row in due_rows.iterrows():
         target = str(row.get("target_trade_date", ""))
-        if target not in truth_cache:
+        target_truth, target_error = truth_cache.get(target, (None, f"missing truth date {target}"))
+        if target_truth is None:
+            if str(row.get("truth_status", "")) != "verified":
+                out.at[idx, "truth_status"] = "pending"
+            out.at[idx, "truth_error"] = target_error
             continue
-        truth, error = truth_cache[target]
-        if truth is None:
-            out.at[idx, "truth_status"] = "pending"
-            out.at[idx, "truth_error"] = error
-            continue
-        match = truth[truth["ts_code"].astype(str).eq(str(row.get("ts_code", "")))]
+
+        code = str(row.get("ts_code", ""))
+        match = target_truth[target_truth["ts_code"].astype(str).eq(code)]
         if match.empty:
-            out.at[idx, "truth_status"] = "pending"
-            out.at[idx, "truth_error"] = f"missing {row.get('ts_code')} on {target}"
+            if str(row.get("truth_status", "")) != "verified":
+                out.at[idx, "truth_status"] = "pending"
+            out.at[idx, "truth_error"] = f"missing {code} on {target}"
             continue
+
+        plan_date = str(row.get("plan_trade_date", ""))
+        source_truth = truth_cache.get(plan_date, (None, ""))[0]
+        entry_price = _reconstruct_plan_price(row, source_truth)
         actual = match.iloc[0]
-        pct_chg = pd.to_numeric(actual.get("pct_chg"), errors="coerce")
-        out.at[idx, "actual_close"] = actual.get("close", "")
-        out.at[idx, "actual_pct_chg"] = "" if pd.isna(pct_chg) else round(float(pct_chg), 4)
-        out.at[idx, "is_limit_up_t1"] = bool(not pd.isna(pct_chg) and float(pct_chg) >= _limit_threshold(str(row.get("ts_code", ""))))
-        out.at[idx, "truth_status"] = "verified"
-        out.at[idx, "truth_error"] = ""
-        out.at[idx, "truth_updated_at"] = current.strftime("%Y-%m-%d %H:%M:%S")
+        pct_chg = _number(actual.get("pct_chg"))
+        if entry_price is not None and entry_price > 0:
+            out.at[idx, "plan_price"] = round(entry_price, 4)
+        for target_column, source_column in (
+            ("actual_open", "open"),
+            ("actual_high", "high"),
+            ("actual_low", "low"),
+            ("actual_close", "close"),
+        ):
+            out.at[idx, target_column] = actual.get(source_column, "")
+        out.at[idx, "actual_pct_chg"] = "" if pct_chg is None else round(pct_chg, 4)
+        for target_column, source_column in (
+            ("return_open_pct", "open"),
+            ("return_high_pct", "high"),
+            ("return_low_pct", "low"),
+            ("return_close_pct", "close"),
+        ):
+            out.at[idx, target_column] = _return_pct(actual.get(source_column), entry_price)
+
+        high = _number(actual.get("high"))
+        up_limit = _number(actual.get("up_limit"))
+        if high is not None and up_limit is not None and up_limit > 0:
+            out.at[idx, "is_limit_up_t1"] = bool(high >= up_limit * 0.999)
+        elif high is not None:
+            pre_close = _number(actual.get("pre_close"))
+            threshold = _limit_threshold(code)
+            out.at[idx, "is_limit_up_t1"] = bool(pre_close and (high / pre_close - 1) * 100 >= threshold)
+
+        close_return_value = _number(out.at[idx, "return_close_pct"])
+        if entry_price is not None and entry_price > 0 and close_return_value is not None:
+            out.at[idx, "truth_status"] = "verified"
+            out.at[idx, "truth_error"] = ""
+            out.at[idx, "truth_updated_at"] = current.strftime("%Y-%m-%d %H:%M:%S")
+        else:
+            out.at[idx, "truth_status"] = "pending"
+            out.at[idx, "truth_error"] = "missing plan price or next-day close"
     return out
 
 
@@ -239,6 +360,10 @@ def _summary(table: pd.DataFrame) -> dict:
         "positive_rate": 0.0,
         "limit_up_records": 0,
         "limit_up_rate": 0.0,
+        "average_open_return_pct": 0.0,
+        "average_high_return_pct": 0.0,
+        "average_low_return_pct": 0.0,
+        "average_close_return_pct": 0.0,
         "average_pct_chg": 0.0,
         "daily_average_pct_chg": 0.0,
         "positive_plan_days": 0,
@@ -250,18 +375,24 @@ def _summary(table: pd.DataFrame) -> dict:
 
     normalized = table.copy()
     normalized["plan_trade_date"] = normalized["plan_trade_date"].fillna("").astype(str).str.strip()
-    normalized["_actual_pct"] = pd.to_numeric(normalized["actual_pct_chg"], errors="coerce")
+    numeric_column = lambda name: pd.to_numeric(normalized[name], errors="coerce") if name in normalized.columns else pd.Series(float("nan"), index=normalized.index, dtype="float64")
+    legacy_return = numeric_column("actual_pct_chg")
+    close_return = numeric_column("return_close_pct")
+    normalized["_close_return"] = close_return.where(close_return.notna(), legacy_return)
+    normalized["_open_return"] = numeric_column("return_open_pct")
+    normalized["_high_return"] = numeric_column("return_high_pct")
+    normalized["_low_return"] = numeric_column("return_low_pct")
     verified = normalized[normalized["truth_status"].fillna("").astype(str).eq("verified")].copy()
-    verified_pct = verified["_actual_pct"].dropna()
+    verified_pct = verified["_close_return"].dropna()
     limit_up = verified[verified["is_limit_up_t1"].astype(str).str.lower().isin({"true", "1", "yes"})]
-    positive = verified[verified["_actual_pct"].gt(0)]
+    positive = verified[verified["_close_return"].gt(0)]
 
     valid_dates = normalized[normalized["plan_trade_date"].ne("")]
     total_plan_days = int(valid_dates["plan_trade_date"].nunique())
     daily_returns: list[float] = []
     for _, day in valid_dates.groupby("plan_trade_date", sort=True):
         day_verified = day["truth_status"].fillna("").astype(str).eq("verified")
-        day_pct = day.loc[day_verified, "_actual_pct"].dropna()
+        day_pct = day.loc[day_verified, "_close_return"].dropna()
         if len(day) and day_verified.all() and len(day_pct) == len(day):
             daily_returns.append(float(day_pct.mean()))
 
@@ -280,11 +411,16 @@ def _summary(table: pd.DataFrame) -> dict:
         "positive_rate": round(len(positive) / len(verified) * 100, 2) if len(verified) else 0.0,
         "limit_up_records": int(len(limit_up)),
         "limit_up_rate": round(len(limit_up) / len(verified) * 100, 2) if len(verified) else 0.0,
+        "average_open_return_pct": round(float(verified["_open_return"].dropna().mean()), 2) if verified["_open_return"].notna().any() else 0.0,
+        "average_high_return_pct": round(float(verified["_high_return"].dropna().mean()), 2) if verified["_high_return"].notna().any() else 0.0,
+        "average_low_return_pct": round(float(verified["_low_return"].dropna().mean()), 2) if verified["_low_return"].notna().any() else 0.0,
+        "average_close_return_pct": round(float(verified_pct.mean()), 2) if len(verified_pct) else 0.0,
         "average_pct_chg": round(float(verified_pct.mean()), 2) if len(verified_pct) else 0.0,
         "daily_average_pct_chg": round(float(daily_series.mean()), 2) if verified_plan_days else 0.0,
         "positive_plan_days": positive_plan_days,
         "plan_day_win_rate": round(positive_plan_days / verified_plan_days * 100, 2) if verified_plan_days else 0.0,
         "cumulative_pct_chg": round(cumulative_pct_chg, 2),
+        "return_basis": "plan_price_to_next_trade_day",
     }
 
 
