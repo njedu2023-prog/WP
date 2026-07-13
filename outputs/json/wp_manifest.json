@@ -1,9 +1,9 @@
 {
-  "latest_update": "2026-07-13 04:09:28",
-  "market_data_time": "2026-07-09 14:43:14",
-  "wp_run_time": "2026-07-13 04:09:28",
-  "top50_count": 0,
-  "buy_plan_count": 0,
+  "latest_update": "2026-07-13 10:20:28",
+  "market_data_time": "2026-07-13 10:18:43",
+  "wp_run_time": "2026-07-13 10:20:28",
+  "top50_count": 21,
+  "buy_plan_count": 1,
   "validation_summary": {
     "total_plan_days": 2,
     "verified_plan_days": 2,
@@ -28,6 +28,6 @@
   },
   "model_version": "wp_rule_v2_1",
   "backtest_window_count": 3,
-  "health_status": "数据日期过期",
+  "health_status": "ok",
   "preserved_latest_html": false
 }

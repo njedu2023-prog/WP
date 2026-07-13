@@ -1,1 +1,2 @@
 ﻿buy_rank,portfolio_group,ts_code,name,rank,price,pct_chg,sector_name,p_limitup_t1,wp_score,decision_score,model_confidence,risk_penalty_score,acceptance_score,momentum_score,close_position,intraday_pullback_pct,intraday_vwap_position,confirm_before_buy,reject_if,buy_reason
+1,核心,600360.SH,华微电子,1,18.16,8.159618820726621,半导体,3.036159013773194,61.28557968354842,48.41989774779039,61.96620563171605,43.714124841556846,74.06052303193881,65.83448255886462,87.1244635193133,1.6519823788546215,3.279620853080578,涨幅>8%、承接稳、板块不退,破8%/回落大/板块弱/难成交,强板块、承接好、近高收
