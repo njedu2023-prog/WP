@@ -1,7 +1,7 @@
 {
-  "latest_update": "2026-07-13 10:20:28",
+  "latest_update": "2026-07-13 11:08:13",
   "market_data_time": "2026-07-13 10:18:43",
-  "wp_run_time": "2026-07-13 10:20:28",
+  "wp_run_time": "2026-07-13 11:08:13",
   "top50_count": 21,
   "buy_plan_count": 1,
   "validation_summary": {
@@ -27,7 +27,7 @@
     "return_basis": "plan_price_to_next_trade_day"
   },
   "model_version": "wp_rule_v2_1",
-  "backtest_window_count": 3,
+  "backtest_window_count": 1,
   "health_status": "ok",
   "preserved_latest_html": false
 }
