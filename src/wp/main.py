@@ -35,7 +35,20 @@ def load_backtest_summaries(output_root: Path) -> list[dict]:
             continue
         if payload.get("model_version") == MODEL_VERSION:
             summaries.append(payload)
-    return summaries
+    summaries.sort(key=lambda item: (str(item.get("start_date", "")), str(item.get("end_date", ""))))
+    return [
+        summary
+        for summary in summaries
+        if not any(
+            str(other.get("start_date", "")) <= str(summary.get("start_date", ""))
+            and str(other.get("end_date", "")) >= str(summary.get("end_date", ""))
+            and (
+                str(other.get("start_date", "")) < str(summary.get("start_date", ""))
+                or str(other.get("end_date", "")) > str(summary.get("end_date", ""))
+            )
+            for other in summaries
+        )
+    ]
 
 
 def setup_logging(update_key: str) -> Path:

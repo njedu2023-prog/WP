@@ -57,18 +57,19 @@ def _backtest_rows(backtests: list[dict]) -> str:
             + f"<td>{_date_text(start)} 至 {_date_text(end)}</td>"
             + f"<td>{_summary_int(summary, 'trade_days')}</td>"
             + f"<td>{_summary_int(summary, 'buy_plan_days')}</td>"
-            + f"<td>{_summary_int(summary, 'buy_trade_count')}</td>"
-            + f"<td>{_fmt(summary.get('buy_average_count_per_day', '-'), 2)}</td>"
-            + f"<td>{_rate(summary.get('buy_positive_close_rate'))}</td>"
-            + f"<td>{_rate(summary.get('buy_limitup_rate'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_daily_avg_next_day_open_pct'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_daily_avg_next_day_high_pct'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_daily_avg_next_day_close_pct'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_cumulative_next_day_close_pct'))}</td>"
+            + f"<td>{_summary_int(summary, 'buy_strict5_plan_days')}</td>"
+            + f"<td>{_summary_int(summary, 'buy_strict5_trade_count')}</td>"
+            + f"<td>{_rate(summary.get('buy_strict5_positive_close_rate'))}</td>"
+            + f"<td>{_rate(summary.get('buy_strict5_limitup_rate'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_strict5_daily_avg_next_day_open_pct'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_strict5_daily_avg_next_day_high_pct'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_strict5_daily_avg_next_day_close_pct'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_strict5_cumulative_next_day_close_pct'))}</td>"
             + f"<td>{_fmt(summary.get('auc', '-'), 4)}</td>"
             + f"<td><a href=\"../backtests/{html.escape(folder)}/summary.json\">汇总</a> · "
             + f"<a href=\"../backtests/{html.escape(folder)}/trades.csv\">Top50</a> · "
-            + f"<a href=\"../backtests/{html.escape(folder)}/buy_trades.csv\">观察名单</a></td>"
+            + f"<a href=\"../backtests/{html.escape(folder)}/buy_trades.csv\">观察名单</a> · "
+            + f"<a href=\"../backtests/{html.escape(folder)}/monthly_summary.csv\">分月</a></td>"
             + "</tr>"
         )
     return "".join(rows) or "<tr><td colspan=\"13\" class=\"empty\">暂无回测数据</td></tr>"
@@ -463,7 +464,7 @@ def render_html(
       </div>
       <div class="table-wrap">
         <table class="backtest-table">
-          <thead><tr><th>区间</th><th>交易日</th><th>观察日</th><th>观察样本</th><th>日均支数</th><th>上涨率</th><th>触及涨停</th><th>次日开盘</th><th>次日最高</th><th>次日收盘</th><th>累计收盘</th><th>AUC</th><th>原始数据</th></tr></thead>
+          <thead><tr><th>区间</th><th>交易日</th><th>观察日</th><th>严格5支日</th><th>严格5支样本</th><th>上涨率</th><th>触及涨停</th><th>次日开盘</th><th>次日最高</th><th>次日收盘</th><th>累计收盘</th><th>AUC</th><th>原始数据</th></tr></thead>
           <tbody>{backtest_rows}</tbody>
         </table>
       </div>

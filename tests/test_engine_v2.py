@@ -1,6 +1,7 @@
 import pandas as pd
 
-from wp.backtest import _buy_portfolio_metrics, build_label_frame
+import wp.backtest as backtest
+from wp.backtest import _buy_monthly_summary, _buy_portfolio_metrics, _data_trade_dates, build_label_frame
 from wp.buy_decision import build_buy_decision
 from wp.ranking import build_ranked_pool
 
@@ -52,3 +53,59 @@ def test_buy_portfolio_metrics_equal_weight_each_plan_day():
     assert metrics["buy_daily_avg_next_day_close_pct"] == 0.5
     assert metrics["buy_plan_day_win_rate"] == 0.5
     assert metrics["buy_cumulative_next_day_close_pct"] == 0.94
+    assert metrics["buy_strict5_plan_days"] == 0
+
+
+def test_strict5_metrics_exclude_underfilled_plan_days():
+    trades = pd.DataFrame(
+        [
+            {
+                "backtest_trade_date": date,
+                "ts_code": f"{date}-{index}",
+                "next_day_open_pct": close_return - 0.5,
+                "next_day_max_pct": close_return + 3,
+                "next_day_drawdown_pct": close_return - 3,
+                "next_day_close_pct": close_return,
+                "label_t1_limitup": int(date == "20260701" and index == 0),
+            }
+            for date, close_return in (("20260701", 1.0), ("20260702", -1.0))
+            for index in range(5)
+        ]
+        + [
+            {
+                "backtest_trade_date": "20260703",
+                "ts_code": "single",
+                "next_day_open_pct": 20.0,
+                "next_day_max_pct": 20.0,
+                "next_day_drawdown_pct": -2.0,
+                "next_day_close_pct": 20.0,
+                "label_t1_limitup": 1,
+            }
+        ]
+    )
+
+    metrics = _buy_portfolio_metrics(trades)
+    monthly = _buy_monthly_summary(trades).iloc[0]
+
+    assert metrics["buy_cumulative_next_day_close_pct"] == 19.988
+    assert metrics["buy_strict5_plan_days"] == 2
+    assert metrics["buy_strict5_trade_count"] == 10
+    assert metrics["buy_strict5_plan_day_win_rate"] == 0.5
+    assert metrics["buy_strict5_cumulative_next_day_close_pct"] == -0.01
+    assert monthly["strict5_plan_days"] == 2
+    assert monthly["strict5_trade_count"] == 10
+    assert monthly["strict5_cumulative_close_pct"] == -0.01
+
+
+def test_data_trade_dates_exclude_empty_holiday_directories():
+    original_available = backtest._available_trade_dates
+    original_reader = backtest._read_remote_csv
+    backtest._available_trade_dates = lambda start, end: ["20260403", "20260406", "20260407"]
+    backtest._read_remote_csv = lambda path, cache_root=None: pd.DataFrame() if "20260406" in path else pd.DataFrame([{"ts_code": "A"}])
+    try:
+        dates = _data_trade_dates("20260403", "20260407")
+    finally:
+        backtest._available_trade_dates = original_available
+        backtest._read_remote_csv = original_reader
+
+    assert dates == ["20260403", "20260407"]

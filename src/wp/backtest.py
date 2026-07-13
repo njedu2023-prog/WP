@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import datetime, timedelta
+from functools import lru_cache
 from io import StringIO
 from pathlib import Path
 from urllib.error import HTTPError, URLError
@@ -85,21 +86,28 @@ def _read_remote_csv(path: str, cache_root: Path | None = None) -> pd.DataFrame:
         return pd.DataFrame()
 
 
+@lru_cache(maxsize=16)
+def _available_year_dates(year: int) -> tuple[str, ...]:
+    url = f"{API_BASE_URL}/data/raw/{year}?ref=main"
+    try:
+        req = Request(url, headers={"Accept": "application/vnd.github+json"})
+        with urlopen(req, timeout=30) as resp:
+            payload = json.loads(resp.read().decode("utf-8"))
+        return tuple(sorted(item["name"] for item in payload if item.get("type") == "dir"))
+    except (HTTPError, URLError, OSError, json.JSONDecodeError):
+        return ()
+
+
 def _available_trade_dates(start_date: str, end_date: str) -> list[str]:
     start = _date_key(start_date)
     end = _date_key(end_date)
     years = range(int(start[:4]), int(end[:4]) + 1)
-    dates: list[str] = []
-    for year in years:
-        url = f"{API_BASE_URL}/data/raw/{year}?ref=main"
-        try:
-            req = Request(url, headers={"Accept": "application/vnd.github+json"})
-            with urlopen(req, timeout=30) as resp:
-                payload = json.loads(resp.read().decode("utf-8"))
-            dates.extend(item["name"] for item in payload if item.get("type") == "dir")
-        except (HTTPError, URLError, OSError, json.JSONDecodeError):
-            continue
-    dates = sorted(date for date in dates if start <= date <= end)
+    dates = sorted(
+        date
+        for year in years
+        for date in _available_year_dates(year)
+        if start <= date <= end
+    )
     if dates:
         return dates
 
@@ -112,17 +120,25 @@ def _available_trade_dates(start_date: str, end_date: str) -> list[str]:
     return dates
 
 
-def _next_available_date(trade_date: str) -> str | None:
+def _data_trade_dates(start_date: str, end_date: str, cache_root: Path | None = None) -> list[str]:
+    return [
+        date
+        for date in _available_trade_dates(start_date, end_date)
+        if not _read_remote_csv(f"data/raw/{date[:4]}/{date}/daily.csv", cache_root).empty
+    ]
+
+
+def _next_available_date(trade_date: str, cache_root: Path | None = None) -> str | None:
     start = (datetime.strptime(trade_date, "%Y%m%d") + timedelta(days=1)).strftime("%Y%m%d")
     end = (datetime.strptime(trade_date, "%Y%m%d") + timedelta(days=14)).strftime("%Y%m%d")
-    dates = _available_trade_dates(start, end)
+    dates = _data_trade_dates(start, end, cache_root)
     return dates[0] if dates else None
 
 
-def _previous_available_date(trade_date: str) -> str | None:
+def _previous_available_date(trade_date: str, cache_root: Path | None = None) -> str | None:
     start = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=14)).strftime("%Y%m%d")
     end = (datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=1)).strftime("%Y%m%d")
-    dates = _available_trade_dates(start, end)
+    dates = _data_trade_dates(start, end, cache_root)
     return dates[-1] if dates else None
 
 
@@ -252,7 +268,7 @@ def build_rank_input_for_date(trade_date: str, cache_root: Path | None = None) -
     current_limit_codes = set()
     if not limit_list.empty and "ts_code" in limit_list.columns:
         current_limit_codes = set(limit_list["ts_code"].dropna().astype(str).str.strip())
-    prev_date = _previous_available_date(trade_date)
+    prev_date = _previous_available_date(trade_date, cache_root)
     prev_limit_codes = _limitup_codes(prev_date, cache_root) if prev_date else set()
     up_limit = _to_num(out, "up_limit")
     out["today_limit_up_price"] = up_limit
@@ -352,10 +368,15 @@ def build_label_frame(today_rank: pd.DataFrame, next_day: pd.DataFrame) -> pd.Da
     return merged
 
 
-def add_t1_labels(today_rank: pd.DataFrame, trade_date: str, cache_root: Path | None = None) -> pd.DataFrame:
+def add_t1_labels(
+    today_rank: pd.DataFrame,
+    trade_date: str,
+    cache_root: Path | None = None,
+    next_date: str | None = None,
+) -> pd.DataFrame:
     if today_rank.empty:
         return today_rank.copy()
-    next_date = _next_available_date(_date_key(trade_date))
+    next_date = next_date or _next_available_date(_date_key(trade_date), cache_root)
     out = today_rank.copy()
     out["next_trade_date"] = next_date or ""
     out["label_t1_limitup"] = np.nan
@@ -493,6 +514,18 @@ def _buy_portfolio_metrics(frame: pd.DataFrame) -> dict:
         "buy_daily_avg_next_day_close_pct": None,
         "buy_plan_day_win_rate": 0.0,
         "buy_cumulative_next_day_close_pct": 0.0,
+        "buy_strict5_plan_days": 0,
+        "buy_strict5_trade_count": 0,
+        "buy_strict5_positive_close_rate": 0.0,
+        "buy_strict5_limitup_rate": 0.0,
+        "buy_strict5_daily_avg_next_day_open_pct": None,
+        "buy_strict5_daily_avg_next_day_high_pct": None,
+        "buy_strict5_daily_avg_next_day_low_pct": None,
+        "buy_strict5_daily_avg_next_day_close_pct": None,
+        "buy_strict5_median_next_day_close_pct": None,
+        "buy_strict5_plan_day_win_rate": 0.0,
+        "buy_strict5_cumulative_next_day_close_pct": 0.0,
+        "buy_strict5_worst_day_close_pct": None,
     }
     if frame.empty or "backtest_trade_date" not in frame.columns:
         return empty
@@ -527,7 +560,108 @@ def _buy_portfolio_metrics(frame: pd.DataFrame) -> dict:
             result[target] = round(float(daily[source].dropna().mean()), 4)
     result["buy_plan_day_win_rate"] = round(float(close_return.gt(0).mean()), 4)
     result["buy_cumulative_next_day_close_pct"] = round(float(((1 + close_return / 100).prod() - 1) * 100), 4)
+
+    strict_dates = counts[counts.eq(5)].index
+    strict_daily = daily.loc[daily.index.intersection(strict_dates)]
+    strict_trades = frame[frame["backtest_trade_date"].isin(strict_dates)].copy()
+    strict_close = strict_daily["next_day_close_pct"].dropna()
+    if not strict_close.empty:
+        result["buy_strict5_plan_days"] = int(len(strict_close))
+        result["buy_strict5_trade_count"] = int(len(strict_trades))
+        strict_stock_close = pd.to_numeric(strict_trades.get("next_day_close_pct"), errors="coerce").dropna()
+        strict_limitup = pd.to_numeric(strict_trades.get("label_t1_limitup"), errors="coerce").dropna()
+        result["buy_strict5_positive_close_rate"] = round(float(strict_stock_close.gt(0).mean()), 4) if len(strict_stock_close) else 0.0
+        result["buy_strict5_limitup_rate"] = round(float(strict_limitup.mean()), 4) if len(strict_limitup) else 0.0
+        strict_metric_map = {
+            "next_day_open_pct": "buy_strict5_daily_avg_next_day_open_pct",
+            "next_day_max_pct": "buy_strict5_daily_avg_next_day_high_pct",
+            "next_day_drawdown_pct": "buy_strict5_daily_avg_next_day_low_pct",
+            "next_day_close_pct": "buy_strict5_daily_avg_next_day_close_pct",
+        }
+        for source, target in strict_metric_map.items():
+            if source in strict_daily.columns and strict_daily[source].notna().any():
+                result[target] = round(float(strict_daily[source].dropna().mean()), 4)
+        result["buy_strict5_median_next_day_close_pct"] = round(float(strict_close.median()), 4)
+        result["buy_strict5_plan_day_win_rate"] = round(float(strict_close.gt(0).mean()), 4)
+        result["buy_strict5_cumulative_next_day_close_pct"] = round(float(((1 + strict_close / 100).prod() - 1) * 100), 4)
+        result["buy_strict5_worst_day_close_pct"] = round(float(strict_close.min()), 4)
     return result
+
+
+def _buy_monthly_summary(frame: pd.DataFrame) -> pd.DataFrame:
+    columns = [
+        "month",
+        "plan_days",
+        "trade_count",
+        "average_count_per_day",
+        "daily_avg_open_pct",
+        "daily_avg_high_pct",
+        "daily_avg_low_pct",
+        "daily_avg_close_pct",
+        "plan_day_win_rate",
+        "cumulative_close_pct",
+        "strict5_plan_days",
+        "strict5_trade_count",
+        "strict5_stock_win_rate",
+        "strict5_limitup_rate",
+        "strict5_daily_avg_open_pct",
+        "strict5_daily_avg_high_pct",
+        "strict5_daily_avg_low_pct",
+        "strict5_daily_avg_close_pct",
+        "strict5_median_close_pct",
+        "strict5_plan_day_win_rate",
+        "strict5_cumulative_close_pct",
+        "strict5_worst_day_close_pct",
+    ]
+    if frame.empty or "backtest_trade_date" not in frame.columns:
+        return pd.DataFrame(columns=columns)
+    work = frame.copy()
+    work["backtest_trade_date"] = work["backtest_trade_date"].astype(str)
+    metric_columns = ["next_day_open_pct", "next_day_max_pct", "next_day_drawdown_pct", "next_day_close_pct"]
+    for column in metric_columns:
+        work[column] = pd.to_numeric(work.get(column), errors="coerce")
+    work["month"] = work["backtest_trade_date"].str[:6]
+    rows = []
+    for month, month_trades in work.groupby("month", sort=True):
+        daily = month_trades.groupby("backtest_trade_date")[metric_columns].mean()
+        counts = month_trades.groupby("backtest_trade_date").size()
+        close_return = daily["next_day_close_pct"].dropna()
+        strict_dates = counts[counts.eq(5)].index
+        strict_daily = daily.loc[daily.index.intersection(strict_dates)]
+        strict_trades = month_trades[month_trades["backtest_trade_date"].isin(strict_dates)]
+        strict_close = strict_daily["next_day_close_pct"].dropna()
+        strict_stock_close = strict_trades["next_day_close_pct"].dropna()
+        strict_limitup = pd.to_numeric(strict_trades.get("label_t1_limitup"), errors="coerce").dropna()
+
+        def mean_or_none(data: pd.DataFrame, column: str) -> float | None:
+            values = data[column].dropna() if column in data.columns else pd.Series(dtype="float64")
+            return round(float(values.mean()), 4) if len(values) else None
+
+        rows.append({
+            "month": month,
+            "plan_days": int(len(close_return)),
+            "trade_count": int(len(month_trades)),
+            "average_count_per_day": round(float(counts.mean()), 2),
+            "daily_avg_open_pct": mean_or_none(daily, "next_day_open_pct"),
+            "daily_avg_high_pct": mean_or_none(daily, "next_day_max_pct"),
+            "daily_avg_low_pct": mean_or_none(daily, "next_day_drawdown_pct"),
+            "daily_avg_close_pct": mean_or_none(daily, "next_day_close_pct"),
+            "plan_day_win_rate": round(float(close_return.gt(0).mean()), 4) if len(close_return) else 0.0,
+            "cumulative_close_pct": round(float(((1 + close_return / 100).prod() - 1) * 100), 4) if len(close_return) else 0.0,
+            "strict5_plan_days": int(len(strict_close)),
+            "strict5_trade_count": int(len(strict_trades)),
+            "strict5_stock_win_rate": round(float(strict_stock_close.gt(0).mean()), 4) if len(strict_stock_close) else 0.0,
+            "strict5_limitup_rate": round(float(strict_limitup.mean()), 4) if len(strict_limitup) else 0.0,
+            "strict5_daily_avg_open_pct": mean_or_none(strict_daily, "next_day_open_pct"),
+            "strict5_daily_avg_high_pct": mean_or_none(strict_daily, "next_day_max_pct"),
+            "strict5_daily_avg_low_pct": mean_or_none(strict_daily, "next_day_drawdown_pct"),
+            "strict5_daily_avg_close_pct": mean_or_none(strict_daily, "next_day_close_pct"),
+            "strict5_median_close_pct": round(float(strict_close.median()), 4) if len(strict_close) else None,
+            "strict5_plan_day_win_rate": round(float(strict_close.gt(0).mean()), 4) if len(strict_close) else 0.0,
+            "strict5_cumulative_close_pct": round(float(((1 + strict_close / 100).prod() - 1) * 100), 4) if len(strict_close) else 0.0,
+            "strict5_worst_day_close_pct": round(float(strict_close.min()), 4) if len(strict_close) else None,
+        })
+    return pd.DataFrame(rows, columns=columns)
 
 
 def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n: int = 50) -> BacktestResult:
@@ -535,7 +669,13 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     end = _date_key(end_date)
     output_root = Path(output_root)
     cache_root = output_root.parent / "data" / "cache" / "history"
-    dates = _available_trade_dates(start, end)
+    future_end = (datetime.strptime(end, "%Y%m%d") + timedelta(days=14)).strftime("%Y%m%d")
+    all_dates = _data_trade_dates(start, future_end, cache_root)
+    dates = [date for date in all_dates if date <= end]
+    next_date_by_date = {
+        date: all_dates[index + 1] if index + 1 < len(all_dates) else None
+        for index, date in enumerate(all_dates)
+    }
     all_trades: list[pd.DataFrame] = []
     all_buy_trades: list[pd.DataFrame] = []
     daily_rows: list[dict] = []
@@ -547,14 +687,15 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
         top50, full_rank = rank_candidates(scored, _date_dash(trade_date), top_n=top_n)
         buy_pool = build_ranked_pool(scored, full_rank, top_n)
         buy_plan = build_buy_decision(buy_pool).buy_plan
-        labeled = add_t1_labels(top50, trade_date, cache_root)
+        next_trade_date = next_date_by_date.get(trade_date)
+        labeled = add_t1_labels(top50, trade_date, cache_root, next_date=next_trade_date)
         verified = labeled[labeled.get("label_available", pd.Series(False, index=labeled.index)).fillna(False)].copy()
         if not verified.empty:
             verified["backtest_trade_date"] = trade_date
             verified["backtest_data_mode"] = "eod_proxy"
             verified["calibration_eligible"] = False
             all_trades.append(verified)
-        buy_labeled = add_t1_labels(buy_plan, trade_date, cache_root)
+        buy_labeled = add_t1_labels(buy_plan, trade_date, cache_root, next_date=next_trade_date)
         buy_verified = buy_labeled[
             buy_labeled.get("label_available", pd.Series(False, index=buy_labeled.index)).fillna(False)
         ].copy()
@@ -583,6 +724,7 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     buy_trades = pd.concat(all_buy_trades, ignore_index=True, sort=False) if all_buy_trades else pd.DataFrame()
     daily_summary = pd.DataFrame(daily_rows)
     buy_portfolio_metrics = _buy_portfolio_metrics(buy_trades)
+    monthly_summary = _buy_monthly_summary(buy_trades)
     summary = {
         "mode": "backtest",
         "model_version": MODEL_VERSION,
@@ -615,6 +757,7 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
         "avg_next_day_close_pct_top50": _mean_metric(trades, "next_day_close_pct"),
         "max_drawdown_risk_top50": _min_metric(trades, "next_day_drawdown_pct"),
         "generated_at": datetime.now().isoformat(timespec="seconds"),
+        "monthly_count": int(len(monthly_summary)),
     }
 
     out_dir = output_root / "backtests" / f"{start}_{end}"
@@ -622,13 +765,20 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     trades.to_csv(out_dir / "trades.csv", index=False, encoding="utf-8-sig")
     buy_trades.to_csv(out_dir / "buy_trades.csv", index=False, encoding="utf-8-sig")
     daily_summary.to_csv(out_dir / "daily_summary.csv", index=False, encoding="utf-8-sig")
+    monthly_summary.to_csv(out_dir / "monthly_summary.csv", index=False, encoding="utf-8-sig")
     write_json(out_dir / "summary.json", summary)
     write_json(output_root / "json" / "wp_backtest_latest.json", summary)
-    render_backtest_html(summary, daily_summary, trades, output_root / "html_reports" / "backtest_latest.html")
+    render_backtest_html(summary, daily_summary, trades, output_root / "html_reports" / "backtest_latest.html", monthly_summary)
     return BacktestResult(trades=trades, daily_summary=daily_summary, summary=summary)
 
 
-def render_backtest_html(summary: dict, daily_summary: pd.DataFrame, trades: pd.DataFrame, output_path: str | Path) -> None:
+def render_backtest_html(
+    summary: dict,
+    daily_summary: pd.DataFrame,
+    trades: pd.DataFrame,
+    output_path: str | Path,
+    monthly_summary: pd.DataFrame | None = None,
+) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     daily_rows = "".join(
@@ -640,6 +790,29 @@ def render_backtest_html(summary: dict, daily_summary: pd.DataFrame, trades: pd.
         f"<tr><td>{row.backtest_trade_date}</td><td>{row.rank}</td><td>{row.ts_code}</td><td>{row.name}</td><td>{float(row.p_limitup_t1):.2f}%</td><td>{float(row.wp_score):.2f}</td><td>{int(row.label_t1_limitup)}</td></tr>"
         for row in trade_preview.itertuples(index=False)
     ) or "<tr><td colspan='7' class='empty'>无交易样本</td></tr>"
+    monthly_summary = monthly_summary if monthly_summary is not None else pd.DataFrame()
+
+    def pct(value: object) -> str:
+        number = pd.to_numeric(pd.Series([value]), errors="coerce").iloc[0]
+        return "-" if pd.isna(number) else f"{float(number):+.2f}%"
+
+    monthly_rows = "".join(
+        "<tr>"
+        + f"<td>{row.month}</td>"
+        + f"<td>{int(row.strict5_plan_days)}</td>"
+        + f"<td>{int(row.strict5_trade_count)}</td>"
+        + f"<td>{pct(row.strict5_daily_avg_open_pct)}</td>"
+        + f"<td>{pct(row.strict5_daily_avg_high_pct)}</td>"
+        + f"<td>{pct(row.strict5_daily_avg_low_pct)}</td>"
+        + f"<td>{pct(row.strict5_daily_avg_close_pct)}</td>"
+        + f"<td>{float(row.strict5_plan_day_win_rate):.2%}</td>"
+        + f"<td>{float(row.strict5_stock_win_rate):.2%}</td>"
+        + f"<td>{float(row.strict5_limitup_rate):.2%}</td>"
+        + f"<td>{pct(row.strict5_cumulative_close_pct)}</td>"
+        + f"<td>{pct(row.strict5_worst_day_close_pct)}</td>"
+        + "</tr>"
+        for row in monthly_summary.itertuples(index=False)
+    ) or "<tr><td colspan='12' class='empty'>无分月数据</td></tr>"
     html = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -678,10 +851,19 @@ def render_backtest_html(summary: dict, daily_summary: pd.DataFrame, trades: pd.
       <div>观察组合次日最高：<strong>{f'{summary["buy_daily_avg_next_day_high_pct"]:.2f}%' if summary["buy_daily_avg_next_day_high_pct"] is not None else "-"}</strong></div>
       <div>观察组合次日收盘：<strong>{f'{summary["buy_daily_avg_next_day_close_pct"]:.2f}%' if summary["buy_daily_avg_next_day_close_pct"] is not None else "-"}</strong></div>
       <div>观察组合累计收盘：<strong>{summary["buy_cumulative_next_day_close_pct"]:.2f}%</strong></div>
+      <div>严格5支计划日：<strong>{summary["buy_strict5_plan_days"]}</strong></div>
+      <div>严格5支样本：<strong>{summary["buy_strict5_trade_count"]}</strong></div>
+      <div>严格5支次日开盘：<strong>{f'{summary["buy_strict5_daily_avg_next_day_open_pct"]:.2f}%' if summary["buy_strict5_daily_avg_next_day_open_pct"] is not None else "-"}</strong></div>
+      <div>严格5支次日最高：<strong>{f'{summary["buy_strict5_daily_avg_next_day_high_pct"]:.2f}%' if summary["buy_strict5_daily_avg_next_day_high_pct"] is not None else "-"}</strong></div>
+      <div>严格5支次日收盘：<strong>{f'{summary["buy_strict5_daily_avg_next_day_close_pct"]:.2f}%' if summary["buy_strict5_daily_avg_next_day_close_pct"] is not None else "-"}</strong></div>
+      <div>严格5支累计收盘：<strong>{summary["buy_strict5_cumulative_next_day_close_pct"]:.2f}%</strong></div>
+      <div>严格5支计划日胜率：<strong>{summary["buy_strict5_plan_day_win_rate"]:.2%}</strong></div>
+      <div>严格5支最差单日：<strong>{f'{summary["buy_strict5_worst_day_close_pct"]:.2f}%' if summary["buy_strict5_worst_day_close_pct"] is not None else "-"}</strong></div>
       <div>Top10 平均次日最高涨幅：<strong>{f'{summary["avg_next_day_max_pct_top10"]:.2f}%' if summary["avg_next_day_max_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 平均次日收盘涨幅：<strong>{f'{summary["avg_next_day_close_pct_top10"]:.2f}%' if summary["avg_next_day_close_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 最大回撤风险：<strong>{f'{summary["max_drawdown_risk_top10"]:.2f}%' if summary["max_drawdown_risk_top10"] is not None else "-"}</strong></div>
     </section>
+    <section class="panel"><h2>严格 5 支组合分月结果</h2><div class="table-wrap"><table><thead><tr><th>月份</th><th>计划日</th><th>样本</th><th>次日开盘</th><th>次日最高</th><th>次日最低</th><th>次日收盘</th><th>日胜率</th><th>个股上涨率</th><th>触及涨停</th><th>累计收盘</th><th>最差单日</th></tr></thead><tbody>{monthly_rows}</tbody></table></div></section>
     <section class="panel"><h2>每日汇总</h2><div class="table-wrap"><table><thead><tr><th>日期</th><th>原始数</th><th>候选数</th><th>Top数</th><th>Top10</th><th>Top20</th><th>Top50</th><th>下一交易日</th></tr></thead><tbody>{daily_rows}</tbody></table></div></section>
     <section class="panel"><h2>样本预览</h2><div class="table-wrap"><table><thead><tr><th>日期</th><th>排名</th><th>代码</th><th>名称</th><th>概率</th><th>评分</th><th>T+1涨停</th></tr></thead><tbody>{trade_rows}</tbody></table></div></section>
   </main>

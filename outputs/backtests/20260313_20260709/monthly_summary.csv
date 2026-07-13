@@ -1,0 +1,6 @@
+﻿month,plan_days,trade_count,average_count_per_day,daily_avg_open_pct,daily_avg_high_pct,daily_avg_low_pct,daily_avg_close_pct,plan_day_win_rate,cumulative_close_pct,strict5_plan_days,strict5_trade_count,strict5_stock_win_rate,strict5_limitup_rate,strict5_daily_avg_open_pct,strict5_daily_avg_high_pct,strict5_daily_avg_low_pct,strict5_daily_avg_close_pct,strict5_median_close_pct,strict5_plan_day_win_rate,strict5_cumulative_close_pct,strict5_worst_day_close_pct
+202603,13,44,3.38,-1.1666,4.2594,-3.7776,0.8669,0.3846,9.5884,5,25,0.36,0.0,-1.3339,1.8829,-3.6152,-1.4863,-1.741,0.2,-7.2455,-2.9254
+202604,21,85,4.05,-0.7847,4.7015,-3.1811,1.62,0.5714,36.6946,14,70,0.5,0.0143,-0.6801,3.5883,-2.9905,0.5662,0.1824,0.5714,7.4952,-3.7887
+202605,17,79,4.65,-0.459,3.7913,-3.9861,-0.2678,0.5294,-5.0678,14,70,0.4143,0.0429,-0.3921,3.7398,-3.7459,-0.2478,0.3968,0.5714,-3.8038,-5.164
+202606,21,102,4.86,-0.4215,4.9287,-3.5367,1.0998,0.5714,24.8102,18,90,0.5,0.0444,-0.5124,4.7819,-3.647,0.7852,0.6354,0.5556,14.4081,-3.7435
+202607,7,27,3.86,-1.3063,4.6645,-5.7424,-1.205,0.2857,-8.7981,3,15,0.2667,0.0667,-1.4862,3.1472,-6.7149,-3.865,-2.0986,0.0,-11.3853,-9.382

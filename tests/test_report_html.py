@@ -1,6 +1,8 @@
 import pandas as pd
 
+from wp.main import load_backtest_summaries
 from wp.report_html import render_html
+from wp.scoring_model import MODEL_VERSION
 
 
 def test_report_html_contains_title(tmp_path):
@@ -102,6 +104,14 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
                 "buy_daily_avg_next_day_high_pct": 4.2,
                 "buy_daily_avg_next_day_close_pct": 0.2133,
                 "buy_cumulative_next_day_close_pct": 4.34,
+                "buy_strict5_plan_days": 20,
+                "buy_strict5_trade_count": 100,
+                "buy_strict5_positive_close_rate": 0.53,
+                "buy_strict5_limitup_rate": 0.04,
+                "buy_strict5_daily_avg_next_day_open_pct": 0.11,
+                "buy_strict5_daily_avg_next_day_high_pct": 4.2,
+                "buy_strict5_daily_avg_next_day_close_pct": 0.2133,
+                "buy_strict5_cumulative_next_day_close_pct": 4.34,
             }
         ],
     )
@@ -109,6 +119,27 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
     assert "模型回测验证" in page
     assert "2026-04-27 至 2026-05-22" in page
     assert "0.6209" in page
-    assert "日均支数" in page
+    assert "严格5支日" in page
     assert "+4.34%" in page
     assert "../backtests/20260427_20260522/trades.csv" in page
+    assert "../backtests/20260427_20260522/monthly_summary.csv" in page
+
+
+def test_backtest_summary_list_hides_contained_windows(tmp_path):
+    root = tmp_path / "outputs"
+    windows = [
+        ("20260313_20260709", "20260313", "20260709"),
+        ("20260427_20260522", "20260427", "20260522"),
+        ("20260622_20260709", "20260622", "20260709"),
+    ]
+    for folder, start, end in windows:
+        path = root / "backtests" / folder / "summary.json"
+        path.parent.mkdir(parents=True)
+        path.write_text(
+            f'{{"model_version":"{MODEL_VERSION}","start_date":"{start}","end_date":"{end}"}}',
+            encoding="utf-8",
+        )
+
+    summaries = load_backtest_summaries(root)
+
+    assert [(item["start_date"], item["end_date"]) for item in summaries] == [("20260313", "20260709")]
