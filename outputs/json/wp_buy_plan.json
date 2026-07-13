@@ -1,36 +1,12 @@
 {
-  "generated_at": "2026-07-13 11:08:13",
-  "market_data_time": "2026-07-13 10:18:43",
-  "wp_run_time": "2026-07-13 11:08:13",
+  "generated_at": "2026-07-13 13:00:00",
+  "market_data_time": "2026-07-13 11:34:58",
+  "wp_run_time": "2026-07-13 13:00:00",
   "summary": {
-    "buy_count": 1,
+    "buy_count": 0,
     "max_buy_count": 5,
     "max_sector_positions": 2,
     "selection_rule": "14:20生成最多5支买入观察池；14:50前人工确认尾盘承接后再执行。"
   },
-  "buy_plan": [
-    {
-      "buy_rank": 1,
-      "portfolio_group": "核心",
-      "ts_code": "600360.SH",
-      "name": "华微电子",
-      "rank": 1,
-      "price": 18.16,
-      "pct_chg": 8.159618820726621,
-      "sector_name": "半导体",
-      "p_limitup_t1": 3.036159013773194,
-      "wp_score": 61.28557968354842,
-      "decision_score": 48.41989774779039,
-      "model_confidence": 61.96620563171605,
-      "risk_penalty_score": 43.714124841556846,
-      "acceptance_score": 74.06052303193881,
-      "momentum_score": 65.83448255886462,
-      "close_position": 87.1244635193133,
-      "intraday_pullback_pct": 1.6519823788546215,
-      "intraday_vwap_position": 3.279620853080578,
-      "confirm_before_buy": "涨幅>8%、承接稳、板块不退",
-      "reject_if": "破8%/回落大/板块弱/难成交",
-      "buy_reason": "强板块、承接好、近高收"
-    }
-  ]
+  "buy_plan": []
 }

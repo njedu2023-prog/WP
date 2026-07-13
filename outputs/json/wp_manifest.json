@@ -1,9 +1,9 @@
 {
-  "latest_update": "2026-07-13 11:08:13",
-  "market_data_time": "2026-07-13 10:18:43",
-  "wp_run_time": "2026-07-13 11:08:13",
-  "top50_count": 21,
-  "buy_plan_count": 1,
+  "latest_update": "2026-07-13 13:00:00",
+  "market_data_time": "2026-07-13 11:34:58",
+  "wp_run_time": "2026-07-13 13:00:00",
+  "top50_count": 15,
+  "buy_plan_count": 0,
   "validation_summary": {
     "total_plan_days": 2,
     "verified_plan_days": 2,
