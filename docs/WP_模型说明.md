@@ -36,16 +36,27 @@ ranking_score = 0.70 * capital_score + 0.30 * wp_score
 - 热门题材与公告：`hot_topic_flag`、`announcement_flag` 已接入口径；没有上游数据时按 0 处理。
 - 统计校准：只读取同模型版本、早于当前交易日、`backtest_data_mode=intraday_1420` 且允许校准的样本；先按交易日和代码去重，再用保序 Logit 截距校准。收盘日线代理回测不会进入实时校准。
 
-## 买入观察决策
+## 尾盘收益排序
 
-买入观察计划严格在 Top50 内执行，不改变原始 Top50 排名。系统会综合 `p_limitup_t1`、`wp_score`、`acceptance_score`、`sector_strength_score`、`momentum_score`、`model_confidence`、`capital_score`，并扣减 `risk_penalty_score` 形成 `decision_score`。
+`tail_profit_v1` 在完整的涨幅超过 8% 候选池内计算横截面排名：
 
-组合约束：
+```text
+tail_profit_score = 100 * (
+  0.50 * (1 - pct_chg_rank)
++ 0.25 * capital_score_rank
++ 0.20 * sector_strength_score_rank
++ 0.05 * (1 - risk_penalty_score_rank)
+)
+```
 
-- 最多输出 5 支；
-- 单板块最多 2 支，避免同质化过高；
-- 风险分超过配置阈值的股票不进入买入观察；
-- 承接、置信度、收盘位置、日内回撤必须达到配置门槛；
-- 输出 14:50 前人工确认条件、放弃条件和买入理由。
+排序前执行硬约束：
 
-尚未接入 LogisticRegression、RandomForest、LightGBM/XGBoost 等监督学习模型。当前是可解释规则模型、保序统计校准和时间分段历史验证；收盘代理回测不能证明 14:20 实盘收益。
+- `8% < pct_chg <= 12%`；
+- `risk_penalty_score <= 45`；
+- `close_position >= 50`；
+- `0 < amount_ratio_5d <= 2.5`；
+- 前一日未涨停、当日未涨停，且基础数据完整。
+
+Top50 与尾盘观察使用同一排序。并列时依次按涨幅较低、资金分较高、板块分较高、风险分较低排序，避免浮点尾数决定结果。14:35 后最多输出 1 支主票；没有合格候选时输出空仓。14:50 前仍需人工确认涨幅守住 8%、承接未破坏，系统不做自动下单。
+
+当前模型为固定、可解释的规则模型。历史结果不能保证未来收益；真实效果只按新模型版本的最终尾盘快照和下一交易日市场真值累计验证。

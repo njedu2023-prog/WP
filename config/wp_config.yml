@@ -1,4 +1,4 @@
-project_name: WP 次日涨停概率排序系统
+project_name: WP 尾盘收益排序系统
 input_url: https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/latest/wp_latest_rank_input.csv
 min_pct_chg: 8.0
 min_amount: 100000000
@@ -7,12 +7,10 @@ timezone: Asia/Shanghai
 exclude_st: true
 exclude_suspended: true
 exclude_new_stock_days: 10
-buy_max_count: 5
-buy_max_sector_positions: 2
-buy_max_risk_score: 65
-buy_min_probability: 3
-buy_min_wp_score: 45
-buy_min_acceptance_score: 50
-buy_min_model_confidence: 55
-buy_min_close_position: 55
-buy_max_intraday_pullback_pct: 8
+buy_max_count: 1
+buy_max_sector_positions: 1
+tail_profit_min_pct_chg: 8
+tail_profit_max_pct_chg: 12
+tail_profit_max_risk_score: 45
+tail_profit_min_close_position: 50
+tail_profit_max_amount_ratio_5d: 2.5

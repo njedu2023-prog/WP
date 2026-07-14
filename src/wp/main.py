@@ -19,6 +19,7 @@ from .ranking import build_ranked_pool, rank_candidates
 from .report_html import render_html
 from .report_md import render_markdown
 from .scoring_model import MODEL_VERSION, add_scores
+from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
 from .utils import ensure_dir, load_yaml, write_json
 from .validation import assert_top50_rules, build_healthcheck
 
@@ -33,7 +34,10 @@ def load_backtest_summaries(output_root: Path) -> list[dict]:
             payload = json.loads(path.read_text(encoding="utf-8"))
         except (OSError, json.JSONDecodeError):
             continue
-        if payload.get("model_version") == MODEL_VERSION:
+        if (
+            payload.get("model_version") == MODEL_VERSION
+            and payload.get("buy_model_version") == TAIL_PROFIT_MODEL_VERSION
+        ):
             summaries.append(payload)
     summaries.sort(key=lambda item: (str(item.get("start_date", "")), str(item.get("end_date", ""))))
     return [
@@ -99,7 +103,7 @@ def run() -> dict:
         exclude_suspended=bool(config.get("exclude_suspended", True)),
         exclude_new_stock_days=int(config.get("exclude_new_stock_days", 10)),
     )
-    ranked_input = add_scores(add_feature_scores(candidates))
+    ranked_input = add_tail_profit_scores(add_scores(add_feature_scores(candidates)), config)
     top_n = int(config.get("top_n", 50))
     top50, full_rank = rank_candidates(ranked_input, update_time, top_n=top_n)
     buy_pool = build_ranked_pool(ranked_input, full_rank, top_n)
@@ -118,6 +122,7 @@ def run() -> dict:
         load_result.metadata,
     )
     health["model_version"] = MODEL_VERSION
+    health["buy_model_version"] = TAIL_PROFIT_MODEL_VERSION
     if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
         logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
         top50 = top50.iloc[0:0].copy()
@@ -160,6 +165,7 @@ def run() -> dict:
         "buy_plan": buy_plan.to_dict(orient="records"),
         "top50": top50.to_dict(orient="records"),
         "backtests": backtest_summaries,
+        "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
     }
     write_json(output_root / "json" / "latest.json", latest_payload)
     write_json(
@@ -169,6 +175,7 @@ def run() -> dict:
             "market_data_time": health.get("market_data_time", ""),
             "wp_run_time": update_time,
             "summary": buy_decision.summary,
+            "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
             "buy_plan": buy_plan.to_dict(orient="records"),
         },
     )
@@ -192,6 +199,7 @@ def run() -> dict:
             "buy_plan_count": len(buy_plan),
             "validation_summary": validation_result.summary,
             "model_version": MODEL_VERSION,
+            "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
             "backtest_window_count": len(backtest_summaries),
             "health_status": health["status"],
             "preserved_latest_html": bool(preserve_latest),

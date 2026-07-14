@@ -43,12 +43,17 @@
 - `calibration_method`: 当前使用的概率校准方法；无合格样本时为 `none`。
 - `self_learning_adjustment`: 保序统计校准对概率的修正幅度。
 - `data_source_probability_factor`: 实时行情来源对概率的可信度系数；fallback 时低于 1。
+- `tail_profit_score`: 尾盘收益排序分，综合不过热涨幅、资金、板块和低风险四项横截面排名。
+- `tail_profit_eligible`: 是否通过尾盘收益模型的全部硬约束。
+- `tail_profit_filter_reason`: 未通过尾盘硬约束的原因。
+- `tail_profit_model_version`: 尾盘收益模型版本，当前为 `tail_profit_v1`。
+- `tail_rank_pct_chg` / `tail_rank_capital` / `tail_rank_sector` / `tail_rank_risk`: 尾盘模型使用的当日候选池横截面排名。
 
 ## 买入观察计划字段
 
-- `buy_rank`: 买入观察优先级，最多 5 支。
-- `portfolio_group`: 组合层级，核心或标准。
-- `decision_score`: 买入决策分，综合次日概率、WP 评分、承接、板块、动量、置信度和风险惩罚。
+- `buy_rank`: 尾盘观察优先级，当前最多 1 支。
+- `portfolio_group`: 观察类型，当前为主票。
+- `decision_score`: 与 `tail_profit_score` 相同，保留该字段用于历史接口兼容。
 - `confirm_before_buy`: 14:50 前需要人工确认仍然成立的条件。
 - `reject_if`: 触发后应放弃买入的条件。
 - `buy_reason`: 进入买入观察计划的核心原因。

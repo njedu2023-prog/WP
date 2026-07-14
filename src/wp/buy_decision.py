@@ -4,17 +4,12 @@ from dataclasses import dataclass
 
 import pandas as pd
 
+from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
+
 
 DEFAULT_BUY_CONFIG = {
-    "buy_max_count": 5,
-    "buy_max_sector_positions": 2,
-    "buy_max_risk_score": 65.0,
-    "buy_min_probability": 3.0,
-    "buy_min_wp_score": 45.0,
-    "buy_min_acceptance_score": 50.0,
-    "buy_min_model_confidence": 55.0,
-    "buy_min_close_position": 55.0,
-    "buy_max_intraday_pullback_pct": 8.0,
+    "buy_max_count": 1,
+    "buy_max_sector_positions": 1,
 }
 
 
@@ -27,6 +22,9 @@ BUY_COLUMNS = [
     "price",
     "pct_chg",
     "sector_name",
+    "tail_profit_score",
+    "tail_profit_model_version",
+    "amount_ratio_5d",
     "p_limitup_t1",
     "wp_score",
     "decision_score",
@@ -66,12 +64,24 @@ def _txt(frame: pd.DataFrame, name: str, default: str = "") -> pd.Series:
 
 
 def _sort_for_buy(frame: pd.DataFrame) -> pd.DataFrame:
-    sort_cols = ["decision_score", "p_limitup_t1", "acceptance_score", "model_confidence", "risk_penalty_score", "amount"]
+    sort_cols = [
+        "tail_profit_score",
+        "pct_chg",
+        "capital_score",
+        "sector_strength_score",
+        "risk_penalty_score",
+        "amount",
+    ]
     for col in sort_cols:
         if col not in frame.columns:
             frame[col] = 0.0
         frame[col] = pd.to_numeric(frame[col], errors="coerce").fillna(0.0)
-    return frame.sort_values(sort_cols, ascending=[False, False, False, False, True, False], kind="mergesort").reset_index(drop=True)
+    frame["ts_code"] = _txt(frame, "ts_code")
+    return frame.sort_values(
+        sort_cols + ["ts_code"],
+        ascending=[False, True, False, False, True, False, True],
+        kind="mergesort",
+    ).reset_index(drop=True)
 
 
 def _row_float(row: pd.Series, name: str, default: float = 0.0) -> float:
@@ -80,51 +90,22 @@ def _row_float(row: pd.Series, name: str, default: float = 0.0) -> float:
 
 
 def _reason(row: pd.Series) -> str:
-    reasons: list[str] = []
-    if _row_float(row, "p_limitup_t1") >= 8:
-        reasons.append("高概率")
-    if _row_float(row, "sector_strength_score") >= 70:
-        reasons.append("强板块")
-    if _row_float(row, "acceptance_score") >= 65:
-        reasons.append("承接好")
-    if _row_float(row, "close_position", 50) >= 75:
-        reasons.append("近高收")
-    if _row_float(row, "intraday_vwap_position") > 0:
-        reasons.append("强均价")
-    if _row_float(row, "risk_penalty_score") <= 45:
-        reasons.append("低风险")
-    return "、".join(reasons[:3]) or "综合入选"
-
-
-def _skip_reason(row: pd.Series, cfg: dict) -> str:
-    reasons: list[str] = []
-    if float(row.get("risk_penalty_score", 0) or 0) > cfg["buy_max_risk_score"]:
-        reasons.append("风险分过高")
-    if float(row.get("p_limitup_t1", 0) or 0) < cfg["buy_min_probability"]:
-        reasons.append("次日涨停概率不足")
-    if float(row.get("wp_score", 0) or 0) < cfg["buy_min_wp_score"]:
-        reasons.append("综合评分不足")
-    if float(row.get("acceptance_score", 0) or 0) < cfg["buy_min_acceptance_score"]:
-        reasons.append("承接分不足")
-    if float(row.get("model_confidence", 0) or 0) < cfg["buy_min_model_confidence"]:
-        reasons.append("模型置信度不足")
-    if float(row.get("close_position", 50) or 50) < cfg["buy_min_close_position"]:
-        reasons.append("收盘位置偏低")
-    if float(row.get("intraday_pullback_pct", 0) or 0) > cfg["buy_max_intraday_pullback_pct"]:
-        reasons.append("日内回撤偏大")
-    if int(float(row.get("today_limitup", 0) or 0)) == 1:
-        reasons.append("今日已涨停")
-    if int(float(row.get("pre_day_limitup", 0) or 0)) == 1:
-        reasons.append("昨日涨停")
-    return "，".join(reasons)
+    reasons = ["涨幅不过热"]
+    if _row_float(row, "tail_rank_capital") >= 0.70:
+        reasons.append("资金强")
+    if _row_float(row, "tail_rank_sector") >= 0.70:
+        reasons.append("板块强")
+    if len(reasons) < 3 and _row_float(row, "risk_penalty_score", 100) <= 25:
+        reasons.append("风险低")
+    return "、".join(reasons[:3])
 
 
 def _confirm_text() -> str:
-    return "涨幅>8%、承接稳、板块不退"
+    return "守8%、承接稳"
 
 
 def _reject_text() -> str:
-    return "破8%/回落大/板块弱/难成交"
+    return "破8%/急回落/板块转弱"
 
 
 def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -> BuyDecisionResult:
@@ -132,15 +113,25 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     cfg.update({key: value for key, value in (config or {}).items() if key in cfg})
     for key in DEFAULT_BUY_CONFIG:
         cfg[key] = float(cfg[key])
-    max_count = int(cfg["buy_max_count"])
-    max_sector_positions = int(cfg["buy_max_sector_positions"])
+    # tail_profit_v1 was validated as a single-position model. Keep the
+    # production constraint fixed even if an older config requests more.
+    max_count = 1
+    max_sector_positions = 1
 
     if ranked_input.empty:
         empty_plan = pd.DataFrame(columns=BUY_COLUMNS)
         empty_decision = pd.DataFrame(columns=DECISION_COLUMNS)
         return BuyDecisionResult(empty_plan, empty_decision, {"buy_count": 0})
 
-    out = ranked_input.copy()
+    tail_columns = {
+        "tail_profit_score",
+        "tail_profit_eligible",
+        "tail_profit_filter_reason",
+        "tail_profit_model_version",
+        "tail_rank_capital",
+        "tail_rank_sector",
+    }
+    out = ranked_input.copy() if tail_columns.issubset(ranked_input.columns) else add_tail_profit_scores(ranked_input, config)
     if "rank" not in out.columns:
         out = _sort_for_buy(out)
         out["rank"] = out.index + 1
@@ -155,6 +146,8 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     out["capital_score"] = _num(out, "capital_score")
     out["model_confidence"] = _num(out, "model_confidence")
     out["risk_penalty_score"] = _num(out, "risk_penalty_score")
+    out["tail_profit_score"] = _num(out, "tail_profit_score")
+    out["amount_ratio_5d"] = _num(out, "amount_ratio_5d")
     out["pct_chg"] = _num(out, "pct_chg")
     out["price"] = _num(out, "price")
     out["close_position"] = _num(out, "close_position", 50)
@@ -162,18 +155,9 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     out["intraday_vwap_position"] = _num(out, "intraday_vwap_position")
     out["pre_day_limitup"] = _num(out, "pre_day_limitup").astype(int)
     out["today_limitup"] = _num(out, "today_limitup").astype(int)
-    out["decision_score"] = (
-        out["p_limitup_t1"] * 2.00
-        + out["wp_score"] * 0.20
-        + out["acceptance_score"] * 0.16
-        + out["sector_strength_score"] * 0.12
-        + out["momentum_score"] * 0.10
-        + out["model_confidence"] * 0.08
-        + out["capital_score"] * 0.08
-        - out["risk_penalty_score"] * 0.22
-    ).clip(0, 100)
-    out["skip_reason"] = out.apply(_skip_reason, axis=1, cfg=cfg)
-    out["buy_eligible"] = out["skip_reason"].eq("")
+    out["decision_score"] = out["tail_profit_score"]
+    out["skip_reason"] = _txt(out, "tail_profit_filter_reason")
+    out["buy_eligible"] = out.get("tail_profit_eligible", False).fillna(False).astype(bool)
     out = _sort_for_buy(out)
 
     selected_indexes: list[int] = []
@@ -199,7 +183,7 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     selected = out.loc[selected_indexes].copy()
     if not selected.empty:
         selected["buy_rank"] = range(1, len(selected) + 1)
-        selected["portfolio_group"] = selected["buy_rank"].map(lambda rank: "核心" if rank <= 2 else "标准")
+        selected["portfolio_group"] = "主票"
         selected["confirm_before_buy"] = _confirm_text()
         selected["reject_if"] = _reject_text()
         selected["buy_reason"] = selected.apply(_reason, axis=1)
@@ -225,6 +209,7 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
         "buy_count": int(len(buy_plan)),
         "max_buy_count": max_count,
         "max_sector_positions": max_sector_positions,
-        "selection_rule": "14:20生成最多5支买入观察池；14:50前人工确认尾盘承接后再执行。",
+        "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
+        "selection_rule": "14:35截面选最多1支；无合格标的则空仓，14:50前人工确认。",
     }
     return BuyDecisionResult(buy_plan, decision_table, summary)

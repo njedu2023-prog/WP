@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 
 import wp.buy_validation as buy_validation
-from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _summary
+from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _in_tail_window, _summary
 from wp.calendar import CN_TZ
 
 
@@ -54,6 +54,28 @@ def test_summary_prefers_plan_price_return_over_market_pct_change():
     assert summary["average_close_return_pct"] == -2.0
     assert summary["daily_average_pct_chg"] == -2.0
     assert summary["cumulative_pct_chg"] == -2.0
+
+
+def test_tail_snapshot_window_starts_at_1435():
+    assert not _in_tail_window("2026-07-14 14:34:59")
+    assert _in_tail_window("2026-07-14 14:35:00")
+    assert _in_tail_window("2026-07-14 14:50:00")
+    assert not _in_tail_window("2026-07-14 14:50:01")
+
+
+def test_summary_can_scope_records_to_current_buy_model():
+    table = pd.DataFrame(
+        [
+            {"buy_model_version": "legacy", "plan_trade_date": "20260701", "truth_status": "verified", "return_close_pct": -5.0, "is_limit_up_t1": False},
+            {"buy_model_version": "tail_profit_v1", "plan_trade_date": "20260702", "truth_status": "verified", "return_close_pct": 3.0, "is_limit_up_t1": False},
+        ]
+    )
+
+    summary = _summary(table, "tail_profit_v1")
+
+    assert summary["buy_model_version"] == "tail_profit_v1"
+    assert summary["verified_records"] == 1
+    assert summary["cumulative_pct_chg"] == 3.0
 
 
 def test_fill_truth_reconstructs_plan_price_and_entry_returns():

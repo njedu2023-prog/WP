@@ -27,6 +27,8 @@ VALIDATION_COLUMNS = [
     "p_limitup_t1",
     "wp_score",
     "decision_score",
+    "tail_profit_score",
+    "buy_model_version",
     "risk_penalty_score",
     "actual_trade_date",
     "actual_open",
@@ -66,7 +68,7 @@ def _in_tail_window(value: object) -> bool:
     parsed = _parse_dt(value)
     if parsed is None:
         return False
-    return time(14, 20) <= parsed.time() <= time(14, 50)
+    return time(14, 35) <= parsed.time() <= time(14, 50)
 
 
 def _limit_threshold(ts_code: str) -> float:
@@ -130,6 +132,8 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
                 "p_limitup_t1": row.get("p_limitup_t1", ""),
                 "wp_score": row.get("wp_score", ""),
                 "decision_score": row.get("decision_score", ""),
+                "tail_profit_score": row.get("tail_profit_score", ""),
+                "buy_model_version": row.get("tail_profit_model_version", ""),
                 "risk_penalty_score": row.get("risk_penalty_score", ""),
                 "actual_trade_date": target_trade_date,
                 "actual_open": "",
@@ -348,8 +352,9 @@ def _fill_truth(table: pd.DataFrame, current: datetime) -> pd.DataFrame:
     return out
 
 
-def _summary(table: pd.DataFrame) -> dict:
+def _summary(table: pd.DataFrame, model_version: str = "") -> dict:
     empty_summary = {
+        "buy_model_version": model_version,
         "total_plan_days": 0,
         "verified_plan_days": 0,
         "pending_plan_days": 0,
@@ -370,6 +375,8 @@ def _summary(table: pd.DataFrame) -> dict:
         "plan_day_win_rate": 0.0,
         "cumulative_pct_chg": 0.0,
     }
+    if model_version and "buy_model_version" in table.columns:
+        table = table[table["buy_model_version"].fillna("").astype(str).eq(model_version)].copy()
     if table.empty:
         return empty_summary
 
@@ -401,6 +408,7 @@ def _summary(table: pd.DataFrame) -> dict:
     positive_plan_days = int(daily_series.gt(0).sum())
     cumulative_pct_chg = float(((1 + daily_series / 100).prod() - 1) * 100) if verified_plan_days else 0.0
     return {
+        "buy_model_version": model_version,
         "total_plan_days": total_plan_days,
         "verified_plan_days": verified_plan_days,
         "pending_plan_days": max(total_plan_days - verified_plan_days, 0),
@@ -428,11 +436,18 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
     csv_path = output_root / "csv" / "wp_buy_plan_validation.csv"
     existing = _existing_table(csv_path)
     snapshot = _new_snapshot_rows(buy_plan, health, current)
+    current_model = str(health.get("buy_model_version") or "")
+    if not buy_plan.empty and "tail_profit_model_version" in buy_plan.columns:
+        versions = buy_plan["tail_profit_model_version"].dropna().astype(str)
+        if not versions.empty:
+            current_model = str(versions.iloc[0])
     if not snapshot.empty:
         plan_dates = set(snapshot["plan_trade_date"].astype(str).tolist())
+        snapshot_models = set(snapshot["buy_model_version"].fillna("").astype(str).tolist())
         locked_dates = set(
             existing.loc[
                 existing["plan_trade_date"].astype(str).isin(plan_dates)
+                & existing["buy_model_version"].fillna("").astype(str).isin(snapshot_models)
                 & existing["truth_status"].fillna("").astype(str).eq("verified"),
                 "plan_trade_date",
             ].astype(str).tolist()
@@ -440,11 +455,13 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
         snapshot = snapshot[~snapshot["plan_trade_date"].astype(str).isin(locked_dates)].copy()
     if not snapshot.empty:
         plan_dates = set(snapshot["plan_trade_date"].astype(str).tolist())
-        # The 14:20 buy list is dynamic. Keep only the latest/final list for each
-        # plan trade date until the next-day truth has been locked.
+        snapshot_models = set(snapshot["buy_model_version"].fillna("").astype(str).tolist())
+        # The tail list is dynamic. Keep the latest list for each model and day
+        # until next-day truth is locked.
         existing = existing[
             ~(
                 existing["plan_trade_date"].astype(str).isin(plan_dates)
+                & existing["buy_model_version"].fillna("").astype(str).isin(snapshot_models)
                 & existing["truth_status"].fillna("").astype(str).ne("verified")
             )
         ].copy()
@@ -452,11 +469,14 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
     else:
         table = existing
     if not table.empty:
-        key_cols = ["plan_trade_date", "plan_time", "ts_code"]
+        key_cols = ["buy_model_version", "plan_trade_date", "plan_time", "ts_code"]
         table = table.drop_duplicates(key_cols, keep="last")
         table["_buy_rank_sort"] = pd.to_numeric(table["buy_rank"], errors="coerce").fillna(999)
         table = table.sort_values(["plan_trade_date", "plan_time", "_buy_rank_sort"]).drop(columns=["_buy_rank_sort"])
     table = _fill_truth(table, current)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     table.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    return BuyValidationResult(table=table, summary=_summary(table))
+    display_table = table
+    if current_model:
+        display_table = table[table["buy_model_version"].fillna("").astype(str).eq(current_model)].copy()
+    return BuyValidationResult(table=display_table, summary=_summary(table, current_model))

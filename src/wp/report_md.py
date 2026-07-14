@@ -36,9 +36,9 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
         "name",
         "pct_chg",
         "sector_name",
-        "p_limitup_t1",
-        "wp_score",
+        "tail_profit_score",
         "risk_penalty_score",
+        "amount_ratio_5d",
         "buy_reason",
     ]
     columns = [
@@ -47,6 +47,8 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
         "name",
         "pct_chg",
         "sector_name",
+        "tail_profit_score",
+        "tail_profit_eligible",
         "p_limitup_t1",
         "wp_score",
         "signal_level",
@@ -54,7 +56,7 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
         "risk_reason",
     ]
     content = ["# WP Top50", ""]
-    content.append("## 14:20 尾盘买入观察计划")
+    content.append("## 14:35 尾盘收益观察")
     if buy_plan.empty:
         content.append("")
         content.append("当前无买入观察计划。")

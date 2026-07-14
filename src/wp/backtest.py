@@ -17,6 +17,7 @@ from .buy_decision import build_buy_decision
 from .feature_engineering import add_feature_scores
 from .ranking import build_ranked_pool, rank_candidates
 from .scoring_model import MODEL_VERSION, add_scores
+from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
 from .utils import ensure_dir, write_json
 
 
@@ -585,6 +586,7 @@ def _buy_portfolio_metrics(frame: pd.DataFrame) -> dict:
         result["buy_strict5_plan_day_win_rate"] = round(float(strict_close.gt(0).mean()), 4)
         result["buy_strict5_cumulative_next_day_close_pct"] = round(float(((1 + strict_close / 100).prod() - 1) * 100), 4)
         result["buy_strict5_worst_day_close_pct"] = round(float(strict_close.min()), 4)
+
     return result
 
 
@@ -683,7 +685,9 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     for trade_date in dates:
         rank_input = build_rank_input_for_date(trade_date, cache_root)
         candidates = filter_candidates(rank_input)
-        scored = add_scores(add_feature_scores(candidates), calibration_enabled=False)
+        scored = add_tail_profit_scores(
+            add_scores(add_feature_scores(candidates), calibration_enabled=False)
+        )
         top50, full_rank = rank_candidates(scored, _date_dash(trade_date), top_n=top_n)
         buy_pool = build_ranked_pool(scored, full_rank, top_n)
         buy_plan = build_buy_decision(buy_pool).buy_plan
@@ -728,9 +732,10 @@ def run_backtest(start_date: str, end_date: str, output_root: str | Path, top_n:
     summary = {
         "mode": "backtest",
         "model_version": MODEL_VERSION,
+        "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
         "backtest_data_mode": "eod_proxy",
         "calibration_eligible": False,
-        "warning": "使用收盘日线代理14:20状态，仅用于方向审计，不进入实时概率校准。",
+        "warning": "使用收盘日线代理14:35状态，仅用于方向审计，不进入实时概率校准。",
         "start_date": start,
         "end_date": end,
         "trade_days": int(len(dates)),
@@ -799,20 +804,18 @@ def render_backtest_html(
     monthly_rows = "".join(
         "<tr>"
         + f"<td>{row.month}</td>"
-        + f"<td>{int(row.strict5_plan_days)}</td>"
-        + f"<td>{int(row.strict5_trade_count)}</td>"
-        + f"<td>{pct(row.strict5_daily_avg_open_pct)}</td>"
-        + f"<td>{pct(row.strict5_daily_avg_high_pct)}</td>"
-        + f"<td>{pct(row.strict5_daily_avg_low_pct)}</td>"
-        + f"<td>{pct(row.strict5_daily_avg_close_pct)}</td>"
-        + f"<td>{float(row.strict5_plan_day_win_rate):.2%}</td>"
-        + f"<td>{float(row.strict5_stock_win_rate):.2%}</td>"
-        + f"<td>{float(row.strict5_limitup_rate):.2%}</td>"
-        + f"<td>{pct(row.strict5_cumulative_close_pct)}</td>"
-        + f"<td>{pct(row.strict5_worst_day_close_pct)}</td>"
+        + f"<td>{int(row.plan_days)}</td>"
+        + f"<td>{int(row.trade_count)}</td>"
+        + f"<td>{float(row.average_count_per_day):.2f}</td>"
+        + f"<td>{pct(row.daily_avg_open_pct)}</td>"
+        + f"<td>{pct(row.daily_avg_high_pct)}</td>"
+        + f"<td>{pct(row.daily_avg_low_pct)}</td>"
+        + f"<td>{pct(row.daily_avg_close_pct)}</td>"
+        + f"<td>{float(row.plan_day_win_rate):.2%}</td>"
+        + f"<td>{pct(row.cumulative_close_pct)}</td>"
         + "</tr>"
         for row in monthly_summary.itertuples(index=False)
-    ) or "<tr><td colspan='12' class='empty'>无分月数据</td></tr>"
+    ) or "<tr><td colspan='10' class='empty'>无分月数据</td></tr>"
     html = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -851,19 +854,11 @@ def render_backtest_html(
       <div>观察组合次日最高：<strong>{f'{summary["buy_daily_avg_next_day_high_pct"]:.2f}%' if summary["buy_daily_avg_next_day_high_pct"] is not None else "-"}</strong></div>
       <div>观察组合次日收盘：<strong>{f'{summary["buy_daily_avg_next_day_close_pct"]:.2f}%' if summary["buy_daily_avg_next_day_close_pct"] is not None else "-"}</strong></div>
       <div>观察组合累计收盘：<strong>{summary["buy_cumulative_next_day_close_pct"]:.2f}%</strong></div>
-      <div>严格5支计划日：<strong>{summary["buy_strict5_plan_days"]}</strong></div>
-      <div>严格5支样本：<strong>{summary["buy_strict5_trade_count"]}</strong></div>
-      <div>严格5支次日开盘：<strong>{f'{summary["buy_strict5_daily_avg_next_day_open_pct"]:.2f}%' if summary["buy_strict5_daily_avg_next_day_open_pct"] is not None else "-"}</strong></div>
-      <div>严格5支次日最高：<strong>{f'{summary["buy_strict5_daily_avg_next_day_high_pct"]:.2f}%' if summary["buy_strict5_daily_avg_next_day_high_pct"] is not None else "-"}</strong></div>
-      <div>严格5支次日收盘：<strong>{f'{summary["buy_strict5_daily_avg_next_day_close_pct"]:.2f}%' if summary["buy_strict5_daily_avg_next_day_close_pct"] is not None else "-"}</strong></div>
-      <div>严格5支累计收盘：<strong>{summary["buy_strict5_cumulative_next_day_close_pct"]:.2f}%</strong></div>
-      <div>严格5支计划日胜率：<strong>{summary["buy_strict5_plan_day_win_rate"]:.2%}</strong></div>
-      <div>严格5支最差单日：<strong>{f'{summary["buy_strict5_worst_day_close_pct"]:.2f}%' if summary["buy_strict5_worst_day_close_pct"] is not None else "-"}</strong></div>
       <div>Top10 平均次日最高涨幅：<strong>{f'{summary["avg_next_day_max_pct_top10"]:.2f}%' if summary["avg_next_day_max_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 平均次日收盘涨幅：<strong>{f'{summary["avg_next_day_close_pct_top10"]:.2f}%' if summary["avg_next_day_close_pct_top10"] is not None else "-"}</strong></div>
       <div>Top10 最大回撤风险：<strong>{f'{summary["max_drawdown_risk_top10"]:.2f}%' if summary["max_drawdown_risk_top10"] is not None else "-"}</strong></div>
     </section>
-    <section class="panel"><h2>严格 5 支组合分月结果</h2><div class="table-wrap"><table><thead><tr><th>月份</th><th>计划日</th><th>样本</th><th>次日开盘</th><th>次日最高</th><th>次日最低</th><th>次日收盘</th><th>日胜率</th><th>个股上涨率</th><th>触及涨停</th><th>累计收盘</th><th>最差单日</th></tr></thead><tbody>{monthly_rows}</tbody></table></div></section>
+    <section class="panel"><h2>观察组合分月结果</h2><div class="table-wrap"><table><thead><tr><th>月份</th><th>计划日</th><th>样本</th><th>日均数量</th><th>次日开盘</th><th>次日最高</th><th>次日最低</th><th>次日收盘</th><th>日胜率</th><th>累计收盘</th></tr></thead><tbody>{monthly_rows}</tbody></table></div></section>
     <section class="panel"><h2>每日汇总</h2><div class="table-wrap"><table><thead><tr><th>日期</th><th>原始数</th><th>候选数</th><th>Top数</th><th>Top10</th><th>Top20</th><th>Top50</th><th>下一交易日</th></tr></thead><tbody>{daily_rows}</tbody></table></div></section>
     <section class="panel"><h2>样本预览</h2><div class="table-wrap"><table><thead><tr><th>日期</th><th>排名</th><th>代码</th><th>名称</th><th>概率</th><th>评分</th><th>T+1涨停</th></tr></thead><tbody>{trade_rows}</tbody></table></div></section>
   </main>

@@ -57,14 +57,13 @@ def _backtest_rows(backtests: list[dict]) -> str:
             + f"<td>{_date_text(start)} 至 {_date_text(end)}</td>"
             + f"<td>{_summary_int(summary, 'trade_days')}</td>"
             + f"<td>{_summary_int(summary, 'buy_plan_days')}</td>"
-            + f"<td>{_summary_int(summary, 'buy_strict5_plan_days')}</td>"
-            + f"<td>{_summary_int(summary, 'buy_strict5_trade_count')}</td>"
-            + f"<td>{_rate(summary.get('buy_strict5_positive_close_rate'))}</td>"
-            + f"<td>{_rate(summary.get('buy_strict5_limitup_rate'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_strict5_daily_avg_next_day_open_pct'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_strict5_daily_avg_next_day_high_pct'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_strict5_daily_avg_next_day_close_pct'))}</td>"
-            + f"<td>{_pct_cell(summary.get('buy_strict5_cumulative_next_day_close_pct'))}</td>"
+            + f"<td>{_summary_int(summary, 'buy_trade_count')}</td>"
+            + f"<td>{_rate(summary.get('buy_positive_close_rate'))}</td>"
+            + f"<td>{_rate(summary.get('buy_limitup_rate'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_daily_avg_next_day_open_pct'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_daily_avg_next_day_high_pct'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_daily_avg_next_day_close_pct'))}</td>"
+            + f"<td>{_pct_cell(summary.get('buy_cumulative_next_day_close_pct'))}</td>"
             + f"<td>{_fmt(summary.get('auc', '-'), 4)}</td>"
             + f"<td><a href=\"../backtests/{html.escape(folder)}/summary.json\">汇总</a> · "
             + f"<a href=\"../backtests/{html.escape(folder)}/trades.csv\">Top50</a> · "
@@ -72,7 +71,7 @@ def _backtest_rows(backtests: list[dict]) -> str:
             + f"<a href=\"../backtests/{html.escape(folder)}/monthly_summary.csv\">分月</a></td>"
             + "</tr>"
         )
-    return "".join(rows) or "<tr><td colspan=\"13\" class=\"empty\">暂无回测数据</td></tr>"
+    return "".join(rows) or "<tr><td colspan=\"12\" class=\"empty\">暂无回测数据</td></tr>"
 
 
 def _validation_overview(summary: dict) -> str:
@@ -218,12 +217,13 @@ def render_html(
             "<tr class=\"{}{}\">".format(top_cls.strip(), risk_cls)
             + f"<td>{row['rank']}</td><td>{html.escape(str(row['ts_code']))}</td><td>{html.escape(str(row['name']))}</td>"
             + f"<td>{_fmt(row['price'])}</td><td>{_fmt(row['pct_chg'])}%</td><td>{html.escape(str(row['sector_name']))}</td>"
+            + f"<td>{_fmt(row.get('tail_profit_score', 0))}</td><td>{'可观察' if bool(row.get('tail_profit_eligible', False)) else '仅排名'}</td>"
             + f"<td>{_fmt(row['sector_strength_score'])}</td><td>{_fmt(row['stock_strength_score'])}</td><td>{_fmt(row['acceptance_score'])}</td>"
             + f"<td>{_fmt(row['p_limitup_t1'])}%</td><td>{_fmt(row['wp_score'])}</td><td>{_fmt(row['model_confidence'])}</td>"
             + f"<td>{html.escape(str(row['signal_level']))}</td><td>{html.escape(str(row['core_reason']))}</td><td>{html.escape(str(row['risk_reason']))}</td><td>{html.escape(str(row['update_time']))}</td></tr>"
         )
     if not rows:
-        rows.append("<tr><td colspan=\"16\" class=\"empty\">无符合条件股票</td></tr>")
+        rows.append("<tr><td colspan=\"18\" class=\"empty\">无符合条件股票</td></tr>")
     buy_rows = []
     for _, row in buy_plan.iterrows():
         buy_rows.append(
@@ -234,17 +234,16 @@ def render_html(
             + f"<td>{html.escape(str(row.get('name', '')))}</td>"
             + f"<td>{_fmt(row.get('pct_chg', 0))}%</td>"
             + f"<td>{html.escape(str(row.get('sector_name', '')))}</td>"
-            + f"<td>{_fmt(row.get('p_limitup_t1', 0))}%</td>"
-            + f"<td>{_fmt(row.get('wp_score', 0))}</td>"
-            + f"<td>{_fmt(row.get('decision_score', 0))}</td>"
+            + f"<td>{_fmt(row.get('tail_profit_score', 0))}</td>"
             + f"<td>{_fmt(row.get('risk_penalty_score', 0))}</td>"
+            + f"<td>{_fmt(row.get('amount_ratio_5d', 0))}</td>"
             + f"<td>{html.escape(str(row.get('confirm_before_buy', '')))}</td>"
             + f"<td>{html.escape(str(row.get('reject_if', '')))}</td>"
             + f"<td>{html.escape(str(row.get('buy_reason', '')))}</td>"
             + "</tr>"
         )
     if not buy_rows:
-        buy_rows.append("<tr><td colspan=\"13\" class=\"empty\">当前无买入观察计划</td></tr>")
+        buy_rows.append("<tr><td colspan=\"12\" class=\"empty\">当前无买入观察计划</td></tr>")
     validation_overview = _validation_overview(validation_summary)
     validation_days = _validation_days(validation)
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
@@ -331,10 +330,10 @@ def render_html(
     .rank-table tbody tr:hover td {{ background: #f5f5f7; }}
     .rank-table tr.top10 td {{ background: #fff8dc; }}
     .rank-table tr.risk-high td {{ color: #9f1f1f; }}
-    .buy-table {{ border-collapse: collapse; min-width: 1380px; width: 100%; font-size: 13px; }}
+    .buy-table {{ border-collapse: collapse; min-width: 1240px; width: 100%; font-size: 13px; }}
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
-    .buy-table td:nth-child(11), .buy-table td:nth-child(12), .buy-table td:nth-child(13) {{ min-width: 150px; line-height: 1.45; }}
+    .buy-table td:nth-child(10), .buy-table td:nth-child(11), .buy-table td:nth-child(12) {{ min-width: 150px; line-height: 1.45; }}
     .backtest-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
     .backtest-scroll {{ width: 100%; overflow-x: auto; border-top: 1px solid #e5e5ea; -webkit-overflow-scrolling: touch; }}
     .backtest-table {{ border-collapse: collapse; min-width: 1480px; width: 100%; font-size: 13px; }}
@@ -427,11 +426,11 @@ def render_html(
     </details>
     <section>
       <div class="section-block">
-        <strong>14:20 尾盘买入观察计划</strong>
+        <strong>14:35 尾盘收益观察</strong>
       </div>
       <div class="backtest-scroll">
         <table class="buy-table">
-          <thead><tr><th>买入序</th><th>组合层级</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>次日概率</th><th>WP评分</th><th>决策分</th><th>风险分</th><th>14:50确认条件</th><th>放弃条件</th><th>买入理由</th></tr></thead>
+          <thead><tr><th>顺序</th><th>类型</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>尾盘收益分</th><th>风险分</th><th>5日量能比</th><th>14:50确认</th><th>放弃</th><th>理由</th></tr></thead>
           <tbody>{''.join(buy_rows)}</tbody>
         </table>
       </div>
@@ -439,14 +438,14 @@ def render_html(
     <section>
       <div class="table-wrap">
         <table class="rank-table">
-          <thead><tr><th>排名</th><th>代码</th><th>名称</th><th>当前价/收盘价</th><th>今日涨幅</th><th>所属板块</th><th>板块强度</th><th>个股强度</th><th>承接分</th><th>次日涨停概率</th><th>WP评分</th><th>模型置信度</th><th>信号等级</th><th>核心理由</th><th>风险提示</th><th>更新时间</th></tr></thead>
+          <thead><tr><th>排名</th><th>代码</th><th>名称</th><th>当前价/收盘价</th><th>今日涨幅</th><th>所属板块</th><th>尾盘收益分</th><th>观察资格</th><th>板块强度</th><th>个股强度</th><th>承接分</th><th>次日涨停概率</th><th>WP评分</th><th>模型置信度</th><th>信号等级</th><th>核心理由</th><th>风险提示</th><th>更新时间</th></tr></thead>
           <tbody>{''.join(rows)}</tbody>
         </table>
       </div>
     </section>
     <section class="validation-section">
       <div class="validation-heading">
-        <strong>14:20 观察名单累计验证</strong>
+        <strong>尾盘观察名单累计验证</strong>
         <span>按计划价买入，统计下一交易日实际收益</span>
       </div>
       <div class="validation-kpis">{validation_overview}</div>
@@ -460,11 +459,11 @@ def render_html(
     <section class="backtest-section">
       <div class="validation-heading">
         <strong>模型回测验证</strong>
-        <span>每日最多 5 支；历史区间使用收盘价代理买入，真实计划按计划价验证</span>
+        <span>历史区间使用收盘价代理；不替代 14:35 分钟回测</span>
       </div>
       <div class="table-wrap">
         <table class="backtest-table">
-          <thead><tr><th>区间</th><th>交易日</th><th>观察日</th><th>严格5支日</th><th>严格5支样本</th><th>上涨率</th><th>触及涨停</th><th>次日开盘</th><th>次日最高</th><th>次日收盘</th><th>累计收盘</th><th>AUC</th><th>原始数据</th></tr></thead>
+          <thead><tr><th>区间</th><th>交易日</th><th>观察日</th><th>样本</th><th>上涨率</th><th>触及涨停</th><th>次日开盘</th><th>次日最高</th><th>次日收盘</th><th>累计收盘</th><th>AUC</th><th>原始数据</th></tr></thead>
           <tbody>{backtest_rows}</tbody>
         </table>
       </div>

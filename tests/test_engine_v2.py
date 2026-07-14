@@ -18,13 +18,14 @@ def test_buy_pool_is_strictly_limited_to_top50():
 def test_buy_decision_uses_execution_quality_not_probability_alone():
     frame = pd.DataFrame(
         [
-            {"ts_code": "A", "name": "高概率弱结构", "rank": 1, "sector_name": "板块A", "p_limitup_t1": 10, "wp_score": 45, "acceptance_score": 50, "sector_strength_score": 20, "stock_strength_score": 30, "momentum_score": 20, "capital_score": 20, "model_confidence": 55, "risk_penalty_score": 60, "close_position": 60, "pct_chg": 9, "price": 10, "amount": 200000000},
-            {"ts_code": "B", "name": "优质结构", "rank": 2, "sector_name": "板块B", "p_limitup_t1": 8, "wp_score": 80, "acceptance_score": 90, "sector_strength_score": 90, "stock_strength_score": 90, "momentum_score": 90, "capital_score": 90, "model_confidence": 90, "risk_penalty_score": 0, "close_position": 90, "pct_chg": 9, "price": 10, "amount": 200000000},
+            {"ts_code": "A", "name": "高概率弱结构", "rank": 1, "sector_name": "板块A", "p_limitup_t1": 10, "wp_score": 45, "acceptance_score": 50, "sector_strength_score": 20, "stock_strength_score": 30, "momentum_score": 20, "capital_score": 20, "model_confidence": 55, "risk_penalty_score": 60, "close_position": 60, "amount_ratio_5d": 1.2, "pct_chg": 9, "price": 10, "amount": 200000000},
+            {"ts_code": "B", "name": "优质结构", "rank": 2, "sector_name": "板块B", "p_limitup_t1": 8, "wp_score": 80, "acceptance_score": 90, "sector_strength_score": 90, "stock_strength_score": 90, "momentum_score": 90, "capital_score": 90, "model_confidence": 90, "risk_penalty_score": 0, "close_position": 90, "amount_ratio_5d": 1.3, "pct_chg": 9, "price": 10, "amount": 200000000},
         ]
     )
-    result = build_buy_decision(frame, {"buy_max_count": 2})
+    result = build_buy_decision(frame)
     assert result.buy_plan.iloc[0]["ts_code"] == "B"
-    assert result.buy_plan.iloc[0]["decision_score"] > result.buy_plan.iloc[1]["decision_score"]
+    assert len(result.buy_plan) == 1
+    assert result.buy_plan.iloc[0]["decision_score"] == result.buy_plan.iloc[0]["tail_profit_score"]
 
 
 def test_missing_market_truth_is_not_counted_as_a_miss():

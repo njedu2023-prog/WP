@@ -1,3 +1,3 @@
-"""WP 次日涨停概率排序系统."""
+"""WP tail-return ranking system."""
 
 __version__ = "0.1.0"
