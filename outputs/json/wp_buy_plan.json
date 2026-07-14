@@ -1,12 +1,14 @@
 {
-  "generated_at": "2026-07-14 15:17:09",
+  "generated_at": "2026-07-14 15:22:16",
   "market_data_time": "2026-07-13 15:00:00",
-  "wp_run_time": "2026-07-14 15:17:09",
+  "wp_run_time": "2026-07-14 15:22:16",
   "summary": {
     "buy_count": 0,
-    "max_buy_count": 5,
-    "max_sector_positions": 2,
-    "selection_rule": "14:20生成最多5支买入观察池；14:50前人工确认尾盘承接后再执行。"
+    "max_buy_count": 1,
+    "max_sector_positions": 1,
+    "buy_model_version": "tail_profit_v1",
+    "selection_rule": "14:35截面选最多1支；无合格标的则空仓，14:50前人工确认。"
   },
+  "buy_model_version": "tail_profit_v1",
   "buy_plan": []
 }
