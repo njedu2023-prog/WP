@@ -1,0 +1,3 @@
+2026-07-14 05:07:55,220 INFO WP run started, source=https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/latest/wp_latest_rank_input.csv
+2026-07-14 05:07:55,757 ERROR Stale WP data: data_trade_date=20260713 expected=20260714
+2026-07-14 05:07:55,800 INFO WP run completed: raw=24 candidates=21 top50=0 buy_plan=0 missing_fields=none fallback=False outputs=/home/runner/work/WP/WP/outputs log=/home/runner/work/WP/WP/logs/wp_20260714_1307.log
