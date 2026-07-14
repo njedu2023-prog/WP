@@ -1,14 +1,41 @@
 {
-  "generated_at": "2026-07-14 15:22:16",
-  "market_data_time": "2026-07-13 15:00:00",
-  "wp_run_time": "2026-07-14 15:22:16",
+  "generated_at": "2026-07-14 15:52:51",
+  "market_data_time": "2026-07-14 15:36:00",
+  "wp_run_time": "2026-07-14 15:52:51",
   "summary": {
-    "buy_count": 0,
+    "buy_count": 1,
     "max_buy_count": 1,
     "max_sector_positions": 1,
     "buy_model_version": "tail_profit_v1",
     "selection_rule": "14:35截面选最多1支；无合格标的则空仓，14:50前人工确认。"
   },
   "buy_model_version": "tail_profit_v1",
-  "buy_plan": []
+  "buy_plan": [
+    {
+      "buy_rank": 1,
+      "portfolio_group": "主票",
+      "ts_code": "600353.SH",
+      "name": "旭光电子",
+      "rank": 1,
+      "price": 41.28,
+      "pct_chg": 8.091123330714867,
+      "sector_name": "元器件",
+      "tail_profit_score": 84.587629,
+      "tail_profit_model_version": "tail_profit_v1",
+      "amount_ratio_5d": 0.9244038368458296,
+      "p_limitup_t1": 1.7826813096710479,
+      "wp_score": 69.94796052568134,
+      "decision_score": 84.587629,
+      "model_confidence": 72.89473684210526,
+      "risk_penalty_score": 0.0,
+      "acceptance_score": 87.13768178472472,
+      "momentum_score": 51.756979336063246,
+      "close_position": 99.52380952380962,
+      "intraday_pullback_pct": 0.0484496124030897,
+      "intraday_vwap_position": 3.475935828876997,
+      "confirm_before_buy": "守8%、承接稳",
+      "reject_if": "破8%/急回落/板块转弱",
+      "buy_reason": "涨幅不过热、板块强、风险低"
+    }
+  ]
 }
