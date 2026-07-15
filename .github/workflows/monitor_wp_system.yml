@@ -3,11 +3,16 @@ name: Monitor WP System
 on:
   workflow_dispatch:
   schedule:
-    # Every 10 minutes on weekdays during the broad A-share daytime window.
-    # The Python monitor enforces the exact Beijing trading windows.
-    - cron: "*/10 1-7 * * 1-5"
+    # Exact Beijing trading windows converted to UTC.
+    - cron: "25,35,45,55 1 * * 1-5"
+    - cron: "5,15,25,35,45,55 2 * * 1-5"
+    - cron: "5,15,25,35 3 * * 1-5"
+    - cron: "55 4 * * 1-5"
+    - cron: "5,15,25,35,45,55 5,6 * * 1-5"
+    - cron: "5,10 7 * * 1-5"
 
 permissions:
+  actions: write
   contents: read
 
 concurrency:
@@ -23,11 +28,13 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-      - name: Check WP system freshness
+      - name: Check and repair WP system freshness
         run: python scripts/monitor_wp_system.py
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          WP_REPAIR_TOKEN: ${{ secrets.WP_REPAIR_TOKEN || secrets.WP_TRIGGER_TOKEN || secrets.GH_PAT || secrets.PERSONAL_ACCESS_TOKEN }}
           WP_MONITOR_MAX_UPSTREAM_AGE_MIN: "25"
           WP_MONITOR_MAX_WP_AGE_MIN: "25"
           WP_MONITOR_MAX_PAGE_LAG_MIN: "20"
-          WP_MONITOR_SESSION_GRACE_MIN: "20"
+          WP_MONITOR_SESSION_GRACE_MIN: "25"
