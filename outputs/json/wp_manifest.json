@@ -1,17 +1,17 @@
 {
-  "latest_update": "2026-07-15 19:26:10",
+  "latest_update": "2026-07-15 19:59:22",
   "market_data_time": "2026-07-15 15:10:21",
-  "wp_run_time": "2026-07-15 19:26:10",
+  "wp_run_time": "2026-07-15 19:59:22",
   "top50_count": 40,
   "buy_plan_count": 1,
   "validation_summary": {
     "buy_model_version": "tail_profit_v1",
-    "total_plan_days": 0,
+    "total_plan_days": 1,
     "verified_plan_days": 0,
-    "pending_plan_days": 0,
-    "total_records": 0,
+    "pending_plan_days": 1,
+    "total_records": 1,
     "verified_records": 0,
-    "pending_records": 0,
+    "pending_records": 1,
     "positive_records": 0,
     "positive_rate": 0.0,
     "limit_up_records": 0,
@@ -24,7 +24,8 @@
     "daily_average_pct_chg": 0.0,
     "positive_plan_days": 0,
     "plan_day_win_rate": 0.0,
-    "cumulative_pct_chg": 0.0
+    "cumulative_pct_chg": 0.0,
+    "return_basis": "plan_price_to_next_trade_day"
   },
   "model_version": "wp_rule_v2_1",
   "buy_model_version": "tail_profit_v1",

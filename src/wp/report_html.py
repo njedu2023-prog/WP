@@ -445,7 +445,7 @@ def render_html(
     <section class="validation-section">
       <div class="validation-heading">
         <strong>14:35 主票累计验证</strong>
-        <span>每日最多 1 支；无合格则空仓；按计划价验证次日收益</span>
+        <span>每日最多 1 支；缺少窗口数据时回退至 14:25 后最近快照</span>
       </div>
       <div class="validation-kpis">{validation_overview}</div>
       <div class="validation-days">

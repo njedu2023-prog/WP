@@ -47,6 +47,9 @@ VALIDATION_COLUMNS = [
     "truth_updated_at",
 ]
 
+TAIL_FALLBACK_START = time(14, 25)
+TAIL_WINDOW_END = time(14, 50)
+
 
 @dataclass
 class BuyValidationResult:
@@ -69,7 +72,9 @@ def _in_tail_window(value: object) -> bool:
     parsed = _parse_dt(value)
     if parsed is None:
         return False
-    return time(14, 35) <= parsed.time() <= time(14, 50)
+    # The preferred decision window starts at 14:35. Accept the latest market
+    # snapshot from 14:25 onward when the upstream 10-minute job misses it.
+    return TAIL_FALLBACK_START <= parsed.time() <= TAIL_WINDOW_END
 
 
 def _limit_threshold(ts_code: str) -> float:

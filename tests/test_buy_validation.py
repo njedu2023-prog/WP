@@ -56,8 +56,9 @@ def test_summary_prefers_plan_price_return_over_market_pct_change():
     assert summary["cumulative_pct_chg"] == -2.0
 
 
-def test_tail_snapshot_window_starts_at_1435():
-    assert not _in_tail_window("2026-07-14 14:34:59")
+def test_tail_snapshot_window_accepts_pre_window_fallback():
+    assert not _in_tail_window("2026-07-14 14:24:59")
+    assert _in_tail_window("2026-07-14 14:25:00")
     assert _in_tail_window("2026-07-14 14:35:00")
     assert _in_tail_window("2026-07-14 14:50:00")
     assert not _in_tail_window("2026-07-14 14:50:01")
@@ -108,6 +109,14 @@ def test_tail_snapshot_keeps_latest_single_primary_stock(tmp_path):
     assert len(latest.table) == 1
     assert latest.table.iloc[0]["ts_code"] == "000002.SZ"
     assert latest.table.iloc[0]["plan_time"] == "2026-07-14 14:46:00"
+
+    after_close_plan = first_plan.iloc[[0]].copy()
+    after_close_health = dict(first_health, market_data_time="2026-07-14 15:10:00")
+    after_close = update_buy_plan_validation(after_close_plan, after_close_health, tmp_path, current)
+
+    assert len(after_close.table) == 1
+    assert after_close.table.iloc[0]["ts_code"] == "000002.SZ"
+    assert after_close.table.iloc[0]["plan_time"] == "2026-07-14 14:46:00"
 
 
 def test_summary_can_scope_records_to_current_buy_model():

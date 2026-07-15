@@ -1,15 +1,15 @@
 {
-  "generated_at": "2026-07-15 19:26:10",
+  "generated_at": "2026-07-15 19:59:22",
   "market_data_time": "2026-07-15 15:10:21",
-  "wp_run_time": "2026-07-15 19:26:10",
+  "wp_run_time": "2026-07-15 19:59:22",
   "summary": {
     "buy_model_version": "tail_profit_v1",
-    "total_plan_days": 0,
+    "total_plan_days": 1,
     "verified_plan_days": 0,
-    "pending_plan_days": 0,
-    "total_records": 0,
+    "pending_plan_days": 1,
+    "total_records": 1,
     "verified_records": 0,
-    "pending_records": 0,
+    "pending_records": 1,
     "positive_records": 0,
     "positive_rate": 0.0,
     "limit_up_records": 0,
@@ -22,7 +22,42 @@
     "daily_average_pct_chg": 0.0,
     "positive_plan_days": 0,
     "plan_day_win_rate": 0.0,
-    "cumulative_pct_chg": 0.0
+    "cumulative_pct_chg": 0.0,
+    "return_basis": "plan_price_to_next_trade_day"
   },
-  "records": []
+  "records": [
+    {
+      "plan_trade_date": "20260715",
+      "plan_time": "2026-07-15 14:26:38",
+      "market_data_time": "2026-07-15 14:26:38",
+      "target_trade_date": "20260716",
+      "buy_rank": 1,
+      "portfolio_group": "主票",
+      "ts_code": "688506.SH",
+      "name": "百利天恒",
+      "plan_price": 330.0,
+      "pct_chg_plan": 8.516935218678068,
+      "sector_name": "化学制药",
+      "p_limitup_t1": 2.3859184831293687,
+      "wp_score": 65.5937756466988,
+      "decision_score": 86.029412,
+      "tail_profit_score": "86.029412",
+      "buy_model_version": "tail_profit_v1",
+      "risk_penalty_score": 10.05106327247664,
+      "actual_trade_date": "20260716",
+      "actual_open": "",
+      "actual_high": "",
+      "actual_low": "",
+      "actual_close": "",
+      "actual_pct_chg": "",
+      "return_open_pct": "",
+      "return_high_pct": "",
+      "return_low_pct": "",
+      "return_close_pct": "",
+      "is_limit_up_t1": "",
+      "truth_status": "pending",
+      "truth_error": "",
+      "truth_updated_at": ""
+    }
+  ]
 }

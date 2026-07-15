@@ -74,7 +74,7 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
     assert "累计收盘收益" in page
     assert page.count('class="validation-day-details"') == 2
     assert "2026-07-09" in page
-    assert "每日最多 1 支；无合格则空仓；按计划价验证次日收益" in page
+    assert "每日最多 1 支；缺少窗口数据时回退至 14:25 后最近快照" in page
     assert ">主票<" in page
     assert "次日收益（开 / 高 / 收）" in page
     assert "次日最低" in page
