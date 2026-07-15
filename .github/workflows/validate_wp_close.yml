@@ -1,0 +1,39 @@
+name: Validate WP Close
+
+on:
+  workflow_dispatch:
+  schedule:
+    # Beijing 15:20/15:40/16:10. Multiple attempts tolerate delayed daily truth.
+    - cron: "20,40 7 * * 1-5"
+    - cron: "10 8 * * 1-5"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wp-close-validation
+  cancel-in-progress: false
+
+jobs:
+  validate-close:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      - name: Validate pending plans with next-day close
+        run: python scripts/run_wp_close_validation.py
+        env:
+          PYTHONPATH: src
+          WP_MODE: live
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: main

@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 
 import wp.buy_validation as buy_validation
-from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _in_tail_window, _summary, update_buy_plan_validation
+from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _in_tail_window, _is_truth_due, _summary, update_buy_plan_validation
 from wp.calendar import CN_TZ
 
 
@@ -62,6 +62,13 @@ def test_tail_snapshot_window_accepts_pre_window_fallback():
     assert _in_tail_window("2026-07-14 14:35:00")
     assert _in_tail_window("2026-07-14 14:50:00")
     assert not _in_tail_window("2026-07-14 14:50:01")
+
+
+def test_truth_becomes_due_only_after_target_day_close():
+    assert not _is_truth_due("20260716", datetime(2026, 7, 16, 15, 4, 59, tzinfo=CN_TZ))
+    assert _is_truth_due("20260716", datetime(2026, 7, 16, 15, 5, 0, tzinfo=CN_TZ))
+    assert _is_truth_due("20260715", datetime(2026, 7, 16, 9, 0, 0, tzinfo=CN_TZ))
+    assert not _is_truth_due("20260717", datetime(2026, 7, 16, 16, 0, 0, tzinfo=CN_TZ))
 
 
 def test_tail_snapshot_keeps_latest_single_primary_stock(tmp_path):
