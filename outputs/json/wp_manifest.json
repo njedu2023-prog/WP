@@ -1,8 +1,8 @@
 {
-  "latest_update": "2026-07-15 13:38:50",
-  "market_data_time": "2026-07-15 10:15:47",
-  "wp_run_time": "2026-07-15 13:38:50",
-  "top50_count": 43,
+  "latest_update": "2026-07-15 13:43:38",
+  "market_data_time": "2026-07-15 13:41:12",
+  "wp_run_time": "2026-07-15 13:43:38",
+  "top50_count": 40,
   "buy_plan_count": 1,
   "validation_summary": {
     "buy_model_version": "tail_profit_v1",
