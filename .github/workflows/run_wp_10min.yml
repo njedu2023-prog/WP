@@ -1,10 +1,13 @@
 name: Run WP 10min
 
 on:
+  repository_dispatch:
+    types:
+      - wp_data_ready
   workflow_dispatch:
     inputs:
       mode:
-        description: "运行模式"
+        description: "Run mode"
         required: true
         default: "live"
         type: choice
@@ -12,11 +15,11 @@ on:
           - live
           - backtest
       start_date:
-        description: "回测开始日期 YYYYMMDD"
+        description: "Backtest start date YYYYMMDD"
         required: false
         type: string
       end_date:
-        description: "回测结束日期 YYYYMMDD"
+        description: "Backtest end date YYYYMMDD"
         required: false
         type: string
   push:
@@ -46,7 +49,7 @@ permissions:
 
 concurrency:
   group: wp-session-${{ github.ref }}
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   run-wp:
@@ -57,6 +60,7 @@ jobs:
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+          cache: pip
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
