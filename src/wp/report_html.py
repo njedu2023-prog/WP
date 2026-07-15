@@ -105,7 +105,7 @@ def _validation_overview(summary: dict) -> str:
 
 def _validation_days(validation: pd.DataFrame) -> str:
     if validation.empty:
-        return "<div class=\"empty\">暂无验证记录</div>"
+        return "<div class=\"empty\">暂无主票验证记录</div>"
 
     view = validation.copy()
     view["plan_trade_date"] = view.get("plan_trade_date", "").fillna("").astype(str)
@@ -445,13 +445,13 @@ def render_html(
     </section>
     <section class="validation-section">
       <div class="validation-heading">
-        <strong>尾盘观察名单累计验证</strong>
-        <span>按计划价买入，统计下一交易日实际收益</span>
+        <strong>14:35 主票累计验证</strong>
+        <span>每日最多 1 支；无合格则空仓；按计划价验证次日收益</span>
       </div>
       <div class="validation-kpis">{validation_overview}</div>
       <div class="validation-days">
         <div class="validation-day-list">
-          <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>名单</span><span>次日收益（开 / 高 / 收）</span><span>上涨</span><span>触及涨停</span><span>状态</span><span></span></div>
+          <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>主票</span><span>次日收益（开 / 高 / 收）</span><span>上涨</span><span>触及涨停</span><span>状态</span><span></span></div>
           {validation_days}
         </div>
       </div>

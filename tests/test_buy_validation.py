@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 
 import wp.buy_validation as buy_validation
-from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _in_tail_window, _summary
+from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _in_tail_window, _summary, update_buy_plan_validation
 from wp.calendar import CN_TZ
 
 
@@ -61,6 +61,53 @@ def test_tail_snapshot_window_starts_at_1435():
     assert _in_tail_window("2026-07-14 14:35:00")
     assert _in_tail_window("2026-07-14 14:50:00")
     assert not _in_tail_window("2026-07-14 14:50:01")
+
+
+def test_tail_snapshot_keeps_latest_single_primary_stock(tmp_path):
+    first_plan = pd.DataFrame(
+        [
+            {
+                "buy_rank": 1,
+                "portfolio_group": "主票",
+                "ts_code": "000001.SZ",
+                "name": "甲",
+                "price": 10.0,
+                "pct_chg": 8.8,
+                "tail_profit_score": 80.0,
+                "tail_profit_model_version": "tail_profit_v1",
+            },
+            {
+                "buy_rank": 2,
+                "portfolio_group": "标准",
+                "ts_code": "000002.SZ",
+                "name": "乙",
+                "price": 20.0,
+                "pct_chg": 9.0,
+                "tail_profit_score": 79.0,
+                "tail_profit_model_version": "tail_profit_v1",
+            },
+        ]
+    )
+    first_health = {
+        "data_trade_date": "20260714",
+        "market_data_time": "2026-07-14 14:36:00",
+        "buy_model_version": "tail_profit_v1",
+    }
+    current = datetime(2026, 7, 14, 14, 40, tzinfo=CN_TZ)
+    first = update_buy_plan_validation(first_plan, first_health, tmp_path, current)
+
+    assert len(first.table) == 1
+    assert first.table.iloc[0]["ts_code"] == "000001.SZ"
+
+    latest_plan = first_plan.iloc[[1]].copy()
+    latest_plan["buy_rank"] = 1
+    latest_plan["portfolio_group"] = "主票"
+    latest_health = dict(first_health, market_data_time="2026-07-14 14:46:00")
+    latest = update_buy_plan_validation(latest_plan, latest_health, tmp_path, current)
+
+    assert len(latest.table) == 1
+    assert latest.table.iloc[0]["ts_code"] == "000002.SZ"
+    assert latest.table.iloc[0]["plan_time"] == "2026-07-14 14:46:00"
 
 
 def test_summary_can_scope_records_to_current_buy_model():

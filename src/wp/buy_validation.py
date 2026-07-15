@@ -10,6 +10,7 @@ import pandas as pd
 
 from .calendar import CN_TZ, next_trading_day_str
 from .data_loader import _read_remote_text
+from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
 
 
 VALIDATION_COLUMNS = [
@@ -114,8 +115,24 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
     if len(plan_trade_date) != 8:
         return pd.DataFrame(columns=VALIDATION_COLUMNS)
     target_trade_date = next_trading_day_str(plan_trade_date)
+    snapshot_plan = buy_plan.copy()
+    model_versions = (
+        snapshot_plan.get("tail_profit_model_version", pd.Series(dtype="object"))
+        .fillna("")
+        .astype(str)
+    )
+    if str(health.get("buy_model_version") or "") == TAIL_PROFIT_MODEL_VERSION or model_versions.eq(TAIL_PROFIT_MODEL_VERSION).any():
+        # The live tail-profit model is a single-position strategy. Keep this
+        # invariant at the validation boundary even if an upstream payload is malformed.
+        snapshot_plan["_buy_rank_sort"] = pd.to_numeric(snapshot_plan.get("buy_rank"), errors="coerce").fillna(999)
+        snapshot_plan["_score_sort"] = pd.to_numeric(snapshot_plan.get("tail_profit_score"), errors="coerce").fillna(-1)
+        snapshot_plan = (
+            snapshot_plan.sort_values(["_buy_rank_sort", "_score_sort"], ascending=[True, False])
+            .head(1)
+            .drop(columns=["_buy_rank_sort", "_score_sort"])
+        )
     rows = []
-    for _, row in buy_plan.iterrows():
+    for _, row in snapshot_plan.iterrows():
         rows.append(
             {
                 "plan_trade_date": plan_trade_date,

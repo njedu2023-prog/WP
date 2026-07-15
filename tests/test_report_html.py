@@ -70,11 +70,12 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
         validation_summary=summary,
     )
     page = path.read_text(encoding="utf-8")
-    assert "尾盘观察名单累计验证" in page
+    assert "14:35 主票累计验证" in page
     assert "累计收盘收益" in page
     assert page.count('class="validation-day-details"') == 2
     assert "2026-07-09" in page
-    assert "按计划价买入，统计下一交易日实际收益" in page
+    assert "每日最多 1 支；无合格则空仓；按计划价验证次日收益" in page
+    assert ">主票<" in page
     assert "次日收益（开 / 高 / 收）" in page
     assert "次日最低" in page
 
