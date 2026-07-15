@@ -66,8 +66,7 @@ def _backtest_rows(backtests: list[dict]) -> str:
             + f"<td>{_pct_cell(summary.get('buy_cumulative_next_day_close_pct'))}</td>"
             + f"<td>{_fmt(summary.get('auc', '-'), 4)}</td>"
             + f"<td><a href=\"../backtests/{html.escape(folder)}/summary.json\">汇总</a> · "
-            + f"<a href=\"../backtests/{html.escape(folder)}/trades.csv\">Top50</a> · "
-            + f"<a href=\"../backtests/{html.escape(folder)}/buy_trades.csv\">观察名单</a> · "
+            + f"<a href=\"../backtests/{html.escape(folder)}/buy_trades.csv\">主票明细</a> · "
             + f"<a href=\"../backtests/{html.escape(folder)}/monthly_summary.csv\">分月</a></td>"
             + "</tr>"
         )
@@ -459,7 +458,7 @@ def render_html(
     <section class="backtest-section">
       <div class="validation-heading">
         <strong>模型回测验证</strong>
-        <span>历史区间使用收盘价代理；不替代 14:35 分钟回测</span>
+        <span>收盘日线代理；不替代 14:35 真实快照</span>
       </div>
       <div class="table-wrap">
         <table class="backtest-table">

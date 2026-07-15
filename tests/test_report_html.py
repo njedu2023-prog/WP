@@ -123,7 +123,9 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
     assert "0.6209" in page
     assert "观察日" in page
     assert "+4.34%" in page
-    assert "../backtests/20260427_20260522/trades.csv" in page
+    assert "../backtests/20260427_20260522/buy_trades.csv" in page
+    assert "主票明细" in page
+    assert "收盘日线代理；不替代 14:35 真实快照" in page
     assert "../backtests/20260427_20260522/monthly_summary.csv" in page
 
 

@@ -1,7 +1,7 @@
 {
-  "latest_update": "2026-07-15 18:53:05",
+  "latest_update": "2026-07-15 19:26:10",
   "market_data_time": "2026-07-15 15:10:21",
-  "wp_run_time": "2026-07-15 18:53:05",
+  "wp_run_time": "2026-07-15 19:26:10",
   "top50_count": 40,
   "buy_plan_count": 1,
   "validation_summary": {
@@ -28,7 +28,7 @@
   },
   "model_version": "wp_rule_v2_1",
   "buy_model_version": "tail_profit_v1",
-  "backtest_window_count": 0,
+  "backtest_window_count": 1,
   "health_status": "ok",
   "preserved_latest_html": false
 }
