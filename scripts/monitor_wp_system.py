@@ -37,6 +37,15 @@ def in_trade_window(now: datetime) -> bool:
     return time(9, 25) <= now.time() <= time(11, 35) or time(12, 55) <= now.time() <= time(15, 10)
 
 
+def in_close_finalize_window(now: datetime) -> bool:
+    # The upstream 15:10 slot can finish after the normal trading-window monitor.
+    return time(15, 10) < now.time() <= time(15, 35)
+
+
+def in_monitor_window(now: datetime) -> bool:
+    return in_trade_window(now) or in_close_finalize_window(now)
+
+
 def session_start(now: datetime) -> datetime | None:
     if time(9, 25) <= now.time() <= time(11, 35):
         return datetime.combine(now.date(), time(9, 25))
@@ -193,8 +202,8 @@ def monitor() -> int:
     today = current.strftime("%Y%m%d")
     print(f"WP system monitor at {current:%Y-%m-%d %H:%M:%S} Asia/Shanghai")
 
-    if not in_trade_window(current):
-        print("Outside A-share trading window; no monitoring action.")
+    if not in_monitor_window(current):
+        print("Outside A-share trading or close-finalization window; no monitoring action.")
         return 0
     if tushare_token:
         try:
