@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-16 14:53:23",
+  "generated_at": "2026-07-16 15:17:39",
   "market_data_time": "2026-07-16 14:42:06",
   "source_data_hash": "6ce346efae2b8e96959609b0be879d5706188dfd9ea0852a6da7c05d2b6aa445",
-  "wp_run_time": "2026-07-16 14:53:23",
+  "wp_run_time": "2026-07-16 15:17:39",
   "health": {
     "status": "ok",
     "is_trading_day": true,
@@ -65,7 +65,7 @@
       "return_close_pct": "",
       "is_limit_up_t1": "",
       "truth_status": "pending",
-      "truth_error": "",
+      "truth_error": "upstream daily truth unavailable: 404 Client Error: Not Found for url: https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/raw/2026/20260716/daily.csv; TUSHARE_TOKEN not configured",
       "truth_updated_at": ""
     },
     {
@@ -83,7 +83,7 @@
       "p_limitup_t1": 3.091913207418505,
       "wp_score": 76.51173425635255,
       "decision_score": 94.4,
-      "tail_profit_score": 94.4,
+      "tail_profit_score": "94.4",
       "buy_model_version": "tail_profit_v1",
       "risk_penalty_score": 0.0,
       "actual_trade_date": "20260717",
@@ -1312,5 +1312,6 @@
       "monthly_count": 5
     }
   ],
-  "buy_model_version": "tail_profit_v1"
+  "buy_model_version": "tail_profit_v1",
+  "validation_updated_at": "2026-07-16 15:17:39"
 }
