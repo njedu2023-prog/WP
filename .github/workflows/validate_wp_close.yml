@@ -2,10 +2,17 @@ name: Validate WP Close
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - scripts/trigger_wp_close_validation.txt
+      - .github/workflows/validate_wp_close.yml
   schedule:
-    # Beijing 15:20/15:40/16:10. Multiple attempts tolerate delayed daily truth.
-    - cron: "20,40 7 * * 1-5"
-    - cron: "10 8 * * 1-5"
+    # Offset retries at Beijing 15:17/15:32/15:47/16:07. The trigger file is
+    # the independent recovery path when GitHub drops a scheduled event.
+    - cron: "17,32,47 7 * * 1-5"
+    - cron: "7 8 * * 1-5"
 
 permissions:
   contents: write
