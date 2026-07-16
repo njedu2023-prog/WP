@@ -1,7 +1,8 @@
 {
-  "generated_at": "2026-07-16 12:07:40",
+  "generated_at": "2026-07-16 13:11:39",
   "market_data_time": "2026-07-16 11:34:57",
-  "wp_run_time": "2026-07-16 12:07:40",
+  "source_data_hash": "aadd2550a73e8baf8e9f7a54391ad638359c1218789a932c14a66c11320f29ce",
+  "wp_run_time": "2026-07-16 13:11:39",
   "summary": {
     "buy_count": 1,
     "max_buy_count": 1,

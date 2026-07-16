@@ -1,11 +1,11 @@
 {
-  "latest_update": "2026-07-16 12:07:40",
+  "latest_update": "2026-07-16 13:11:39",
   "market_data_time": "2026-07-16 11:34:57",
   "data_revision": "2026-07-16 11:34:57",
   "source_generated_at": "2026-07-16 11:55:13",
-  "source_data_hash": "3131bf1c66df75ff275594b17a8b3c3cf0f2f5cac375452f44439754bc61a521",
-  "wp_run_time": "2026-07-16 12:07:40",
-  "report_revision": "2026-07-16 13:08:02",
+  "source_data_hash": "aadd2550a73e8baf8e9f7a54391ad638359c1218789a932c14a66c11320f29ce",
+  "wp_run_time": "2026-07-16 13:11:39",
+  "report_revision": "2026-07-16 13:11:39",
   "top50_count": 25,
   "buy_plan_count": 1,
   "validation_summary": {
@@ -36,6 +36,5 @@
   "buy_model_version": "tail_profit_v1",
   "backtest_window_count": 1,
   "health_status": "ok",
-  "preserved_latest_html": false,
-  "validation_tracking_start_date": "20260715"
+  "preserved_latest_html": false
 }

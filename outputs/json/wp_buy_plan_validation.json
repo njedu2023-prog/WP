@@ -1,7 +1,8 @@
 {
-  "generated_at": "2026-07-16 12:07:40",
+  "generated_at": "2026-07-16 13:11:39",
   "market_data_time": "2026-07-16 11:34:57",
-  "wp_run_time": "2026-07-16 12:07:40",
+  "source_data_hash": "aadd2550a73e8baf8e9f7a54391ad638359c1218789a932c14a66c11320f29ce",
+  "wp_run_time": "2026-07-16 13:11:39",
   "summary": {
     "buy_model_version": "tail_profit_v1",
     "total_plan_days": 1,
@@ -45,7 +46,7 @@
       "tail_profit_score": "86.029412",
       "buy_model_version": "tail_profit_v1",
       "risk_penalty_score": 10.05106327247664,
-      "actual_trade_date": 20260716,
+      "actual_trade_date": "20260716",
       "actual_open": "",
       "actual_high": "",
       "actual_low": "",
@@ -60,7 +61,5 @@
       "truth_error": "",
       "truth_updated_at": ""
     }
-  ],
-  "report_revision": "2026-07-16 13:08:02",
-  "tracking_start_date": "20260715"
+  ]
 }
