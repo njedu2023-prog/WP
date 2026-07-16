@@ -119,6 +119,7 @@ def run_once() -> None:
         env["WP_DIRECT_ERROR"] = direct.error
         if direct.ok:
             env["WP_SOURCE_CSV"] = direct.source_path
+            env["WP_EXPECTED_TRADE_DATE"] = direct.source_trade_date
             env["WP_SOURCE_MODE"] = "direct_tushare"
             env["WP_SOURCE_REPOSITORY"] = "njedu2023-prog/a-share-top3-data"
             print(f"WP direct Tushare source ready: {direct.source_path}")

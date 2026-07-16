@@ -75,6 +75,7 @@ def test_direct_builder_archives_validated_rank_input(tmp_path):
     )
 
     assert result.ok is True
+    assert result.source_trade_date == "20260716"
     assert len(calls) == 2
     assert Path(result.source_path).is_file()
     manifest = json.loads(Path(result.manifest_path).read_text(encoding="utf-8"))

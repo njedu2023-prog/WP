@@ -165,7 +165,10 @@ def run() -> dict:
             "market_data_time": source_market_time,
             "source_data_hash": input_hash,
         }
-    expected_trade_date = current.strftime("%Y%m%d")
+    expected_trade_date = (
+        os.environ.get("WP_EXPECTED_TRADE_DATE", "").strip()
+        or current.strftime("%Y%m%d")
+    )
     candidates = filter_candidates(
         raw,
         min_pct_chg=float(config.get("min_pct_chg", 8.0)),

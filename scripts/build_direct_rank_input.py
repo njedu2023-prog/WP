@@ -48,6 +48,7 @@ class DirectSourceResult:
     ok: bool
     source_path: str = ""
     manifest_path: str = ""
+    source_trade_date: str = ""
     error: str = ""
 
 
@@ -314,6 +315,7 @@ def build_direct_rank_input(
             True,
             source_path=str(destination_csv),
             manifest_path=str(destination_manifest),
+            source_trade_date=str(manifest.get("source_trade_date") or ""),
         )
     except (OSError, ValueError, RuntimeError, json.JSONDecodeError, pd.errors.ParserError, subprocess.SubprocessError) as exc:
         return DirectSourceResult(True, False, error=_compact_error(exc))
