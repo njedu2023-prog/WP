@@ -7,8 +7,12 @@ from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
+
+try:
+    from scripts.http_retry import request_json
+except ModuleNotFoundError:  # Executed as python scripts/check_upstream_revision.py.
+    from http_retry import request_json
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -29,16 +33,10 @@ def read_json(path: Path) -> dict[str, Any]:
 
 
 def read_upstream_manifest() -> dict[str, Any]:
-    request = Request(
+    payload = request_json(
         UPSTREAM_API,
-        headers={
-            "Accept": "application/vnd.github+json",
-            "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "WP-direct-source-gate",
-        },
+        user_agent="WP-direct-source-gate",
     )
-    with urlopen(request, timeout=30) as response:
-        payload = json.loads(response.read().decode("utf-8"))
     content = "".join(str(payload.get("content", "")).split())
     if payload.get("encoding") != "base64" or not content:
         raise RuntimeError("Unsupported upstream manifest payload.")
