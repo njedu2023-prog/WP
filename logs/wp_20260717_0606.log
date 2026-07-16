@@ -1,0 +1,3 @@
+2026-07-16 22:06:25,222 INFO WP run started, source=/home/runner/work/WP/WP/data/direct/latest/wp_latest_rank_input.csv
+2026-07-16 22:06:25,415 ERROR Stale WP data: data_trade_date=20260716 expected=20260717
+2026-07-16 22:06:25,462 INFO WP run completed: raw=35 candidates=29 top50=0 buy_plan=0 missing_fields=none fallback=False outputs=/home/runner/work/WP/WP/outputs log=/home/runner/work/WP/WP/logs/wp_20260717_0606.log
