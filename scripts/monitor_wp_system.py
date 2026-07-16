@@ -239,7 +239,12 @@ def monitor() -> int:
     upstream_age = age_minutes(current, upstream.get("generated_at"))
     wp_age = age_minutes(current, wp.get("wp_run_time") or wp.get("latest_update"))
     page_age = age_minutes(current, pages.get("wp_run_time") or pages.get("latest_update")) if pages else None
-    wp_upstream_lag = (upstream_time - wp_time).total_seconds() / 60 if upstream_time and wp_time else None
+    wp_source_time = parse_dt(wp.get("source_generated_at")) or wp_time
+    wp_upstream_lag = (
+        (upstream_time - wp_source_time).total_seconds() / 60
+        if upstream_time and wp_source_time
+        else None
+    )
     page_lag = (wp_time - page_time).total_seconds() / 60 if wp_time and page_time else None
     upstream_fresh = (
         upstream.get("status") == "ok"
@@ -249,8 +254,6 @@ def monitor() -> int:
     )
     wp_fresh = (
         wp.get("health_status") == "ok"
-        and wp_age is not None
-        and wp_age <= MAX_WP_AGE_MIN
         and wp_upstream_lag is not None
         and wp_upstream_lag <= 0
     )
@@ -277,13 +280,13 @@ def monitor() -> int:
         warnings,
         wp_age is not None and wp_age <= MAX_WP_AGE_MIN,
         f"WP run age {wp_age if wp_age is not None else 'unknown'} min <= {MAX_WP_AGE_MIN}",
-        grace,
+        grace or wp_fresh,
     )
     add_check(
         errors,
         warnings,
         wp_upstream_lag is not None and wp_upstream_lag <= 0,
-        f"WP processed latest upstream generation; lag={wp_upstream_lag if wp_upstream_lag is not None else 'unknown'} min",
+        f"WP source_generated_at covers latest upstream generation; lag={wp_upstream_lag if wp_upstream_lag is not None else 'unknown'} min",
         grace,
     )
     add_check(

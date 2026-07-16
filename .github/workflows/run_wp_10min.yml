@@ -38,13 +38,11 @@ on:
       - requirements.txt
       - pyproject.toml
   schedule:
-    # repository_dispatch from fresh upstream data is primary. These UTC
-    # schedules are an offset 10-minute fallback, not an independent clock.
-    - cron: "32,42,52 1 * * 1-5"
-    - cron: "2,12,22,32,42,52 2 * * 1-5"
-    - cron: "2,12,22,32 3 * * 1-5"
-    - cron: "2,12,22,32,42,52 5,6 * * 1-5"
-    - cron: "2,12 7 * * 1-5"
+    # Independent polling is the fallback when repository_dispatch is delayed
+    # or unavailable. The preflight gate exits before dependency installation
+    # unless the upstream manifest has a new revision.
+    - cron: "3-58/5 1-3,5-7 * * 1-5"
+    - cron: "58 4 * * 1-5"
 
 permissions:
   contents: write
@@ -61,15 +59,23 @@ jobs:
     timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
+      - name: Check upstream data revision
+        id: upstream
+        run: python scripts/check_upstream_revision.py
+        env:
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
       - uses: actions/setup-python@v5
+        if: steps.upstream.outputs.should_run == 'true'
         with:
           python-version: "3.11"
           cache: pip
       - name: Install dependencies
+        if: steps.upstream.outputs.should_run == 'true'
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
       - name: Run WP update
+        if: steps.upstream.outputs.should_run == 'true'
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src

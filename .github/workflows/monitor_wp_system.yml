@@ -3,13 +3,10 @@ name: Monitor WP System
 on:
   workflow_dispatch:
   schedule:
-    # Offset from both upstream and WP fallback slots. The monitor repairs only
-    # after normal jobs have had time to complete.
-    - cron: "37,47,57 1 * * 1-5"
-    - cron: "7,17,27,37,47,57 2 * * 1-5"
-    - cron: "7,17,27,37 3 * * 1-5"
-    - cron: "7,17,27,37,47,57 5,6 * * 1-5"
-    - cron: "7,17,27 7 * * 1-5"
+    # A second, offset cron registration provides a self-repair path when the
+    # primary WP polling workflow is delayed or dropped by GitHub scheduling.
+    - cron: "6-56/5 1-3,5-7 * * 1-5"
+    - cron: "56 4 * * 1-5"
 
 permissions:
   actions: write
