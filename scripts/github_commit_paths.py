@@ -7,17 +7,30 @@ import os
 import sys
 import time
 from pathlib import Path
-from urllib.error import HTTPError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 
 IGNORE_PARTS = {"__pycache__", ".pytest_cache"}
 IGNORE_SUFFIXES = {".pyc", ".pyo"}
+MAX_REQUEST_ATTEMPTS = 6
+TRANSIENT_HTTP_CODES = {408, 429, 500, 502, 503, 504}
+
+
+def retry_delay(attempt: int, retry_after: str = "") -> int:
+    if retry_after.isdigit():
+        return min(max(int(retry_after), 1), 60)
+    return min(2 * (2**attempt), 30)
+
+
+def concise_error_body(body: str, limit: int = 1000) -> str:
+    compact = " ".join(body.split())
+    return compact if len(compact) <= limit else f"{compact[:limit]}..."
 
 
 def request(method: str, url: str, token: str, payload: dict | None = None) -> dict:
     data = None if payload is None else json.dumps(payload).encode("utf-8")
-    for attempt in range(4):
+    for attempt in range(MAX_REQUEST_ATTEMPTS):
         req = Request(
             url,
             data=data,
@@ -35,14 +48,34 @@ def request(method: str, url: str, token: str, payload: dict | None = None) -> d
                 return json.loads(body) if body else {}
         except HTTPError as exc:
             body = exc.read().decode("utf-8", errors="replace")
-            retryable = exc.code in {403, 429} and "secondary rate limit" in body.lower()
-            if retryable and attempt < 3:
-                retry_after = exc.headers.get("Retry-After", "")
-                delay = int(retry_after) if retry_after.isdigit() else 5 * (2**attempt)
-                print(f"GitHub secondary rate limit; retrying in {delay}s.", flush=True)
+            rate_limited = exc.code == 403 and (
+                "secondary rate limit" in body.lower()
+                or exc.headers.get("X-RateLimit-Remaining", "") == "0"
+            )
+            retryable = exc.code in TRANSIENT_HTTP_CODES or rate_limited
+            if retryable and attempt < MAX_REQUEST_ATTEMPTS - 1:
+                delay = retry_delay(attempt, exc.headers.get("Retry-After", ""))
+                print(
+                    f"GitHub API HTTP {exc.code}; retry "
+                    f"{attempt + 2}/{MAX_REQUEST_ATTEMPTS} in {delay}s.",
+                    flush=True,
+                )
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"{method} {url} failed: {exc.code} {body}") from exc
+            raise RuntimeError(
+                f"{method} {url} failed: {exc.code} {concise_error_body(body)}"
+            ) from exc
+        except (URLError, TimeoutError, OSError) as exc:
+            if attempt < MAX_REQUEST_ATTEMPTS - 1:
+                delay = retry_delay(attempt)
+                print(
+                    f"GitHub API network error; retry "
+                    f"{attempt + 2}/{MAX_REQUEST_ATTEMPTS} in {delay}s: {exc}",
+                    flush=True,
+                )
+                time.sleep(delay)
+                continue
+            raise RuntimeError(f"{method} {url} failed after network retries: {exc}") from exc
     raise RuntimeError(f"{method} {url} failed after retries")
 
 
