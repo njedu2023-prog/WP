@@ -8,13 +8,14 @@ from datetime import datetime, time
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import quote
-from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
 try:
     from scripts.check_upstream_revision import latest_due_slot
+    from scripts.http_retry import request_json
 except ModuleNotFoundError:  # Executed as python scripts/monitor_wp_system.py.
     from check_upstream_revision import latest_due_slot
+    from http_retry import request_json
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
@@ -65,33 +66,12 @@ def target_slot(current: datetime) -> datetime | None:
     return latest_due_slot(current)
 
 
-def request_json(
-    url: str,
-    token: str = "",
-    method: str = "GET",
-    payload: dict[str, Any] | None = None,
-    timeout: int = 30,
-) -> Any:
-    data = None if payload is None else json.dumps(payload).encode("utf-8")
-    headers = {
-        "Accept": "application/vnd.github+json",
-        "X-GitHub-Api-Version": "2022-11-28",
-        "Content-Type": "application/json",
-        "User-Agent": "WP-direct-system-monitor",
-    }
-    if token:
-        headers["Authorization"] = f"Bearer {token}"
-    request = Request(url, data=data, method=method, headers=headers)
-    with urlopen(request, timeout=timeout) as response:
-        body = response.read().decode("utf-8")
-        return json.loads(body) if body else {}
-
-
 def read_github_file(repo: str, path: str, token: str = "") -> dict[str, Any]:
     encoded = quote(path, safe="/")
     payload = request_json(
         f"https://api.github.com/repos/{repo}/contents/{encoded}?ref=main",
         token=token,
+        user_agent="WP-direct-system-monitor",
     )
     content = "".join(str(payload.get("content", "")).split())
     if payload.get("encoding") != "base64" or not content:
@@ -101,7 +81,10 @@ def read_github_file(repo: str, path: str, token: str = "") -> dict[str, Any]:
 
 def read_public_json(url: str) -> dict[str, Any]:
     separator = "&" if "?" in url else "?"
-    return request_json(f"{url}{separator}monitor_cachebust={int(now_cn().timestamp())}")
+    return request_json(
+        f"{url}{separator}monitor_cachebust={int(now_cn().timestamp())}",
+        user_agent="WP-direct-system-monitor",
+    )
 
 
 def is_trade_day(token: str, day: str) -> bool:
@@ -114,6 +97,7 @@ def is_trade_day(token: str, day: str) -> bool:
             "params": {"exchange": "SSE", "start_date": day, "end_date": day},
             "fields": "cal_date,is_open",
         },
+        user_agent="WP-direct-system-monitor",
     )
     if int(payload.get("code", -1)) != 0:
         raise RuntimeError(f"Tushare trade_cal failed: {payload.get('msg')}")
@@ -128,6 +112,7 @@ def workflow_runs(repo: str, workflow: str, token: str) -> list[dict[str, Any]]:
     payload = request_json(
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=10",
         token=token,
+        user_agent="WP-direct-system-monitor",
     )
     return list(payload.get("workflow_runs", []))
 
@@ -145,6 +130,7 @@ def dispatch_workflow(repo: str, workflow: str, token: str) -> None:
             "ref": "main",
             "inputs": {"mode": "live", "force_rebuild": "true"},
         },
+        user_agent="WP-direct-system-monitor",
     )
 
 
