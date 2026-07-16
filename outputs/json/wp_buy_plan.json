@@ -1,42 +1,15 @@
 {
-  "generated_at": "2026-07-16 23:07:41",
-  "market_data_time": "2026-07-16 15:00:00",
-  "source_data_hash": "59931c6bb5a75c77ead28445add5445894349c5afa5aecef12ab047616bfa058",
-  "wp_run_time": "2026-07-16 23:07:41",
+  "generated_at": "2026-07-17 05:36:18",
+  "market_data_time": "2026-07-16 15:05:36",
+  "source_data_hash": "9c9619a200ef6c07ec6d3548244ff562caf2325b13062fb36e38e8149175c922",
+  "wp_run_time": "2026-07-17 05:36:18",
   "summary": {
-    "buy_count": 1,
+    "buy_count": 0,
     "max_buy_count": 1,
     "max_sector_positions": 1,
     "buy_model_version": "tail_profit_v1",
     "selection_rule": "14:35截面选最多1支；无合格标的则空仓，14:50前人工确认。"
   },
   "buy_model_version": "tail_profit_v1",
-  "buy_plan": [
-    {
-      "buy_rank": 1,
-      "portfolio_group": "主票",
-      "ts_code": "000938.SZ",
-      "name": "紫光股份",
-      "rank": 1,
-      "price": 38.59,
-      "pct_chg": 8.61244019138756,
-      "sector_name": "IT设备",
-      "tail_profit_score": 85.909091,
-      "tail_profit_model_version": "tail_profit_v1",
-      "amount_ratio_5d": 1.0,
-      "p_limitup_t1": 3.160691152081581,
-      "wp_score": 68.43957504851727,
-      "decision_score": 85.909091,
-      "model_confidence": 82.89473684210526,
-      "risk_penalty_score": 0.0,
-      "acceptance_score": 76.55174203458884,
-      "momentum_score": 79.44497607655502,
-      "close_position": 89.2070484581499,
-      "intraday_pullback_pct": 1.269759004923543,
-      "intraday_vwap_position": 1.895,
-      "confirm_before_buy": "守8%、承接稳",
-      "reject_if": "破8%/急回落/板块转弱",
-      "buy_reason": "涨幅不过热、资金强、风险低"
-    }
-  ]
+  "buy_plan": []
 }
