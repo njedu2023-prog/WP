@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-17 06:18:16",
+  "generated_at": "2026-07-17 06:51:27",
   "scheduled_slot": "",
   "trigger_event": "push",
   "status": "ok",
@@ -91,7 +91,7 @@
   ],
   "source_mode": "direct_tushare",
   "source_repository": "njedu2023-prog/a-share-top3-data",
-  "processor_revision": "083400259c37eca2ab55f72d5070a8f27014ccff",
+  "processor_revision": "81b3f5cf039772e6e4b4588bae15d6737c4e156f",
   "direct_row_count": 35,
   "direct_quality": {
     "rows": 35,
