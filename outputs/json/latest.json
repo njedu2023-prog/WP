@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-16 23:07:41",
+  "generated_at": "2026-07-17 05:28:22",
   "market_data_time": "2026-07-16 15:00:00",
   "source_data_hash": "59931c6bb5a75c77ead28445add5445894349c5afa5aecef12ab047616bfa058",
-  "wp_run_time": "2026-07-16 23:07:41",
+  "wp_run_time": "2026-07-17 05:28:22",
   "health": {
     "status": "ok",
     "is_trading_day": true,
@@ -1672,5 +1672,6 @@
       "monthly_count": 5
     }
   ],
-  "buy_model_version": "tail_profit_v1"
+  "buy_model_version": "tail_profit_v1",
+  "validation_updated_at": "2026-07-17 05:28:22"
 }
