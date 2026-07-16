@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
   schedule:
     # A second, offset cron registration provides a self-repair path when the
-    # primary WP polling workflow is delayed or dropped by GitHub scheduling.
+    # primary direct-Tushare WP workflow is delayed or dropped by GitHub.
     - cron: "3-58/5 1-3,5-7 * * 1-5"
     - cron: "58 4 * * 1-5"
 
@@ -30,8 +30,4 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
-          WP_REPAIR_TOKEN: ${{ secrets.WP_REPAIR_TOKEN || secrets.WP_TRIGGER_TOKEN || secrets.GH_PAT || secrets.PERSONAL_ACCESS_TOKEN }}
-          WP_MONITOR_MAX_UPSTREAM_AGE_MIN: "18"
-          WP_MONITOR_MAX_WP_AGE_MIN: "18"
           WP_MONITOR_MAX_PAGE_LAG_MIN: "10"
-          WP_MONITOR_SESSION_GRACE_MIN: "15"

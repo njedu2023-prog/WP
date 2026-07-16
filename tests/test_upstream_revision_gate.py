@@ -1,7 +1,7 @@
 from datetime import datetime
 from zoneinfo import ZoneInfo
 
-from scripts.check_upstream_revision import resolve_decision
+from scripts.check_upstream_revision import latest_due_slot, resolve_decision
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
@@ -61,3 +61,13 @@ def test_schedule_skips_outside_market_window():
 
     assert should_run is False
     assert "outside" in reason
+
+
+def test_schedule_grace_reaches_session_tail_slots():
+    assert latest_due_slot(datetime(2026, 7, 16, 11, 36, tzinfo=CN_TZ)).strftime("%H:%M") == "11:35"
+    assert latest_due_slot(datetime(2026, 7, 16, 15, 11, tzinfo=CN_TZ)).strftime("%H:%M") == "15:10"
+
+
+def test_schedule_grace_does_not_extend_indefinitely():
+    assert latest_due_slot(datetime(2026, 7, 16, 11, 46, tzinfo=CN_TZ)) is None
+    assert latest_due_slot(datetime(2026, 7, 16, 15, 21, tzinfo=CN_TZ)) is None

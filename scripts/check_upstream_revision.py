@@ -18,6 +18,7 @@ UPSTREAM_API = os.environ.get(
     "https://api.github.com/repos/njedu2023-prog/a-share-top3-data/contents/data/wp/latest/wp_manifest.json?ref=main",
 )
 CN_TZ = ZoneInfo("Asia/Shanghai")
+SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "600"))
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -72,9 +73,14 @@ def scheduled_slots(day: date) -> list[datetime]:
 
 def latest_due_slot(current: datetime) -> datetime | None:
     local = current.astimezone(CN_TZ)
+    morning_start = datetime.combine(local.date(), time(9, 25), CN_TZ)
+    morning_end = datetime.combine(local.date(), time(11, 35), CN_TZ)
+    afternoon_start = datetime.combine(local.date(), time(12, 55), CN_TZ)
+    afternoon_end = datetime.combine(local.date(), time(15, 10), CN_TZ)
+    grace = timedelta(seconds=SCHEDULE_GRACE_SECONDS)
     in_window = (
-        time(9, 25) <= local.time() <= time(11, 35)
-        or time(12, 55) <= local.time() <= time(15, 10)
+        morning_start <= local <= morning_end + grace
+        or afternoon_start <= local <= afternoon_end + grace
     )
     if not in_window:
         return None
@@ -146,12 +152,13 @@ def main() -> None:
     event_name = os.environ.get("GITHUB_EVENT_NAME", "schedule").strip()
     local = read_json(LOCAL_MANIFEST)
     current = datetime.now(CN_TZ)
+    upstream: dict[str, Any] = {}
     upstream_error = ""
-    try:
-        upstream = read_upstream_manifest()
-    except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
-        upstream = {}
-        upstream_error = str(exc)
+    if event_name == "repository_dispatch":
+        try:
+            upstream = read_upstream_manifest()
+        except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
+            upstream_error = str(exc)
     should_run, reason = resolve_decision(event_name, upstream, local, current)
 
     target = latest_due_slot(current)

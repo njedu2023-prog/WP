@@ -18,7 +18,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wp-close-validation
+  group: wp-output-writer-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:

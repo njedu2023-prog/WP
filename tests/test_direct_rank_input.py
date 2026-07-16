@@ -21,10 +21,24 @@ def _prepare_processor(root: Path, *, status: str = "ok") -> Path:
                 "trade_date": "20260716",
                 "update_time": "2026-07-16 14:35:10",
                 "ts_code": "000001.SZ",
+                "name": "平安银行",
+                "price": 12.50,
+                "pre_close": 11.50,
                 "pct_chg": 8.5,
                 "amount": 200_000_000,
+                "sector_name": "银行",
                 "pre_day_limitup": 0,
                 "today_limitup": 0,
+                "today_limit_up_price": 12.65,
+                "ret_5d": 15.0,
+                "ret_20d": 25.0,
+                "amount_ratio_5d": 1.8,
+                "amount_ratio_20d": 1.5,
+                "ma5_position": 5.0,
+                "ma20_position": 10.0,
+                "close_position": 92.0,
+                "realtime_source": "rt_min",
+                "stock_age_days": 1000,
             }
         ]
     ).to_csv(latest / "wp_latest_rank_input.csv", index=False, encoding="utf-8-sig")
@@ -68,6 +82,9 @@ def test_direct_builder_archives_validated_rank_input(tmp_path):
     assert manifest["scheduled_slot"] == "2026-07-16 14:35:00"
     assert manifest["processor_revision"] == "abc123"
     assert manifest["direct_row_count"] == 1
+    assert manifest["direct_quality"]["unique_codes"] == 1
+    assert manifest["direct_quality"]["required_columns_complete"] is True
+    assert manifest["direct_quality"]["history_feature_coverage_pct"] == 100.0
 
 
 def test_direct_builder_falls_back_when_token_is_missing(tmp_path):
@@ -90,3 +107,75 @@ def test_direct_builder_rejects_stale_processor_output(tmp_path):
 
     assert result.ok is False
     assert "stale_data" in result.error
+
+
+def test_direct_builder_uses_one_total_timeout_budget(tmp_path):
+    processor = _prepare_processor(tmp_path)
+    timeouts = []
+    clock = iter([0.0, 0.0, 40.0])
+
+    def fake_runner(command, **kwargs):
+        timeouts.append(kwargs["timeout"])
+
+    result = build_direct_rank_input(
+        root=tmp_path,
+        upstream_root=processor,
+        env={
+            "TUSHARE_TOKEN": "secret",
+            "TRADE_DATE": "20260716",
+            "WP_DIRECT_TIMEOUT_SECONDS": "100",
+        },
+        command_runner=fake_runner,
+        monotonic=lambda: next(clock),
+    )
+
+    assert result.ok is True
+    assert timeouts == [100.0, 60.0]
+
+
+def test_direct_builder_rejects_incomplete_model_inputs(tmp_path):
+    processor = _prepare_processor(tmp_path)
+    csv_path = processor / "data" / "wp" / "latest" / "wp_latest_rank_input.csv"
+    frame = pd.read_csv(csv_path)
+    frame.loc[0, "amount_ratio_5d"] = None
+    frame.to_csv(csv_path, index=False, encoding="utf-8-sig")
+
+    result = build_direct_rank_input(
+        root=tmp_path,
+        upstream_root=processor,
+        env={"TUSHARE_TOKEN": "secret", "TRADE_DATE": "20260716"},
+        command_runner=lambda *args, **kwargs: None,
+    )
+
+    assert result.ok is False
+    assert "amount_ratio_5d" in result.error
+
+
+def test_direct_builder_rejects_synthetic_historical_features(tmp_path):
+    processor = _prepare_processor(tmp_path)
+    csv_path = processor / "data" / "wp" / "latest" / "wp_latest_rank_input.csv"
+    seed = pd.read_csv(csv_path)
+    frames = []
+    for index in range(3):
+        row = seed.copy()
+        row["ts_code"] = f"00000{index + 1}.SZ"
+        row["ret_5d"] = row["pct_chg"]
+        row["amount_ratio_5d"] = 1.0
+        row["ma5_position"] = 0.0
+        row["ma20_position"] = 0.0
+        frames.append(row)
+    pd.concat(frames, ignore_index=True).to_csv(
+        csv_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+
+    result = build_direct_rank_input(
+        root=tmp_path,
+        upstream_root=processor,
+        env={"TUSHARE_TOKEN": "secret", "TRADE_DATE": "20260716"},
+        command_runner=lambda *args, **kwargs: None,
+    )
+
+    assert result.ok is False
+    assert "historical features are degraded" in result.error

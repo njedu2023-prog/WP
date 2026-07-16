@@ -51,7 +51,8 @@ permissions:
   id-token: write
 
 concurrency:
-  group: wp-session-${{ github.ref }}
+  # Live ranking and next-day validation both commit generated outputs.
+  group: wp-output-writer-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -80,6 +81,10 @@ jobs:
             scripts
             requirements.txt
           sparse-checkout-cone-mode: false
+      - name: Record upstream processor revision
+        id: upstream-revision
+        if: steps.upstream-code.outcome == 'success'
+        run: echo "sha=$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v5
         if: steps.upstream.outputs.should_run == 'true'
         with:
@@ -104,7 +109,7 @@ jobs:
           WP_FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
           WP_DIRECT_SOURCE_ENABLED: "1"
           WP_UPSTREAM_WORKTREE: "${{ github.workspace }}/upstream"
-          WP_UPSTREAM_PROCESSOR_REVISION: ${{ steps.upstream-code.outputs.commit }}
+          WP_UPSTREAM_PROCESSOR_REVISION: ${{ steps.upstream-revision.outputs.sha }}
           WP_TARGET_SLOT: ${{ steps.upstream.outputs.target_slot }}
           WP_DIRECT_TIMEOUT_SECONDS: "1500"
           WP_SCHEDULE_GRACE_SECONDS: "600"

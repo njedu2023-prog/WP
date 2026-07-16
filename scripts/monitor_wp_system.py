@@ -11,57 +11,58 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 from zoneinfo import ZoneInfo
 
+try:
+    from scripts.check_upstream_revision import latest_due_slot
+except ModuleNotFoundError:  # Executed as python scripts/monitor_wp_system.py.
+    from check_upstream_revision import latest_due_slot
+
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
-UPSTREAM_REPO = os.environ.get("WP_MONITOR_UPSTREAM_REPO", "njedu2023-prog/a-share-top3-data")
 WP_REPO = os.environ.get("WP_MONITOR_WP_REPO", "njedu2023-prog/WP")
-UPSTREAM_WORKFLOW = os.environ.get("WP_MONITOR_UPSTREAM_WORKFLOW", "run_wp_data_10min.yml")
 WP_WORKFLOW = os.environ.get("WP_MONITOR_WP_WORKFLOW", "run_wp_10min.yml")
-UPSTREAM_MANIFEST = "data/wp/latest/wp_manifest.json"
 WP_MANIFEST = "outputs/json/wp_manifest.json"
 PAGES_MANIFEST_URL = os.environ.get(
     "WP_MONITOR_PAGES_MANIFEST_URL",
     "https://njedu2023-prog.github.io/WP/outputs/json/wp_manifest.json",
 )
-MAX_UPSTREAM_AGE_MIN = float(os.environ.get("WP_MONITOR_MAX_UPSTREAM_AGE_MIN", "25"))
-MAX_WP_AGE_MIN = float(os.environ.get("WP_MONITOR_MAX_WP_AGE_MIN", "25"))
-MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "20"))
-SESSION_GRACE_MIN = float(os.environ.get("WP_MONITOR_SESSION_GRACE_MIN", "25"))
+MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "10"))
+ACCEPTED_HEALTH_STATUSES = {"ok", "无符合条件股票"}
+ACTIVE_RUN_STATUSES = {"queued", "in_progress", "waiting", "pending"}
 
 
 def now_cn() -> datetime:
-    return datetime.now(CN_TZ).replace(tzinfo=None)
+    return datetime.now(CN_TZ)
 
 
-def in_trade_window(now: datetime) -> bool:
-    return time(9, 25) <= now.time() <= time(11, 35) or time(12, 55) <= now.time() <= time(15, 10)
+def in_trade_window(current: datetime) -> bool:
+    return (
+        time(9, 25) <= current.time() <= time(11, 45)
+        or time(12, 55) <= current.time() <= time(15, 10)
+    )
 
 
-def in_close_finalize_window(now: datetime) -> bool:
-    # The upstream 15:10 slot can finish after the normal trading-window monitor.
-    return time(15, 10) < now.time() <= time(15, 35)
+def in_close_finalize_window(current: datetime) -> bool:
+    return time(15, 10) < current.time() <= time(15, 35)
 
 
-def in_monitor_window(now: datetime) -> bool:
-    return in_trade_window(now) or in_close_finalize_window(now)
-
-
-def session_start(now: datetime) -> datetime | None:
-    if time(9, 25) <= now.time() <= time(11, 35):
-        return datetime.combine(now.date(), time(9, 25))
-    if time(12, 55) <= now.time() <= time(15, 10):
-        return datetime.combine(now.date(), time(12, 55))
-    return None
+def in_monitor_window(current: datetime) -> bool:
+    return in_trade_window(current) or in_close_finalize_window(current)
 
 
 def parse_dt(value: Any) -> datetime | None:
     text_value = str(value or "").strip()
     for fmt in ("%Y-%m-%d %H:%M:%S", "%Y%m%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
         try:
-            return datetime.strptime(text_value[:19], fmt)
+            return datetime.strptime(text_value[:19], fmt).replace(tzinfo=CN_TZ)
         except ValueError:
             continue
     return None
+
+
+def target_slot(current: datetime) -> datetime | None:
+    if in_close_finalize_window(current):
+        return datetime.combine(current.date(), time(15, 10), CN_TZ)
+    return latest_due_slot(current)
 
 
 def request_json(
@@ -76,7 +77,7 @@ def request_json(
         "Accept": "application/vnd.github+json",
         "X-GitHub-Api-Version": "2022-11-28",
         "Content-Type": "application/json",
-        "User-Agent": "WP-system-monitor",
+        "User-Agent": "WP-direct-system-monitor",
     }
     if token:
         headers["Authorization"] = f"Bearer {token}"
@@ -88,7 +89,10 @@ def request_json(
 
 def read_github_file(repo: str, path: str, token: str = "") -> dict[str, Any]:
     encoded = quote(path, safe="/")
-    payload = request_json(f"https://api.github.com/repos/{repo}/contents/{encoded}?ref=main", token=token)
+    payload = request_json(
+        f"https://api.github.com/repos/{repo}/contents/{encoded}?ref=main",
+        token=token,
+    )
     content = "".join(str(payload.get("content", "")).split())
     if payload.get("encoding") != "base64" or not content:
         raise RuntimeError(f"Unsupported GitHub contents payload for {repo}/{path}")
@@ -120,205 +124,174 @@ def is_trade_day(token: str, day: str) -> bool:
     return int(items[0][fields.index("is_open")]) == 1
 
 
-def age_minutes(now: datetime, value: Any) -> float | None:
-    parsed = parse_dt(value)
-    if parsed is None:
-        return None
-    return (now - parsed).total_seconds() / 60
-
-
-def workflow_active(repo: str, workflow: str, token: str) -> bool:
+def workflow_runs(repo: str, workflow: str, token: str) -> list[dict[str, Any]]:
     payload = request_json(
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/runs?per_page=10",
         token=token,
     )
-    return any(run.get("status") in {"queued", "in_progress", "waiting", "pending"} for run in payload.get("workflow_runs", []))
+    return list(payload.get("workflow_runs", []))
 
 
-def dispatch_workflow(repo: str, workflow: str, token: str, inputs: dict[str, str]) -> None:
+def workflow_active(runs: list[dict[str, Any]]) -> bool:
+    return any(run.get("status") in ACTIVE_RUN_STATUSES for run in runs)
+
+
+def dispatch_workflow(repo: str, workflow: str, token: str) -> None:
     request_json(
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
         token=token,
         method="POST",
-        payload={"ref": "main", "inputs": inputs},
+        payload={
+            "ref": "main",
+            "inputs": {"mode": "live", "force_rebuild": "true"},
+        },
     )
 
 
-def add_check(errors: list[str], warnings: list[str], ok: bool, message: str, warn_only: bool = False) -> None:
-    if ok:
-        print(f"[ok] {message}")
-    elif warn_only:
-        warnings.append(message)
-        print(f"::warning::{message}")
-    else:
-        errors.append(message)
-        print(f"::error::{message}")
+def source_coverage(manifest: dict[str, Any]) -> datetime | None:
+    for field in (
+        "source_scheduled_slot",
+        "scheduled_slot",
+        "market_data_time",
+        "source_generated_at",
+    ):
+        parsed = parse_dt(manifest.get(field))
+        if parsed is not None:
+            return parsed
+    return None
 
 
-def within_start_grace(now: datetime) -> bool:
-    start = session_start(now)
-    return bool(start and (now - start).total_seconds() / 60 < SESSION_GRACE_MIN)
+def wp_health(manifest: dict[str, Any], slot: datetime) -> tuple[bool, list[str]]:
+    reasons: list[str] = []
+    health = str(manifest.get("health_status") or "").strip()
+    source_mode = str(manifest.get("source_mode") or "").strip()
+    source_trade_date = str(manifest.get("source_trade_date") or "").replace("-", "")
+    coverage = source_coverage(manifest)
+    if health not in ACCEPTED_HEALTH_STATUSES:
+        reasons.append(f"health_status={health or 'missing'}")
+    if source_mode != "direct_tushare":
+        reasons.append(f"source_mode={source_mode or 'missing'}")
+    if source_trade_date != slot.strftime("%Y%m%d"):
+        reasons.append(f"source_trade_date={source_trade_date or 'missing'}")
+    if coverage is None or coverage < slot:
+        reasons.append(
+            f"coverage={coverage.strftime('%Y-%m-%d %H:%M:%S') if coverage else 'missing'}"
+        )
+    if bool(manifest.get("direct_fallback_used")):
+        reasons.append("direct_fallback_used=true")
+    return not reasons, reasons
 
 
-def attempt_repairs(
-    upstream_fresh: bool,
-    wp_fresh: bool,
-    grace: bool,
-    github_token: str,
-    repair_token: str,
-) -> None:
-    if grace:
-        return
-    if not upstream_fresh:
-        if not repair_token:
-            print("::warning::Upstream repair token is not configured; the upstream watchdog remains the fallback.")
-            return
-        try:
-            if workflow_active(UPSTREAM_REPO, UPSTREAM_WORKFLOW, repair_token):
-                print("::warning::Upstream is stale, but an upstream workflow is already active.")
-            else:
-                dispatch_workflow(UPSTREAM_REPO, UPSTREAM_WORKFLOW, repair_token, {"mode": "due"})
-                print("::warning::Upstream is stale; dispatched an upstream repair.")
-        except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
-            print(f"::error::Cannot dispatch upstream repair: {exc}")
-        return
-    if wp_fresh:
-        return
+def pages_health(
+    wp_manifest: dict[str, Any],
+    pages_manifest: dict[str, Any],
+) -> tuple[bool, str]:
+    wp_revision = str(wp_manifest.get("report_revision") or "").strip()
+    page_revision = str(pages_manifest.get("report_revision") or "").strip()
+    if wp_revision and page_revision == wp_revision:
+        return True, "report revisions match"
+    wp_time = parse_dt(wp_manifest.get("wp_run_time") or wp_revision)
+    page_time = parse_dt(pages_manifest.get("wp_run_time") or page_revision)
+    if wp_time is None or page_time is None:
+        return False, "report revision or run time is missing"
+    lag = (wp_time - page_time).total_seconds() / 60
+    return lag <= MAX_PAGE_LAG_MIN, f"Pages lag={lag:.1f} min"
+
+
+def repair_or_wait(
+    *,
+    reason: str,
+    runs: list[dict[str, Any]],
+    token: str,
+) -> int:
+    if workflow_active(runs):
+        print(f"::warning::{reason}; WP workflow is already active, wait for completion.")
+        return 0
+    latest = runs[0] if runs else {}
+    if latest.get("conclusion") in {"failure", "cancelled", "timed_out"}:
+        print(
+            "::warning::Latest WP workflow ended "
+            f"{latest.get('conclusion')}: {latest.get('html_url', '')}"
+        )
+    if not token:
+        print(f"::error::{reason}; GITHUB_TOKEN is unavailable, cannot self-heal.")
+        return 1
     try:
-        if workflow_active(WP_REPO, WP_WORKFLOW, github_token):
-            print("::warning::WP is stale, but a WP workflow is already active.")
-        else:
-            dispatch_workflow(WP_REPO, WP_WORKFLOW, github_token, {"mode": "live"})
-            print("::warning::WP is stale while upstream is fresh; dispatched a WP repair.")
+        dispatch_workflow(WP_REPO, WP_WORKFLOW, token)
     except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
-        print(f"::error::Cannot dispatch WP repair: {exc}")
+        print(f"::error::{reason}; cannot dispatch WP repair: {exc}")
+        return 1
+    print(f"::warning::{reason}; dispatched a forced direct-source WP repair.")
+    return 0
 
 
-def monitor() -> int:
+def monitor(current: datetime | None = None) -> int:
     github_token = os.environ.get("GITHUB_TOKEN", "").strip()
-    repair_token = os.environ.get("WP_REPAIR_TOKEN", "").strip()
     tushare_token = os.environ.get("TUSHARE_TOKEN", "").strip()
-    current = now_cn()
+    current = current or now_cn()
     today = current.strftime("%Y%m%d")
-    print(f"WP system monitor at {current:%Y-%m-%d %H:%M:%S} Asia/Shanghai")
+    print(f"WP direct-system monitor at {current:%Y-%m-%d %H:%M:%S} Asia/Shanghai")
 
     if not in_monitor_window(current):
-        print("Outside A-share trading or close-finalization window; no monitoring action.")
+        print("Outside A-share monitoring window; no action.")
         return 0
     if tushare_token:
         try:
             if not is_trade_day(tushare_token, today):
-                print(f"{today} is not an A-share trading day; no monitoring action.")
+                print(f"{today} is not an A-share trading day; no action.")
                 return 0
         except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
             print(f"::warning::Cannot verify Tushare calendar; continue with manifest checks: {exc}")
-    else:
-        print("::warning::TUSHARE_TOKEN is not configured; continue with manifest checks.")
 
-    errors: list[str] = []
-    warnings: list[str] = []
-    grace = within_start_grace(current)
+    slot = target_slot(current)
+    if slot is None:
+        print("No due market-data slot; no action.")
+        return 0
 
     try:
-        upstream = read_github_file(UPSTREAM_REPO, UPSTREAM_MANIFEST, token=repair_token)
-        wp = read_github_file(WP_REPO, WP_MANIFEST, token=github_token)
+        wp_manifest = read_github_file(WP_REPO, WP_MANIFEST, token=github_token)
+        runs = workflow_runs(WP_REPO, WP_WORKFLOW, github_token)
     except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
-        print(f"::error::Cannot read system manifests: {exc}")
+        print(f"::error::Cannot read WP production state: {exc}")
         return 1
+
+    wp_ok, reasons = wp_health(wp_manifest, slot)
+    coverage = source_coverage(wp_manifest)
+    print(
+        json.dumps(
+            {
+                "target_slot": slot.strftime("%Y-%m-%d %H:%M:%S"),
+                "source_mode": wp_manifest.get("source_mode"),
+                "source_trade_date": wp_manifest.get("source_trade_date"),
+                "coverage": coverage.strftime("%Y-%m-%d %H:%M:%S") if coverage else "",
+                "wp_run_time": wp_manifest.get("wp_run_time"),
+                "report_revision": wp_manifest.get("report_revision"),
+                "active_workflow": workflow_active(runs),
+            },
+            ensure_ascii=False,
+        )
+    )
+    if not wp_ok:
+        return repair_or_wait(
+            reason=f"WP direct data does not cover {slot:%H:%M}: {', '.join(reasons)}",
+            runs=runs,
+            token=github_token,
+        )
 
     try:
-        pages = read_public_json(PAGES_MANIFEST_URL)
-    except (HTTPError, URLError, TimeoutError, json.JSONDecodeError) as exc:
-        pages = {}
-        warnings.append(f"Cannot read GitHub Pages manifest: {exc}")
-        print(f"::warning::Cannot read GitHub Pages manifest: {exc}")
-
-    upstream_time = parse_dt(upstream.get("generated_at"))
-    wp_time = parse_dt(wp.get("wp_run_time") or wp.get("latest_update"))
-    page_time = parse_dt(pages.get("wp_run_time") or pages.get("latest_update")) if pages else None
-    upstream_age = age_minutes(current, upstream.get("generated_at"))
-    wp_age = age_minutes(current, wp.get("wp_run_time") or wp.get("latest_update"))
-    page_age = age_minutes(current, pages.get("wp_run_time") or pages.get("latest_update")) if pages else None
-    wp_source_time = parse_dt(wp.get("source_generated_at")) or wp_time
-    wp_upstream_lag = (
-        (upstream_time - wp_source_time).total_seconds() / 60
-        if upstream_time and wp_source_time
-        else None
-    )
-    page_lag = (wp_time - page_time).total_seconds() / 60 if wp_time and page_time else None
-    upstream_fresh = (
-        upstream.get("status") == "ok"
-        and str(upstream.get("source_trade_date")) == today
-        and upstream_age is not None
-        and upstream_age <= MAX_UPSTREAM_AGE_MIN
-    )
-    wp_fresh = (
-        wp.get("health_status") == "ok"
-        and wp_upstream_lag is not None
-        and wp_upstream_lag <= 0
-    )
-
-    print(json.dumps({"upstream": upstream, "wp": wp, "pages": pages}, ensure_ascii=False, indent=2)[:6000])
-    add_check(errors, warnings, upstream.get("status") == "ok", f"upstream status is {upstream.get('status')!r}", grace)
-    add_check(
-        errors,
-        warnings,
-        str(upstream.get("source_trade_date")) == today,
-        f"upstream trade date {upstream.get('source_trade_date')} matches today {today}",
-        grace,
-    )
-    add_check(
-        errors,
-        warnings,
-        upstream_age is not None and upstream_age <= MAX_UPSTREAM_AGE_MIN,
-        f"upstream generated_at age {upstream_age if upstream_age is not None else 'unknown'} min <= {MAX_UPSTREAM_AGE_MIN}",
-        grace,
-    )
-    add_check(errors, warnings, wp.get("health_status") == "ok", f"WP health_status is {wp.get('health_status')!r}", grace)
-    add_check(
-        errors,
-        warnings,
-        wp_age is not None and wp_age <= MAX_WP_AGE_MIN,
-        f"WP run age {wp_age if wp_age is not None else 'unknown'} min <= {MAX_WP_AGE_MIN}",
-        grace or wp_fresh,
-    )
-    add_check(
-        errors,
-        warnings,
-        wp_upstream_lag is not None and wp_upstream_lag <= 0,
-        f"WP source_generated_at covers latest upstream generation; lag={wp_upstream_lag if wp_upstream_lag is not None else 'unknown'} min",
-        grace,
-    )
-    add_check(
-        errors,
-        warnings,
-        str(wp.get("market_data_time", "")).startswith(current.strftime("%Y-%m-%d")),
-        f"WP market_data_time {wp.get('market_data_time')} is today",
-        grace,
-    )
-    if pages:
-        add_check(
-            errors,
-            warnings,
-            page_age is not None and page_age <= MAX_WP_AGE_MIN + MAX_PAGE_LAG_MIN,
-            f"Pages run age {page_age if page_age is not None else 'unknown'} min within allowed lag",
-            warn_only=True,
-        )
-        add_check(
-            errors,
-            warnings,
-            page_lag is not None and page_lag <= MAX_PAGE_LAG_MIN,
-            f"Pages lag {page_lag if page_lag is not None else 'unknown'} min <= {MAX_PAGE_LAG_MIN}",
-            warn_only=True,
+        pages_manifest = read_public_json(PAGES_MANIFEST_URL)
+    except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
+        pages_manifest = {}
+        print(f"::warning::Cannot read Pages manifest: {exc}")
+    pages_ok, pages_reason = pages_health(wp_manifest, pages_manifest)
+    if not pages_ok:
+        return repair_or_wait(
+            reason=f"GitHub Pages is behind WP: {pages_reason}",
+            runs=runs,
+            token=github_token,
         )
 
-    attempt_repairs(upstream_fresh, wp_fresh, grace, github_token, repair_token)
-    if warnings:
-        print(f"Warnings: {len(warnings)}")
-    if errors:
-        print(f"Monitor found {len(errors)} health error(s).")
-        return 1
-    print("Monitor passed.")
+    print(f"Monitor passed: direct WP covers {slot:%H:%M}; {pages_reason}.")
     return 0
 
 
