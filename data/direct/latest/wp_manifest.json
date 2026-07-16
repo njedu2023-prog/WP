@@ -1,12 +1,15 @@
 {
-  "generated_at": "2026-07-16 23:07:41",
+  "generated_at": "2026-07-17 06:02:37",
   "scheduled_slot": "",
-  "trigger_event": "workflow_dispatch",
+  "trigger_event": "push",
   "status": "ok",
   "source_trade_date": "20260716",
   "expected_trade_date": "20260716",
-  "row_count": 39,
-  "candidate_count": 39,
+  "row_count": 35,
+  "candidate_count": 35,
+  "history_feature_rows": 34,
+  "history_feature_coverage_pct": 97.14,
+  "history_features_ready": true,
   "columns": [
     "trade_date",
     "update_time",
@@ -88,7 +91,19 @@
   ],
   "source_mode": "direct_tushare",
   "source_repository": "njedu2023-prog/a-share-top3-data",
-  "processor_revision": "e6a6aa0ab7b0ef3f80712dd68ff5fabb3f2f296c",
-  "direct_row_count": 39,
+  "processor_revision": "083400259c37eca2ab55f72d5070a8f27014ccff",
+  "direct_row_count": 35,
+  "direct_quality": {
+    "rows": 35,
+    "source_trade_date": "20260716",
+    "required_columns": 21,
+    "required_columns_complete": true,
+    "unique_codes": 35,
+    "market_data_time_min": "20260716 15:00:03",
+    "market_data_time_max": "20260716 15:35:45",
+    "pct_chg_min": 8.052656546489567,
+    "pct_chg_max": 98.2052720134605,
+    "history_feature_coverage_pct": 97.14
+  },
   "archive_mode": "wp_transaction_snapshot"
 }
