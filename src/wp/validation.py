@@ -116,7 +116,12 @@ def build_healthcheck(
         "load_ok": bool(load_ok),
         "load_error": load_error,
         "source_status": source_metadata.get("status", ""),
+        "source_trade_date": source_metadata.get("source_trade_date", data_trade_date),
         "source_generated_at": source_metadata.get("generated_at", ""),
+        "source_scheduled_slot": source_metadata.get("scheduled_slot", ""),
+        "source_mode": source_metadata.get("source_mode", ""),
+        "source_repository": source_metadata.get("source_repository", ""),
+        "source_processor_revision": source_metadata.get("processor_revision", ""),
         "generated_at": datetime.now().isoformat(timespec="seconds"),
     }
 

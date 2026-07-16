@@ -3,10 +3,12 @@ from __future__ import annotations
 import base64
 import json
 import os
+from datetime import date, datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
+from zoneinfo import ZoneInfo
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -15,6 +17,7 @@ UPSTREAM_API = os.environ.get(
     "WP_UPSTREAM_MANIFEST_API",
     "https://api.github.com/repos/njedu2023-prog/a-share-top3-data/contents/data/wp/latest/wp_manifest.json?ref=main",
 )
+CN_TZ = ZoneInfo("Asia/Shanghai")
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -30,7 +33,7 @@ def read_upstream_manifest() -> dict[str, Any]:
         headers={
             "Accept": "application/vnd.github+json",
             "X-GitHub-Api-Version": "2022-11-28",
-            "User-Agent": "WP-upstream-revision-gate",
+            "User-Agent": "WP-direct-source-gate",
         },
     )
     with urlopen(request, timeout=30) as response:
@@ -41,19 +44,95 @@ def read_upstream_manifest() -> dict[str, Any]:
     return json.loads(base64.b64decode(content).decode("utf-8-sig"))
 
 
-def resolve_decision(event_name: str, upstream: dict[str, Any], local: dict[str, Any]) -> tuple[bool, str]:
+def _slots(start: datetime, end: datetime, minutes: int) -> list[datetime]:
+    values: list[datetime] = []
+    current = start
+    while current <= end:
+        values.append(current)
+        current += timedelta(minutes=minutes)
+    return values
+
+
+def scheduled_slots(day: date) -> list[datetime]:
+    def at(hour: int, minute: int) -> datetime:
+        return datetime.combine(day, time(hour, minute), CN_TZ)
+
+    return sorted(
+        set(
+            [
+                *_slots(at(9, 25), at(11, 35), 10),
+                *_slots(at(12, 55), at(14, 15), 10),
+                *_slots(at(14, 20), at(14, 55), 5),
+                at(15, 5),
+                at(15, 10),
+            ]
+        )
+    )
+
+
+def latest_due_slot(current: datetime) -> datetime | None:
+    local = current.astimezone(CN_TZ)
+    in_window = (
+        time(9, 25) <= local.time() <= time(11, 35)
+        or time(12, 55) <= local.time() <= time(15, 10)
+    )
+    if not in_window:
+        return None
+    due = [slot for slot in scheduled_slots(local.date()) if slot <= local]
+    return due[-1] if due else None
+
+
+def parse_datetime(value: Any) -> datetime | None:
+    text_value = str(value or "").strip()
+    for fmt in ("%Y-%m-%d %H:%M:%S", "%Y%m%d %H:%M:%S", "%Y-%m-%dT%H:%M:%S"):
+        try:
+            return datetime.strptime(text_value[:19], fmt).replace(tzinfo=CN_TZ)
+        except ValueError:
+            continue
+    return None
+
+
+def _local_coverage(local: dict[str, Any]) -> datetime | None:
+    for name in ("source_scheduled_slot", "source_generated_at", "market_data_time", "wp_run_time"):
+        parsed = parse_datetime(local.get(name))
+        if parsed is not None:
+            return parsed
+    return None
+
+
+def resolve_decision(
+    event_name: str,
+    upstream: dict[str, Any],
+    local: dict[str, Any],
+    current: datetime | None = None,
+) -> tuple[bool, str]:
     if event_name in {"push", "workflow_dispatch"}:
         return True, f"explicit {event_name} run"
-    if upstream.get("status") != "ok":
-        return False, f"upstream status is {upstream.get('status')!r}"
 
-    upstream_revision = str(upstream.get("generated_at") or "").strip()
-    local_revision = str(local.get("source_generated_at") or "").strip()
-    if not upstream_revision:
-        return False, "upstream generated_at is missing"
-    if upstream_revision == local_revision:
-        return False, "upstream revision already processed"
-    return True, f"new upstream revision {upstream_revision} (local {local_revision or 'missing'})"
+    if event_name == "repository_dispatch":
+        if upstream.get("status") != "ok":
+            return False, f"upstream status is {upstream.get('status')!r}"
+        upstream_revision = str(upstream.get("generated_at") or "").strip()
+        local_revision = str(local.get("source_generated_at") or "").strip()
+        if not upstream_revision:
+            return False, "upstream generated_at is missing"
+        if upstream_revision == local_revision:
+            return False, "upstream revision already processed"
+        return True, f"repository dispatch has upstream revision {upstream_revision}"
+
+    now = current or datetime.now(CN_TZ)
+    target = latest_due_slot(now)
+    if target is None:
+        return False, "outside A-share data window"
+    coverage = _local_coverage(local)
+    local_trade_date = str(
+        local.get("source_trade_date") or local.get("data_trade_date") or ""
+    ).replace("-", "")
+    if not local_trade_date and coverage is not None:
+        local_trade_date = coverage.strftime("%Y%m%d")
+    if local_trade_date == target.strftime("%Y%m%d") and coverage is not None and coverage >= target:
+        return False, f"target slot {target:%H:%M} already covered"
+    return True, f"direct source target slot {target:%Y-%m-%d %H:%M:%S} is due"
 
 
 def write_output(name: str, value: str) -> None:
@@ -66,16 +145,19 @@ def write_output(name: str, value: str) -> None:
 def main() -> None:
     event_name = os.environ.get("GITHUB_EVENT_NAME", "schedule").strip()
     local = read_json(LOCAL_MANIFEST)
+    current = datetime.now(CN_TZ)
+    upstream_error = ""
     try:
         upstream = read_upstream_manifest()
-        should_run, reason = resolve_decision(event_name, upstream, local)
     except (HTTPError, URLError, TimeoutError, RuntimeError, json.JSONDecodeError) as exc:
         upstream = {}
-        should_run = event_name in {"push", "workflow_dispatch"}
-        reason = f"cannot read upstream manifest: {exc}"
+        upstream_error = str(exc)
+    should_run, reason = resolve_decision(event_name, upstream, local, current)
 
+    target = latest_due_slot(current)
     upstream_revision = str(upstream.get("generated_at") or "")
     write_output("should_run", str(should_run).lower())
+    write_output("target_slot", target.strftime("%Y-%m-%d %H:%M:%S") if target else "")
     write_output("upstream_revision", upstream_revision)
     write_output("reason", reason)
     print(
@@ -83,8 +165,11 @@ def main() -> None:
             {
                 "event_name": event_name,
                 "should_run": should_run,
+                "target_slot": target.strftime("%Y-%m-%d %H:%M:%S") if target else "",
                 "upstream_revision": upstream_revision,
                 "local_revision": local.get("source_generated_at", ""),
+                "local_source_mode": local.get("source_mode", ""),
+                "upstream_read_error": upstream_error,
                 "reason": reason,
             },
             ensure_ascii=False,

@@ -196,6 +196,21 @@ def run() -> dict:
     health["buy_model_version"] = TAIL_PROFIT_MODEL_VERSION
     health["source_data_hash"] = input_hash
     health["report_revision"] = update_time
+    health["source_mode"] = (
+        os.environ.get("WP_SOURCE_MODE", "").strip()
+        or health.get("source_mode")
+        or "upstream_repository"
+    )
+    health["source_repository"] = (
+        os.environ.get("WP_SOURCE_REPOSITORY", "").strip()
+        or health.get("source_repository")
+        or "njedu2023-prog/a-share-top3-data"
+    )
+    health["direct_attempted"] = os.environ.get("WP_DIRECT_ATTEMPTED", "").strip().lower() in {
+        "1", "true", "yes"
+    }
+    health["direct_error"] = os.environ.get("WP_DIRECT_ERROR", "").strip()
+    health["direct_fallback_used"] = health["source_mode"] == "upstream_fallback"
     if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
         logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
         top50 = top50.iloc[0:0].copy()
@@ -271,7 +286,15 @@ def run() -> dict:
             "latest_update": update_time,
             "market_data_time": health.get("market_data_time", ""),
             "data_revision": health.get("market_data_time", ""),
+            "source_trade_date": health.get("source_trade_date", health.get("data_trade_date", "")),
             "source_generated_at": health.get("source_generated_at", ""),
+            "source_scheduled_slot": health.get("source_scheduled_slot", ""),
+            "source_mode": health.get("source_mode", ""),
+            "source_repository": health.get("source_repository", ""),
+            "source_processor_revision": health.get("source_processor_revision", ""),
+            "direct_attempted": health.get("direct_attempted", False),
+            "direct_fallback_used": health.get("direct_fallback_used", False),
+            "direct_error": health.get("direct_error", ""),
             "source_data_hash": input_hash,
             "wp_run_time": update_time,
             "report_revision": update_time,

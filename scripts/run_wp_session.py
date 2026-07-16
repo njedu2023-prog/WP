@@ -10,6 +10,11 @@ from zoneinfo import ZoneInfo
 
 import tushare as ts
 
+try:
+    from build_direct_rank_input import build_direct_rank_input
+except ModuleNotFoundError:  # pragma: no cover - package import in tests
+    from scripts.build_direct_rank_input import build_direct_rank_input
+
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 INTERVAL_SECONDS = int(os.environ.get("WP_SESSION_INTERVAL_SECONDS", "600"))
@@ -38,6 +43,8 @@ LIVE_COMMIT_PATHS = [
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
     "data/cache/wp_latest_rank_input.csv",
+    "data/direct/latest/wp_latest_rank_input.csv",
+    "data/direct/latest/wp_manifest.json",
 ]
 
 
@@ -103,6 +110,28 @@ def run_once() -> None:
     env = os.environ.copy()
     if not env.get("WP_MODE", "").strip():
         env["WP_MODE"] = "live"
+    mode = env["WP_MODE"].strip().lower()
+    direct_enabled = env.get("WP_DIRECT_SOURCE_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
+    explicit_source = env.get("WP_SOURCE_CSV", "").strip()
+    if mode == "live" and direct_enabled and not explicit_source:
+        direct = build_direct_rank_input(root=Path.cwd(), env=env)
+        env["WP_DIRECT_ATTEMPTED"] = str(direct.attempted).lower()
+        env["WP_DIRECT_ERROR"] = direct.error
+        if direct.ok:
+            env["WP_SOURCE_CSV"] = direct.source_path
+            env["WP_SOURCE_MODE"] = "direct_tushare"
+            env["WP_SOURCE_REPOSITORY"] = "njedu2023-prog/a-share-top3-data"
+            print(f"WP direct Tushare source ready: {direct.source_path}")
+        else:
+            env["WP_SOURCE_MODE"] = "upstream_fallback"
+            env["WP_SOURCE_REPOSITORY"] = "njedu2023-prog/a-share-top3-data"
+            print(f"::warning::WP direct source unavailable; use upstream fallback: {direct.error}")
+    elif explicit_source:
+        env.setdefault("WP_SOURCE_MODE", "explicit_source")
+        env.setdefault("WP_DIRECT_ATTEMPTED", "false")
+    else:
+        env.setdefault("WP_SOURCE_MODE", "not_applicable")
+        env.setdefault("WP_DIRECT_ATTEMPTED", "false")
     manifest_path = Path("outputs/json/wp_manifest.json")
     manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
@@ -110,7 +139,7 @@ def run_once() -> None:
     if manifest_before == manifest_after:
         print("Skip GitHub output commit: WP manifest is unchanged.")
         return
-    commit_paths = output_commit_paths(env["WP_MODE"].strip().lower())
+    commit_paths = output_commit_paths(mode)
     subprocess.run(
         [sys.executable, "scripts/github_commit_paths.py", "Update WP outputs", *commit_paths],
         check=True,

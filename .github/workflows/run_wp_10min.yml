@@ -32,15 +32,16 @@ on:
       - main
     paths:
       - src/**
+      - scripts/build_direct_rank_input.py
+      - scripts/check_upstream_revision.py
       - scripts/run_wp_session.py
       - scripts/trigger_wp_run.txt
       - .github/workflows/run_wp_10min.yml
       - requirements.txt
       - pyproject.toml
   schedule:
-    # Independent polling is the fallback when repository_dispatch is delayed
-    # or unavailable. The preflight gate exits before dependency installation
-    # unless the upstream manifest has a new revision.
+    # Five-minute heartbeats tolerate GitHub cron delay. The lightweight gate
+    # maps each start to the latest required Beijing-time market-data slot.
     - cron: "1-56/5 1-3,5-7 * * 1-5"
     - cron: "56 4 * * 1-5"
 
@@ -56,14 +57,29 @@ concurrency:
 jobs:
   run-wp:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
-      - name: Check upstream data revision
+      - name: Resolve direct data slot
         id: upstream
         run: python scripts/check_upstream_revision.py
         env:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+      - name: Checkout upstream processor
+        id: upstream-code
+        if: steps.upstream.outputs.should_run == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'live')
+        continue-on-error: true
+        uses: actions/checkout@v4
+        with:
+          repository: njedu2023-prog/a-share-top3-data
+          ref: main
+          path: upstream
+          fetch-depth: 1
+          persist-credentials: false
+          sparse-checkout: |
+            scripts
+            requirements.txt
+          sparse-checkout-cone-mode: false
       - uses: actions/setup-python@v5
         if: steps.upstream.outputs.should_run == 'true'
         with:
@@ -86,5 +102,10 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           WP_FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
+          WP_DIRECT_SOURCE_ENABLED: "1"
+          WP_UPSTREAM_WORKTREE: "${{ github.workspace }}/upstream"
+          WP_UPSTREAM_PROCESSOR_REVISION: ${{ steps.upstream-code.outputs.commit }}
+          WP_TARGET_SLOT: ${{ steps.upstream.outputs.target_slot }}
+          WP_DIRECT_TIMEOUT_SECONDS: "1500"
           WP_SCHEDULE_GRACE_SECONDS: "600"
           WP_RUN_MODE: "once"
