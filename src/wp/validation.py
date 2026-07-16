@@ -27,7 +27,7 @@ def _parse_time(value) -> datetime | None:
         return None
 
 
-def _market_data_time(raw: pd.DataFrame, source_metadata: dict, fallback: str) -> str:
+def resolve_market_data_time(raw: pd.DataFrame, source_metadata: dict, fallback: str = "") -> str:
     times: list[datetime] = []
     if "update_time" in raw.columns:
         for value in raw["update_time"].dropna().tolist():
@@ -80,7 +80,7 @@ def build_healthcheck(
         )
     realtime_fallback_used = any("fallback" in item.lower() for item in realtime_sources)
     source_metadata = source_metadata or {}
-    market_data_time = _market_data_time(raw, source_metadata, update_time)
+    market_data_time = resolve_market_data_time(raw, source_metadata, update_time)
     status = "ok"
     if source_metadata.get("status") == "stale_data":
         data_trade_date = str(source_metadata.get("source_trade_date") or data_trade_date)

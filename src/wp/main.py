@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import logging
 import os
 from datetime import datetime
@@ -21,10 +22,53 @@ from .report_md import render_markdown
 from .scoring_model import MODEL_VERSION, add_scores
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
 from .utils import ensure_dir, load_yaml, write_json
-from .validation import assert_top50_rules, build_healthcheck
+from .validation import assert_top50_rules, build_healthcheck, resolve_market_data_time
 
 
 ROOT = Path(__file__).resolve().parents[2]
+
+
+def _read_existing_manifest(path: Path) -> dict:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def source_data_hash(frame: pd.DataFrame) -> str:
+    """Build a stable fingerprint for the complete upstream input table."""
+    digest = hashlib.sha256()
+    digest.update("\x1f".join(str(column) for column in frame.columns).encode("utf-8"))
+    if not frame.empty:
+        row_hashes = pd.util.hash_pandas_object(frame, index=True, categorize=True)
+        digest.update(row_hashes.to_numpy().tobytes())
+    return digest.hexdigest()
+
+
+def should_rebuild_live_report(
+    frame: pd.DataFrame,
+    source_metadata: dict | None,
+    existing_manifest: dict,
+    *,
+    force: bool = False,
+) -> tuple[bool, str, str]:
+    market_data_time = resolve_market_data_time(frame, source_metadata or {}, "")
+    data_hash = source_data_hash(frame)
+    if force or not existing_manifest:
+        return True, market_data_time, data_hash
+
+    existing_hash = str(existing_manifest.get("source_data_hash") or "").strip()
+    if existing_hash:
+        return existing_hash != data_hash, market_data_time, data_hash
+
+    existing_time = str(
+        existing_manifest.get("data_revision")
+        or existing_manifest.get("market_data_time")
+        or ""
+    ).strip()
+    if market_data_time and existing_time:
+        return market_data_time != existing_time, market_data_time, data_hash
+    return True, market_data_time, data_hash
 
 
 def load_backtest_summaries(output_root: Path) -> list[dict]:
@@ -94,6 +138,33 @@ def run() -> dict:
     logging.info("WP run started, source=%s", source)
     load_result = read_rank_input(source, cache_path=cache_path)
     raw = load_result.frame
+    manifest_path = output_root / "json" / "wp_manifest.json"
+    existing_manifest = _read_existing_manifest(manifest_path)
+    if not load_result.ok and existing_manifest:
+        logging.error("Skip WP rebuild: upstream unavailable and no usable cache. error=%s", load_result.error)
+        return {
+            "status": "source_unavailable",
+            "market_data_time": str(existing_manifest.get("market_data_time") or ""),
+            "error": load_result.error,
+        }
+    force_rebuild = os.environ.get("WP_FORCE_REBUILD", "").strip().lower() in {"1", "true", "yes"}
+    should_rebuild, source_market_time, input_hash = should_rebuild_live_report(
+        raw,
+        load_result.metadata,
+        existing_manifest,
+        force=force_rebuild,
+    )
+    if not should_rebuild:
+        logging.info(
+            "Skip WP rebuild: upstream data unchanged, market_data_time=%s source_data_hash=%s",
+            source_market_time or "unknown",
+            input_hash,
+        )
+        return {
+            "status": "no_new_data",
+            "market_data_time": source_market_time,
+            "source_data_hash": input_hash,
+        }
     expected_trade_date = current.strftime("%Y%m%d")
     candidates = filter_candidates(
         raw,
@@ -123,6 +194,7 @@ def run() -> dict:
     )
     health["model_version"] = MODEL_VERSION
     health["buy_model_version"] = TAIL_PROFIT_MODEL_VERSION
+    health["source_data_hash"] = input_hash
     if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
         logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
         top50 = top50.iloc[0:0].copy()
@@ -158,6 +230,7 @@ def run() -> dict:
     latest_payload = {
         "generated_at": update_time,
         "market_data_time": health.get("market_data_time", ""),
+        "source_data_hash": input_hash,
         "wp_run_time": update_time,
         "health": health,
         "buy_plan_validation": validation_result.table.to_dict(orient="records"),
@@ -173,6 +246,7 @@ def run() -> dict:
         {
             "generated_at": update_time,
             "market_data_time": health.get("market_data_time", ""),
+            "source_data_hash": input_hash,
             "wp_run_time": update_time,
             "summary": buy_decision.summary,
             "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
@@ -184,17 +258,22 @@ def run() -> dict:
         {
             "generated_at": update_time,
             "market_data_time": health.get("market_data_time", ""),
+            "source_data_hash": input_hash,
             "wp_run_time": update_time,
             "summary": validation_result.summary,
             "records": validation_result.table.to_dict(orient="records"),
         },
     )
     write_json(
-        output_root / "json" / "wp_manifest.json",
+        manifest_path,
         {
             "latest_update": update_time,
             "market_data_time": health.get("market_data_time", ""),
+            "data_revision": health.get("market_data_time", ""),
+            "source_generated_at": health.get("source_generated_at", ""),
+            "source_data_hash": input_hash,
             "wp_run_time": update_time,
+            "report_revision": update_time,
             "top50_count": len(top50),
             "buy_plan_count": len(buy_plan),
             "validation_summary": validation_result.summary,

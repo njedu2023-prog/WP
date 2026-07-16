@@ -22,6 +22,11 @@ on:
         description: "Backtest end date YYYYMMDD"
         required: false
         type: string
+      force_rebuild:
+        description: "Rebuild even when upstream data is unchanged"
+        required: false
+        default: false
+        type: boolean
   push:
     branches:
       - main
@@ -33,14 +38,13 @@ on:
       - requirements.txt
       - pyproject.toml
   schedule:
-    # A-share trading windows in Beijing time: 09:25-11:35 and 12:55-15:10.
-    # GitHub cron is UTC, so these schedules are UTC+0.
-    - cron: "25,35,45,55 1 * * 1-5"
-    - cron: "5,15,25,35,45,55 2 * * 1-5"
-    - cron: "5,15,25,35 3 * * 1-5"
-    - cron: "55 4 * * 1-5"
-    - cron: "5,15,25,35,45,55 5,6 * * 1-5"
-    - cron: "5,10 7 * * 1-5"
+    # repository_dispatch from fresh upstream data is primary. These UTC
+    # schedules are an offset 10-minute fallback, not an independent clock.
+    - cron: "32,42,52 1 * * 1-5"
+    - cron: "2,12,22,32,42,52 2 * * 1-5"
+    - cron: "2,12,22,32 3 * * 1-5"
+    - cron: "2,12,22,32,42,52 5,6 * * 1-5"
+    - cron: "2,12 7 * * 1-5"
 
 permissions:
   contents: write
@@ -54,7 +58,7 @@ concurrency:
 jobs:
   run-wp:
     runs-on: ubuntu-latest
-    timeout-minutes: 60
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -75,5 +79,6 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          WP_FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
           WP_SCHEDULE_GRACE_SECONDS: "600"
           WP_RUN_MODE: "once"

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import html
+import json
 from pathlib import Path
 
 import pandas as pd
@@ -276,12 +277,96 @@ def render_html(
     )
     if not sector_rows:
         sector_rows = "<tr><td colspan=\"3\" class=\"empty\">暂无板块数据</td></tr>"
+    refresh_script = r"""  <script>
+    (() => {
+      const MANIFEST_URL = "/WP/outputs/json/wp_manifest.json";
+      const INITIAL_REPORT_REVISION = __INITIAL_REPORT_REVISION__;
+      const INITIAL_DATA_REVISION = __INITIAL_DATA_REVISION__;
+      const EMBEDDED_MARKET_TIME = __EMBEDDED_MARKET_TIME__;
+      const STALE_AFTER_MINUTES = 20;
+      const POLL_INTERVAL_MS = 60_000;
+
+      function beijingParts(now) {
+        const parts = new Intl.DateTimeFormat("en-US", {
+          timeZone: "Asia/Shanghai",
+          weekday: "short",
+          hour: "2-digit",
+          minute: "2-digit",
+          hour12: false,
+        }).formatToParts(now);
+        return Object.fromEntries(parts.map((part) => [part.type, part.value]));
+      }
+
+      function isTradingWindow(now) {
+        const parts = beijingParts(now);
+        if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday)) return false;
+        const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
+        return (minuteOfDay >= 565 && minuteOfDay <= 695) || (minuteOfDay >= 775 && minuteOfDay <= 910);
+      }
+
+      function parseBeijingTime(value) {
+        const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
+        if (!match) return null;
+        return new Date(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+08:00`);
+      }
+
+      function applyFreshness(marketDataTime) {
+        const now = new Date();
+        const dataTime = parseBeijingTime(marketDataTime);
+        const ageMinutes = dataTime ? (now.getTime() - dataTime.getTime()) / 60_000 : Infinity;
+        const stale = isTradingWindow(now) && (!dataTime || ageMinutes > STALE_AFTER_MINUTES || ageMinutes < -5);
+        const banner = document.getElementById("stale-data-banner");
+        const tableWrap = document.getElementById("buy-plan-table-wrap");
+        const freshness = document.getElementById("live-freshness");
+        document.body.classList.toggle("data-stale", stale);
+        if (banner) banner.hidden = !stale;
+        if (tableWrap) tableWrap.hidden = stale;
+        if (freshness) {
+          freshness.textContent = stale ? "；数据过期" : "";
+          freshness.className = stale ? "status bad" : "";
+        }
+      }
+
+      async function checkManifest() {
+        try {
+          const url = `${MANIFEST_URL}?v=${Date.now()}`;
+          const response = await fetch(url, { cache: "no-store" });
+          if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
+          const manifest = await response.json();
+          const nextDataRevision = String(manifest.data_revision || manifest.market_data_time || "");
+          const nextReportRevision = String(manifest.report_revision || manifest.wp_run_time || manifest.latest_update || "");
+          applyFreshness(manifest.market_data_time || EMBEDDED_MARKET_TIME);
+          const dataChanged = nextDataRevision && nextDataRevision !== INITIAL_DATA_REVISION;
+          const reportChanged = nextReportRevision && nextReportRevision !== INITIAL_REPORT_REVISION;
+          if (dataChanged || reportChanged) {
+            const reportKey = `${nextDataRevision}-${nextReportRevision}`.replace(/\D/g, "");
+            const currentUrl = new URL(window.location.href);
+            if (currentUrl.searchParams.get("report") !== reportKey) {
+              currentUrl.searchParams.set("report", reportKey);
+              window.location.replace(currentUrl.toString());
+            }
+          }
+        } catch (_error) {
+          applyFreshness(EMBEDDED_MARKET_TIME);
+        }
+      }
+
+      applyFreshness(EMBEDDED_MARKET_TIME);
+      checkManifest();
+      window.setInterval(checkManifest, POLL_INTERVAL_MS);
+      document.addEventListener("visibilitychange", () => {
+        if (!document.hidden) checkManifest();
+      });
+    })();
+  </script>"""
+    refresh_script = refresh_script.replace("__INITIAL_REPORT_REVISION__", json.dumps(str(health.get("wp_run_time") or health.get("data_time") or ""), ensure_ascii=False))
+    refresh_script = refresh_script.replace("__INITIAL_DATA_REVISION__", json.dumps(str(health.get("market_data_time") or health.get("data_time") or ""), ensure_ascii=False))
+    refresh_script = refresh_script.replace("__EMBEDDED_MARKET_TIME__", json.dumps(str(health.get("market_data_time") or health.get("data_time") or ""), ensure_ascii=False))
     page = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <meta http-equiv="refresh" content="600">
   <title>WP Top50</title>
   <style>
     * {{ box-sizing: border-box; }}
@@ -333,6 +418,8 @@ def render_html(
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
     .buy-table td:nth-child(10), .buy-table td:nth-child(11), .buy-table td:nth-child(12) {{ min-width: 150px; line-height: 1.45; }}
+    .stale-data-banner {{ margin-top: 10px; padding: 12px 14px; border: 1px solid #f1a7a7; border-radius: 6px; color: #b42318; background: #fff2f2; font-size: 13px; font-weight: 600; }}
+    .stale-data-banner[hidden] {{ display: none; }}
     .backtest-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
     .backtest-scroll {{ width: 100%; overflow-x: auto; border-top: 1px solid #e5e5ea; -webkit-overflow-scrolling: touch; }}
     .backtest-table {{ border-collapse: collapse; min-width: 1480px; width: 100%; font-size: 13px; }}
@@ -403,7 +490,7 @@ def render_html(
       <summary class="summary-toggle">
         <span class="summary-toggle-title">
           <strong>运行状态与板块热度</strong>
-          <span class="summary-toggle-meta">状态：<span class="status {status_cls}">{status_text}</span>；市场数据：<span class="market-time">{market_data_time}</span>；报告更新：{wp_run_time}</span>
+          <span class="summary-toggle-meta">状态：<span class="status {status_cls}">{status_text}</span>；市场数据：<span class="market-time">{market_data_time}</span>；报告更新：{wp_run_time}<span id="live-freshness"></span></span>
         </span>
         <span class="summary-toggle-action" aria-hidden="true"></span>
       </summary>
@@ -423,11 +510,12 @@ def render_html(
         </div>
       </div>
     </details>
-    <section>
+    <section id="buy-plan-section">
       <div class="section-block">
         <strong>14:35 尾盘收益观察</strong>
+        <div id="stale-data-banner" class="stale-data-banner" role="alert" hidden>市场数据已超过20分钟，买入观察名单已停用。</div>
       </div>
-      <div class="backtest-scroll">
+      <div id="buy-plan-table-wrap" class="backtest-scroll">
         <table class="buy-table">
           <thead><tr><th>顺序</th><th>类型</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>尾盘收益分</th><th>风险分</th><th>5日量能比</th><th>14:50确认</th><th>放弃</th><th>理由</th></tr></thead>
           <tbody>{''.join(buy_rows)}</tbody>
@@ -468,6 +556,7 @@ def render_html(
       </div>
     </section>
   </main>
+{refresh_script}
 </body>
 </html>
 """

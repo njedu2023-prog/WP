@@ -88,6 +88,7 @@ def run_close_validation(
         {
             "latest_update": update_time,
             "wp_run_time": update_time,
+            "report_revision": update_time,
             "validation_updated_at": update_time,
             "validation_summary": validation_result.summary,
         }

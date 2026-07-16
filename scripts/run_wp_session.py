@@ -103,7 +103,13 @@ def run_once() -> None:
     env = os.environ.copy()
     if not env.get("WP_MODE", "").strip():
         env["WP_MODE"] = "live"
+    manifest_path = Path("outputs/json/wp_manifest.json")
+    manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
+    manifest_after = manifest_path.read_bytes() if manifest_path.exists() else None
+    if manifest_before == manifest_after:
+        print("Skip GitHub output commit: WP manifest is unchanged.")
+        return
     commit_paths = output_commit_paths(env["WP_MODE"].strip().lower())
     subprocess.run(
         [sys.executable, "scripts/github_commit_paths.py", "Update WP outputs", *commit_paths],

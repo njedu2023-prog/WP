@@ -3,14 +3,13 @@ name: Monitor WP System
 on:
   workflow_dispatch:
   schedule:
-    # Exact Beijing trading windows converted to UTC.
-    - cron: "25,35,45,55 1 * * 1-5"
-    - cron: "5,15,25,35,45,55 2 * * 1-5"
-    - cron: "5,15,25,35 3 * * 1-5"
-    - cron: "55 4 * * 1-5"
-    - cron: "5,15,25,35,45,55 5,6 * * 1-5"
-    # 15:20/15:30 Beijing: consume a slow 15:10 upstream completion if direct dispatch is unavailable.
-    - cron: "5,10,20,30 7 * * 1-5"
+    # Offset from both upstream and WP fallback slots. The monitor repairs only
+    # after normal jobs have had time to complete.
+    - cron: "37,47,57 1 * * 1-5"
+    - cron: "7,17,27,37,47,57 2 * * 1-5"
+    - cron: "7,17,27,37 3 * * 1-5"
+    - cron: "7,17,27,37,47,57 5,6 * * 1-5"
+    - cron: "7,17,27 7 * * 1-5"
 
 permissions:
   actions: write
@@ -35,7 +34,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           WP_REPAIR_TOKEN: ${{ secrets.WP_REPAIR_TOKEN || secrets.WP_TRIGGER_TOKEN || secrets.GH_PAT || secrets.PERSONAL_ACCESS_TOKEN }}
-          WP_MONITOR_MAX_UPSTREAM_AGE_MIN: "25"
-          WP_MONITOR_MAX_WP_AGE_MIN: "25"
-          WP_MONITOR_MAX_PAGE_LAG_MIN: "20"
-          WP_MONITOR_SESSION_GRACE_MIN: "25"
+          WP_MONITOR_MAX_UPSTREAM_AGE_MIN: "18"
+          WP_MONITOR_MAX_WP_AGE_MIN: "18"
+          WP_MONITOR_MAX_PAGE_LAG_MIN: "10"
+          WP_MONITOR_SESSION_GRACE_MIN: "15"

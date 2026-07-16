@@ -12,6 +12,42 @@ def test_report_html_contains_title(tmp_path):
     assert "WP Top50" in path.read_text(encoding="utf-8")
 
 
+def test_report_html_polls_manifest_and_disables_stale_buy_plan(tmp_path):
+    path = tmp_path / "latest.html"
+    buy_plan = pd.DataFrame(
+        [
+            {
+                "buy_rank": 1,
+                "portfolio_group": "主票",
+                "ts_code": "000001.SZ",
+                "name": "甲",
+                "pct_chg": 9.0,
+            }
+        ]
+    )
+    render_html(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {
+            "status": "ok",
+            "market_data_time": "2026-07-16 14:35:00",
+            "wp_run_time": "2026-07-16 14:36:00",
+        },
+        path,
+        buy_plan=buy_plan,
+    )
+
+    page = path.read_text(encoding="utf-8")
+    assert 'const MANIFEST_URL = "/WP/outputs/json/wp_manifest.json"' in page
+    assert "window.setInterval(checkManifest, POLL_INTERVAL_MS)" in page
+    assert "manifest.data_revision || manifest.market_data_time" in page
+    assert "dataChanged || reportChanged" in page
+    assert 'id="stale-data-banner"' in page
+    assert 'id="buy-plan-table-wrap"' in page
+    assert "市场数据已超过20分钟，买入观察名单已停用" in page
+    assert 'http-equiv="refresh"' not in page
+
+
 def test_report_html_groups_validation_by_plan_day(tmp_path):
     path = tmp_path / "latest.html"
     validation = pd.DataFrame(
