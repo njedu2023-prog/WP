@@ -23,6 +23,7 @@ def test_direct_source_date_is_passed_to_core_engine(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("WP_MODE", "live")
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
     monkeypatch.setenv("WP_DIRECT_SOURCE_ENABLED", "1")
     monkeypatch.delenv("WP_SOURCE_CSV", raising=False)
     monkeypatch.setattr(
@@ -48,3 +49,4 @@ def test_direct_source_date_is_passed_to_core_engine(monkeypatch, tmp_path):
     run_wp_session.run_once()
 
     assert captured["WP_EXPECTED_TRADE_DATE"] == "20260716"
+    assert captured["WP_FORCE_REBUILD"] == "true"

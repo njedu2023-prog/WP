@@ -110,6 +110,11 @@ def run_once() -> None:
     env = os.environ.copy()
     if not env.get("WP_MODE", "").strip():
         env["WP_MODE"] = "live"
+    if env.get("GITHUB_EVENT_NAME", "").strip() == "push":
+        # A push is either a code change or an explicit self-heal trigger.
+        # Rebuild even when the market-data hash is unchanged so corrected
+        # logic and report rendering cannot remain hidden behind old outputs.
+        env["WP_FORCE_REBUILD"] = "true"
     mode = env["WP_MODE"].strip().lower()
     direct_enabled = env.get("WP_DIRECT_SOURCE_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
     explicit_source = env.get("WP_SOURCE_CSV", "").strip()
