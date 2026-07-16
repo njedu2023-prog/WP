@@ -87,6 +87,53 @@ def test_direct_builder_archives_validated_rank_input(tmp_path):
     assert manifest["direct_quality"]["history_feature_coverage_pct"] == 100.0
 
 
+def test_direct_builder_uses_fetcher_resolved_trade_date(tmp_path):
+    processor = _prepare_processor(tmp_path)
+    metadata = processor / "data" / "latest" / "_meta.json"
+    metadata.parent.mkdir(parents=True)
+    metadata.write_text(
+        json.dumps({"resolved_trade_date": "20260716"}),
+        encoding="utf-8",
+    )
+    calls = []
+
+    def fake_runner(command, **kwargs):
+        calls.append((command, kwargs["env"].copy()))
+
+    result = build_direct_rank_input(
+        root=tmp_path,
+        upstream_root=processor,
+        env={"TUSHARE_TOKEN": "secret"},
+        command_runner=fake_runner,
+    )
+
+    assert result.ok is True
+    assert "TRADE_DATE" not in calls[0][1]
+    assert calls[1][1]["TRADE_DATE"] == "20260716"
+
+
+def test_direct_builder_passes_slot_date_to_fetcher(tmp_path):
+    processor = _prepare_processor(tmp_path)
+    calls = []
+
+    def fake_runner(command, **kwargs):
+        calls.append((command, kwargs["env"].copy()))
+
+    result = build_direct_rank_input(
+        root=tmp_path,
+        upstream_root=processor,
+        env={
+            "TUSHARE_TOKEN": "secret",
+            "WP_TARGET_SLOT": "2026-07-16 14:35:00",
+        },
+        command_runner=fake_runner,
+    )
+
+    assert result.ok is True
+    assert calls[0][1]["TRADE_DATE"] == "20260716"
+    assert calls[1][1]["TRADE_DATE"] == "20260716"
+
+
 def test_direct_builder_falls_back_when_token_is_missing(tmp_path):
     result = build_direct_rank_input(root=tmp_path, env={})
 

@@ -70,6 +70,20 @@ def _compact_error(error: BaseException | str) -> str:
     return text[:600]
 
 
+def _trade_date_from_slot(value: str) -> str:
+    candidate = value.strip()[:10].replace("-", "")
+    return candidate if len(candidate) == 8 and candidate.isdigit() else ""
+
+
+def _resolved_fetch_trade_date(processor_root: Path) -> str:
+    metadata_path = processor_root / "data" / "latest" / "_meta.json"
+    if not metadata_path.is_file():
+        return ""
+    payload = json.loads(metadata_path.read_text(encoding="utf-8-sig"))
+    candidate = str(payload.get("resolved_trade_date") or "").replace("-", "")
+    return candidate if len(candidate) == 8 and candidate.isdigit() else ""
+
+
 def _validate_source(
     csv_path: Path,
     manifest_path: Path,
@@ -239,6 +253,12 @@ def build_direct_rank_input(
     for name, value in defaults.items():
         direct_env.setdefault(name, value)
 
+    target_slot = direct_env.get("WP_TARGET_SLOT", "").strip()
+    if not direct_env.get("TRADE_DATE", "").strip() and target_slot:
+        slot_trade_date = _trade_date_from_slot(target_slot)
+        if slot_trade_date:
+            direct_env["TRADE_DATE"] = slot_trade_date
+
     timeout_seconds = max(1, int(direct_env.get("WP_DIRECT_TIMEOUT_SECONDS", "1500")))
     deadline = monotonic() + timeout_seconds
 
@@ -256,15 +276,15 @@ def build_direct_rank_input(
 
     try:
         run_processor(fetch_script)
+        resolved_trade_date = _resolved_fetch_trade_date(processor_root)
+        if resolved_trade_date:
+            direct_env["TRADE_DATE"] = resolved_trade_date
         run_processor(pipeline_script)
 
         source_dir = processor_root / "data" / "wp" / "latest"
         source_csv = source_dir / "wp_latest_rank_input.csv"
         source_manifest = source_dir / "wp_manifest.json"
-        target_slot = direct_env.get("WP_TARGET_SLOT", "").strip()
         expected_trade_date = direct_env.get("TRADE_DATE", "").strip()
-        if not expected_trade_date and target_slot:
-            expected_trade_date = target_slot[:10].replace("-", "")
         frame, manifest, quality = _validate_source(
             source_csv,
             source_manifest,
