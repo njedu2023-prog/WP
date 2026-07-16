@@ -17,6 +17,12 @@ MAX_REQUEST_ATTEMPTS = 6
 TRANSIENT_HTTP_CODES = {408, 429, 500, 502, 503, 504}
 
 
+class GitHubRequestError(RuntimeError):
+    def __init__(self, message: str, *, retryable: bool):
+        super().__init__(message)
+        self.retryable = retryable
+
+
 def retry_delay(attempt: int, retry_after: str = "") -> int:
     if retry_after.isdigit():
         return min(max(int(retry_after), 1), 60)
@@ -62,8 +68,9 @@ def request(method: str, url: str, token: str, payload: dict | None = None) -> d
                 )
                 time.sleep(delay)
                 continue
-            raise RuntimeError(
-                f"{method} {url} failed: {exc.code} {concise_error_body(body)}"
+            raise GitHubRequestError(
+                f"{method} {url} failed: {exc.code} {concise_error_body(body)}",
+                retryable=retryable,
             ) from exc
         except (URLError, TimeoutError, OSError) as exc:
             if attempt < MAX_REQUEST_ATTEMPTS - 1:
@@ -75,8 +82,11 @@ def request(method: str, url: str, token: str, payload: dict | None = None) -> d
                 )
                 time.sleep(delay)
                 continue
-            raise RuntimeError(f"{method} {url} failed after network retries: {exc}") from exc
-    raise RuntimeError(f"{method} {url} failed after retries")
+            raise GitHubRequestError(
+                f"{method} {url} failed after network retries: {exc}",
+                retryable=True,
+            ) from exc
+    raise GitHubRequestError(f"{method} {url} failed after retries", retryable=True)
 
 
 def iter_files(paths: list[str]):
@@ -113,22 +123,16 @@ def is_binary(path: Path) -> bool:
         return True
 
 
-def main() -> None:
-    if len(sys.argv) < 3:
-        raise SystemExit("usage: github_commit_paths.py commit_message path [path ...]")
-    token = os.environ["GITHUB_TOKEN"]
-    repo = os.environ["GITHUB_REPOSITORY"]
-    branch = os.environ.get("GITHUB_REF_NAME", "main")
-    message = sys.argv[1]
-    paths = sys.argv[2:]
-
+def commit_via_git_data_api(
+    files: list[tuple[Path, str]], repo: str, branch: str, message: str, token: str
+) -> str | None:
     ref = request("GET", f"https://api.github.com/repos/{repo}/git/ref/heads/{branch}", token)
     base_commit_sha = ref["object"]["sha"]
     base_commit = request("GET", f"https://api.github.com/repos/{repo}/git/commits/{base_commit_sha}", token)
     base_tree_sha = base_commit["tree"]["sha"]
 
     tree = []
-    for path, rel in iter_files(paths):
+    for path, rel in files:
         if is_binary(path):
             content = base64.b64encode(path.read_bytes()).decode("ascii")
             blob = request(
@@ -140,13 +144,7 @@ def main() -> None:
             tree.append({"path": rel, "mode": "100644", "type": "blob", "sha": blob["sha"]})
         else:
             content = path.read_text(encoding="utf-8")
-            # The Trees API accepts inline UTF-8 content and creates the blobs
-            # server-side, avoiding one API request per generated text file.
             tree.append({"path": rel, "mode": "100644", "type": "blob", "content": content})
-
-    if not tree:
-        print("No files found for API commit.")
-        return
 
     new_tree = request(
         "POST",
@@ -156,7 +154,7 @@ def main() -> None:
     )
     if new_tree["sha"] == base_tree_sha:
         print("No changed files to commit.")
-        return
+        return None
 
     commit = request(
         "POST",
@@ -165,7 +163,88 @@ def main() -> None:
         {"message": message, "tree": new_tree["sha"], "parents": [base_commit_sha]},
     )
     request("PATCH", f"https://api.github.com/repos/{repo}/git/refs/heads/{branch}", token, {"sha": commit["sha"]})
-    print(f"Committed {len(tree)} files through GitHub API: {commit['sha']}")
+    return str(commit["sha"])
+
+
+def graphql_request(query: str, variables: dict, token: str) -> dict:
+    result = request(
+        "POST",
+        "https://api.github.com/graphql",
+        token,
+        {"query": query, "variables": variables},
+    )
+    errors = result.get("errors") or []
+    if errors:
+        message = concise_error_body(json.dumps(errors, ensure_ascii=False))
+        raise GitHubRequestError(f"GitHub GraphQL failed: {message}", retryable=False)
+    return result["data"]
+
+
+def commit_via_graphql(
+    files: list[tuple[Path, str]], repo: str, branch: str, message: str, token: str
+) -> str:
+    owner, name = repo.split("/", 1)
+    head_data = graphql_request(
+        """
+        query($owner: String!, $name: String!, $ref: String!) {
+          repository(owner: $owner, name: $name) {
+            ref(qualifiedName: $ref) { target { oid } }
+          }
+        }
+        """,
+        {"owner": owner, "name": name, "ref": f"refs/heads/{branch}"},
+        token,
+    )
+    expected_head = head_data["repository"]["ref"]["target"]["oid"]
+    additions = [
+        {
+            "path": rel,
+            "contents": base64.b64encode(path.read_bytes()).decode("ascii"),
+        }
+        for path, rel in files
+    ]
+    commit_data = graphql_request(
+        """
+        mutation($input: CreateCommitOnBranchInput!) {
+          createCommitOnBranch(input: $input) { commit { oid } }
+        }
+        """,
+        {
+            "input": {
+                "branch": {"repositoryNameWithOwner": repo, "branchName": branch},
+                "message": {"headline": message},
+                "expectedHeadOid": expected_head,
+                "fileChanges": {"additions": additions},
+            }
+        },
+        token,
+    )
+    return str(commit_data["createCommitOnBranch"]["commit"]["oid"])
+
+
+def main() -> None:
+    if len(sys.argv) < 3:
+        raise SystemExit("usage: github_commit_paths.py commit_message path [path ...]")
+    token = os.environ["GITHUB_TOKEN"]
+    repo = os.environ["GITHUB_REPOSITORY"]
+    branch = os.environ.get("GITHUB_REF_NAME", "main")
+    message = sys.argv[1]
+    paths = sys.argv[2:]
+
+    files = list(iter_files(paths))
+    if not files:
+        print("No files found for API commit.")
+        return
+    try:
+        commit_sha = commit_via_git_data_api(files, repo, branch, message, token)
+        if commit_sha is not None:
+            print(f"Committed {len(files)} files through GitHub Git Data API: {commit_sha}")
+    except GitHubRequestError as exc:
+        if not exc.retryable:
+            raise
+        print(f"Git Data API remained unavailable; switching to GraphQL: {exc}", flush=True)
+        commit_sha = commit_via_graphql(files, repo, branch, message, token)
+        print(f"Committed {len(files)} files atomically through GitHub GraphQL: {commit_sha}")
 
 
 if __name__ == "__main__":

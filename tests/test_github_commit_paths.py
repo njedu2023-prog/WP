@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import io
+import base64
 from email.message import Message
 from urllib.error import HTTPError, URLError
 
@@ -91,3 +92,38 @@ def test_request_retries_network_error_and_rejects_non_transient_http(monkeypatc
     with pytest.raises(RuntimeError, match=r"failed: 404") as exc_info:
         commit_paths.request("GET", "https://api.github.test", "token")
     assert len(str(exc_info.value)) < 1200
+
+
+def test_graphql_commit_is_atomic(monkeypatch, tmp_path):
+    first = tmp_path / "first.txt"
+    second = tmp_path / "second.json"
+    first.write_text("alpha", encoding="utf-8")
+    second.write_text('{"value": 2}', encoding="utf-8")
+    calls: list[tuple[str, dict]] = []
+
+    def fake_graphql(query, variables, token):
+        assert token == "token"
+        calls.append((query, variables))
+        if "query(" in query:
+            return {"repository": {"ref": {"target": {"oid": "head-sha"}}}}
+        return {"createCommitOnBranch": {"commit": {"oid": "commit-sha"}}}
+
+    monkeypatch.setattr(commit_paths, "graphql_request", fake_graphql)
+    result = commit_paths.commit_via_graphql(
+        [(first, "outputs/first.txt"), (second, "outputs/second.json")],
+        "owner/repo",
+        "main",
+        "Update outputs",
+        "token",
+    )
+
+    assert result == "commit-sha"
+    commit_input = calls[1][1]["input"]
+    assert commit_input["expectedHeadOid"] == "head-sha"
+    assert commit_input["branch"]["repositoryNameWithOwner"] == "owner/repo"
+    additions = commit_input["fileChanges"]["additions"]
+    assert [item["path"] for item in additions] == [
+        "outputs/first.txt",
+        "outputs/second.json",
+    ]
+    assert base64.b64decode(additions[0]["contents"]) == b"alpha"
