@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 
 import wp.buy_validation as buy_validation
-from wp.buy_validation import VALIDATION_COLUMNS, _fill_truth, _in_tail_window, _is_truth_due, _summary, update_buy_plan_validation
+from wp.buy_validation import VALIDATION_COLUMNS, VALIDATION_TRACKING_START_DATE, _fill_truth, _in_tail_window, _is_truth_due, _summary, update_buy_plan_validation
 from wp.calendar import CN_TZ
 
 
@@ -57,8 +57,8 @@ def test_summary_prefers_plan_price_return_over_market_pct_change():
 
 
 def test_tail_snapshot_window_accepts_pre_window_fallback():
-    assert not _in_tail_window("2026-07-14 14:24:59")
-    assert _in_tail_window("2026-07-14 14:25:00")
+    assert not _in_tail_window("2026-07-14 14:19:59")
+    assert _in_tail_window("2026-07-14 14:20:00")
     assert _in_tail_window("2026-07-14 14:35:00")
     assert _in_tail_window("2026-07-14 14:50:00")
     assert not _in_tail_window("2026-07-14 14:50:01")
@@ -71,7 +71,7 @@ def test_truth_becomes_due_only_after_target_day_close():
     assert not _is_truth_due("20260717", datetime(2026, 7, 16, 16, 0, 0, tzinfo=CN_TZ))
 
 
-def test_tail_snapshot_keeps_latest_single_primary_stock(tmp_path):
+def test_tail_snapshot_keeps_every_primary_stock_observation_time(tmp_path):
     first_plan = pd.DataFrame(
         [
             {
@@ -97,11 +97,11 @@ def test_tail_snapshot_keeps_latest_single_primary_stock(tmp_path):
         ]
     )
     first_health = {
-        "data_trade_date": "20260714",
-        "market_data_time": "2026-07-14 14:36:00",
+        "data_trade_date": "20260715",
+        "market_data_time": "2026-07-15 14:36:00",
         "buy_model_version": "tail_profit_v1",
     }
-    current = datetime(2026, 7, 14, 14, 40, tzinfo=CN_TZ)
+    current = datetime(2026, 7, 15, 14, 40, tzinfo=CN_TZ)
     first = update_buy_plan_validation(first_plan, first_health, tmp_path, current)
 
     assert len(first.table) == 1
@@ -110,20 +110,41 @@ def test_tail_snapshot_keeps_latest_single_primary_stock(tmp_path):
     latest_plan = first_plan.iloc[[1]].copy()
     latest_plan["buy_rank"] = 1
     latest_plan["portfolio_group"] = "主票"
-    latest_health = dict(first_health, market_data_time="2026-07-14 14:46:00")
+    latest_health = dict(first_health, market_data_time="2026-07-15 14:46:00")
     latest = update_buy_plan_validation(latest_plan, latest_health, tmp_path, current)
 
-    assert len(latest.table) == 1
-    assert latest.table.iloc[0]["ts_code"] == "000002.SZ"
-    assert latest.table.iloc[0]["plan_time"] == "2026-07-14 14:46:00"
+    assert len(latest.table) == 2
+    audit = pd.read_csv(tmp_path / "csv" / "wp_buy_plan_validation.csv", dtype={"plan_trade_date": str})
+    assert len(audit) == 2
+    assert audit["ts_code"].tolist() == ["000001.SZ", "000002.SZ"]
+    assert audit["plan_time"].tolist() == ["2026-07-15 14:36:00", "2026-07-15 14:46:00"]
 
     after_close_plan = first_plan.iloc[[0]].copy()
     after_close_health = dict(first_health, market_data_time="2026-07-14 15:10:00")
     after_close = update_buy_plan_validation(after_close_plan, after_close_health, tmp_path, current)
 
-    assert len(after_close.table) == 1
-    assert after_close.table.iloc[0]["ts_code"] == "000002.SZ"
-    assert after_close.table.iloc[0]["plan_time"] == "2026-07-14 14:46:00"
+    assert len(after_close.table) == 2
+    audit_after_close = pd.read_csv(tmp_path / "csv" / "wp_buy_plan_validation.csv", dtype={"plan_trade_date": str})
+    assert len(audit_after_close) == 2
+
+
+def test_summary_scopes_tracking_to_july_15_and_later():
+    table = pd.DataFrame(
+        [
+            {"buy_model_version": "tail_profit_v1", "plan_trade_date": "20260709", "plan_time": "2026-07-09 14:40:00", "truth_status": "verified", "return_close_pct": -8.0, "is_limit_up_t1": False},
+            {"buy_model_version": "tail_profit_v1", "plan_trade_date": "20260715", "plan_time": "2026-07-15 14:20:00", "truth_status": "verified", "return_close_pct": 2.0, "is_limit_up_t1": False},
+            {"buy_model_version": "tail_profit_v1", "plan_trade_date": "20260715", "plan_time": "2026-07-15 14:40:00", "truth_status": "verified", "return_close_pct": 4.0, "is_limit_up_t1": False},
+            {"buy_model_version": "tail_profit_v1", "plan_trade_date": "20260715", "plan_time": "2026-07-15 15:00:00", "truth_status": "verified", "return_close_pct": 20.0, "is_limit_up_t1": True},
+        ]
+    )
+
+    summary = _summary(table, "tail_profit_v1", VALIDATION_TRACKING_START_DATE)
+
+    assert summary["total_plan_days"] == 1
+    assert summary["total_records"] == 2
+    assert summary["verified_records"] == 2
+    assert summary["daily_average_pct_chg"] == 3.0
+    assert summary["cumulative_pct_chg"] == 3.0
 
 
 def test_summary_can_scope_records_to_current_buy_model():

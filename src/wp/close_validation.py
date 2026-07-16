@@ -46,6 +46,7 @@ def run_close_validation(
     health = _read_json(health_path)
     health["buy_model_version"] = str(health.get("buy_model_version") or TAIL_PROFIT_MODEL_VERSION)
     health["wp_run_time"] = update_time
+    health["report_revision"] = update_time
     health["validation_updated_at"] = update_time
 
     # An empty buy plan prevents the close job from changing the locked tail snapshot.

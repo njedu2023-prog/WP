@@ -195,6 +195,7 @@ def run() -> dict:
     health["model_version"] = MODEL_VERSION
     health["buy_model_version"] = TAIL_PROFIT_MODEL_VERSION
     health["source_data_hash"] = input_hash
+    health["report_revision"] = update_time
     if health["status"] == "数据日期过期" and os.environ.get("WP_ALLOW_STALE_DATA", "").strip() != "1":
         logging.error("Stale WP data: data_trade_date=%s expected=%s", health.get("data_trade_date"), expected_trade_date)
         top50 = top50.iloc[0:0].copy()

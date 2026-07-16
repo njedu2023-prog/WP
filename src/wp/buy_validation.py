@@ -47,7 +47,8 @@ VALIDATION_COLUMNS = [
     "truth_updated_at",
 ]
 
-TAIL_FALLBACK_START = time(14, 25)
+VALIDATION_TRACKING_START_DATE = "20260715"
+TAIL_WINDOW_START = time(14, 20)
 TAIL_WINDOW_END = time(14, 50)
 
 
@@ -72,9 +73,7 @@ def _in_tail_window(value: object) -> bool:
     parsed = _parse_dt(value)
     if parsed is None:
         return False
-    # The preferred decision window starts at 14:35. Accept the latest market
-    # snapshot from 14:25 onward when the upstream 10-minute job misses it.
-    return TAIL_FALLBACK_START <= parsed.time() <= TAIL_WINDOW_END
+    return TAIL_WINDOW_START <= parsed.time() <= TAIL_WINDOW_END
 
 
 def _limit_threshold(ts_code: str) -> float:
@@ -121,21 +120,10 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
         return pd.DataFrame(columns=VALIDATION_COLUMNS)
     target_trade_date = next_trading_day_str(plan_trade_date)
     snapshot_plan = buy_plan.copy()
-    model_versions = (
-        snapshot_plan.get("tail_profit_model_version", pd.Series(dtype="object"))
-        .fillna("")
-        .astype(str)
-    )
-    if str(health.get("buy_model_version") or "") == TAIL_PROFIT_MODEL_VERSION or model_versions.eq(TAIL_PROFIT_MODEL_VERSION).any():
-        # The live tail-profit model is a single-position strategy. Keep this
-        # invariant at the validation boundary even if an upstream payload is malformed.
-        snapshot_plan["_buy_rank_sort"] = pd.to_numeric(snapshot_plan.get("buy_rank"), errors="coerce").fillna(999)
-        snapshot_plan["_score_sort"] = pd.to_numeric(snapshot_plan.get("tail_profit_score"), errors="coerce").fillna(-1)
-        snapshot_plan = (
-            snapshot_plan.sort_values(["_buy_rank_sort", "_score_sort"], ascending=[True, False])
-            .head(1)
-            .drop(columns=["_buy_rank_sort", "_score_sort"])
-        )
+    if "portfolio_group" in snapshot_plan.columns:
+        primary = snapshot_plan["portfolio_group"].fillna("").astype(str).eq("主票")
+        if primary.any():
+            snapshot_plan = snapshot_plan[primary].copy()
     rows = []
     for _, row in snapshot_plan.iterrows():
         rows.append(
@@ -374,7 +362,29 @@ def _fill_truth(table: pd.DataFrame, current: datetime) -> pd.DataFrame:
     return out
 
 
-def _summary(table: pd.DataFrame, model_version: str = "") -> dict:
+def scope_validation_table(
+    table: pd.DataFrame,
+    model_version: str = "",
+    start_date: str = VALIDATION_TRACKING_START_DATE,
+) -> pd.DataFrame:
+    if table.empty:
+        return table.copy()
+    scoped = table.copy()
+    if model_version and "buy_model_version" in scoped.columns:
+        scoped = scoped[scoped["buy_model_version"].fillna("").astype(str).eq(model_version)].copy()
+    if "plan_trade_date" in scoped.columns and start_date:
+        plan_dates = scoped["plan_trade_date"].fillna("").astype(str).str.replace("-", "", regex=False).str.strip()
+        scoped = scoped[plan_dates.ge(start_date)].copy()
+    if "plan_time" in scoped.columns:
+        scoped = scoped[scoped["plan_time"].map(_in_tail_window)].copy()
+    return scoped
+
+
+def _summary(
+    table: pd.DataFrame,
+    model_version: str = "",
+    start_date: str = "",
+) -> dict:
     empty_summary = {
         "buy_model_version": model_version,
         "total_plan_days": 0,
@@ -396,9 +406,10 @@ def _summary(table: pd.DataFrame, model_version: str = "") -> dict:
         "positive_plan_days": 0,
         "plan_day_win_rate": 0.0,
         "cumulative_pct_chg": 0.0,
+        "tracking_start_date": start_date,
     }
-    if model_version and "buy_model_version" in table.columns:
-        table = table[table["buy_model_version"].fillna("").astype(str).eq(model_version)].copy()
+    if model_version or start_date:
+        table = scope_validation_table(table, model_version, start_date)
     if table.empty:
         return empty_summary
 
@@ -451,6 +462,7 @@ def _summary(table: pd.DataFrame, model_version: str = "") -> dict:
         "plan_day_win_rate": round(positive_plan_days / verified_plan_days * 100, 2) if verified_plan_days else 0.0,
         "cumulative_pct_chg": round(cumulative_pct_chg, 2),
         "return_basis": "plan_price_to_next_trade_day",
+        "tracking_start_date": start_date,
     }
 
 
@@ -476,17 +488,24 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
         )
         snapshot = snapshot[~snapshot["plan_trade_date"].astype(str).isin(locked_dates)].copy()
     if not snapshot.empty:
-        plan_dates = set(snapshot["plan_trade_date"].astype(str).tolist())
-        snapshot_models = set(snapshot["buy_model_version"].fillna("").astype(str).tolist())
-        # The tail list is dynamic. Keep the latest list for each model and day
-        # until next-day truth is locked.
-        existing = existing[
-            ~(
-                existing["plan_trade_date"].astype(str).isin(plan_dates)
-                & existing["buy_model_version"].fillna("").astype(str).isin(snapshot_models)
-                & existing["truth_status"].fillna("").astype(str).ne("verified")
+        snapshot_keys = set(
+            zip(
+                snapshot["buy_model_version"].fillna("").astype(str),
+                snapshot["plan_trade_date"].astype(str),
+                snapshot["plan_time"].astype(str),
             )
-        ].copy()
+        )
+        existing_keys = list(
+            zip(
+                existing["buy_model_version"].fillna("").astype(str),
+                existing["plan_trade_date"].astype(str),
+                existing["plan_time"].astype(str),
+            )
+        )
+        # Preserve every dynamic primary-list snapshot in the 14:20-14:50
+        # window. Re-running the exact same market timestamp replaces only that
+        # timestamp, leaving earlier and later observations intact.
+        existing = existing[[key not in snapshot_keys for key in existing_keys]].copy()
         table = snapshot.copy() if existing.empty else pd.concat([existing, snapshot], ignore_index=True)
     else:
         table = existing
@@ -498,7 +517,8 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
     table = _fill_truth(table, current)
     csv_path.parent.mkdir(parents=True, exist_ok=True)
     table.to_csv(csv_path, index=False, encoding="utf-8-sig")
-    display_table = table
-    if current_model:
-        display_table = table[table["buy_model_version"].fillna("").astype(str).eq(current_model)].copy()
-    return BuyValidationResult(table=display_table, summary=_summary(table, current_model))
+    display_table = scope_validation_table(table, current_model, VALIDATION_TRACKING_START_DATE)
+    return BuyValidationResult(
+        table=display_table,
+        summary=_summary(table, current_model, VALIDATION_TRACKING_START_DATE),
+    )

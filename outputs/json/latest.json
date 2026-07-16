@@ -50,7 +50,7 @@
       "tail_profit_score": "86.029412",
       "buy_model_version": "tail_profit_v1",
       "risk_penalty_score": 10.05106327247664,
-      "actual_trade_date": "20260716",
+      "actual_trade_date": 20260716,
       "actual_open": "",
       "actual_high": "",
       "actual_low": "",
@@ -87,7 +87,8 @@
     "positive_plan_days": 0,
     "plan_day_win_rate": 0.0,
     "cumulative_pct_chg": 0.0,
-    "return_basis": "plan_price_to_next_trade_day"
+    "return_basis": "plan_price_to_next_trade_day",
+    "tracking_start_date": "20260715"
   },
   "buy_plan": [
     {
@@ -1275,5 +1276,7 @@
       "monthly_count": 5
     }
   ],
-  "buy_model_version": "tail_profit_v1"
+  "buy_model_version": "tail_profit_v1",
+  "report_revision": "2026-07-16 13:08:02",
+  "validation_tracking_start_date": "20260715"
 }

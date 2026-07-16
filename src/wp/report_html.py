@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .buy_validation import VALIDATION_TRACKING_START_DATE, _summary, scope_validation_table
+
 
 def _fmt(value, digits: int = 2) -> str:
     try:
@@ -204,6 +206,9 @@ def render_html(
     buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
     validation = validation if validation is not None else pd.DataFrame()
     validation_summary = validation_summary or {}
+    validation_model = str(validation_summary.get("buy_model_version") or "")
+    validation = scope_validation_table(validation, validation_model, VALIDATION_TRACKING_START_DATE)
+    validation_summary = _summary(validation, validation_model, VALIDATION_TRACKING_START_DATE)
     backtests = sorted(backtests or [], key=lambda item: str(item.get("start_date", "")))
     backtest_rows = _backtest_rows(backtests)
     sector_top = []
@@ -316,11 +321,9 @@ def render_html(
         const ageMinutes = dataTime ? (now.getTime() - dataTime.getTime()) / 60_000 : Infinity;
         const stale = isTradingWindow(now) && (!dataTime || ageMinutes > STALE_AFTER_MINUTES || ageMinutes < -5);
         const banner = document.getElementById("stale-data-banner");
-        const tableWrap = document.getElementById("buy-plan-table-wrap");
         const freshness = document.getElementById("live-freshness");
         document.body.classList.toggle("data-stale", stale);
         if (banner) banner.hidden = !stale;
-        if (tableWrap) tableWrap.hidden = stale;
         if (freshness) {
           freshness.textContent = stale ? "；数据过期" : "";
           freshness.className = stale ? "status bad" : "";
@@ -359,7 +362,7 @@ def render_html(
       });
     })();
   </script>"""
-    refresh_script = refresh_script.replace("__INITIAL_REPORT_REVISION__", json.dumps(str(health.get("wp_run_time") or health.get("data_time") or ""), ensure_ascii=False))
+    refresh_script = refresh_script.replace("__INITIAL_REPORT_REVISION__", json.dumps(str(health.get("report_revision") or health.get("wp_run_time") or health.get("data_time") or ""), ensure_ascii=False))
     refresh_script = refresh_script.replace("__INITIAL_DATA_REVISION__", json.dumps(str(health.get("market_data_time") or health.get("data_time") or ""), ensure_ascii=False))
     refresh_script = refresh_script.replace("__EMBEDDED_MARKET_TIME__", json.dumps(str(health.get("market_data_time") or health.get("data_time") or ""), ensure_ascii=False))
     page = f"""<!doctype html>
@@ -513,7 +516,7 @@ def render_html(
     <section id="buy-plan-section">
       <div class="section-block">
         <strong>14:35 尾盘收益观察</strong>
-        <div id="stale-data-banner" class="stale-data-banner" role="alert" hidden>市场数据已超过20分钟，买入观察名单已停用。</div>
+        <div id="stale-data-banner" class="stale-data-banner" role="alert" hidden>市场数据已超过20分钟，名单仍显示，请核对数据时间。</div>
       </div>
       <div id="buy-plan-table-wrap" class="backtest-scroll">
         <table class="buy-table">
@@ -532,13 +535,13 @@ def render_html(
     </section>
     <section class="validation-section">
       <div class="validation-heading">
-        <strong>14:35 主票累计验证</strong>
-        <span>每日最多 1 支；缺少窗口数据时回退至 14:25 后最近快照</span>
+        <strong>14:20–14:50 主票累计验证</strong>
+        <span>自 2026-07-15 起；保留窗口内每次实际出现的主票</span>
       </div>
       <div class="validation-kpis">{validation_overview}</div>
       <div class="validation-days">
         <div class="validation-day-list">
-          <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>主票</span><span>次日收益（开 / 高 / 收）</span><span>上涨</span><span>触及涨停</span><span>状态</span><span></span></div>
+          <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>观察记录</span><span>次日收益（开 / 高 / 收）</span><span>上涨</span><span>触及涨停</span><span>状态</span><span></span></div>
           {validation_days}
         </div>
       </div>

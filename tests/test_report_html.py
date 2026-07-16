@@ -12,7 +12,7 @@ def test_report_html_contains_title(tmp_path):
     assert "WP Top50" in path.read_text(encoding="utf-8")
 
 
-def test_report_html_polls_manifest_and_disables_stale_buy_plan(tmp_path):
+def test_report_html_polls_manifest_and_keeps_stale_buy_plan_visible(tmp_path):
     path = tmp_path / "latest.html"
     buy_plan = pd.DataFrame(
         [
@@ -44,7 +44,8 @@ def test_report_html_polls_manifest_and_disables_stale_buy_plan(tmp_path):
     assert "dataChanged || reportChanged" in page
     assert 'id="stale-data-banner"' in page
     assert 'id="buy-plan-table-wrap"' in page
-    assert "市场数据已超过20分钟，买入观察名单已停用" in page
+    assert "市场数据已超过20分钟，名单仍显示，请核对数据时间" in page
+    assert "tableWrap.hidden = stale" not in page
     assert 'http-equiv="refresh"' not in page
 
 
@@ -53,9 +54,9 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
     validation = pd.DataFrame(
         [
             {
-                "plan_trade_date": "20260709",
-                "plan_time": "2026-07-09 14:43:14",
-                "target_trade_date": "20260710",
+                "plan_trade_date": "20260716",
+                "plan_time": "2026-07-16 14:43:14",
+                "target_trade_date": "20260717",
                 "buy_rank": 1,
                 "ts_code": "000001.SZ",
                 "name": "甲",
@@ -65,9 +66,9 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
                 "truth_status": "pending",
             },
             {
-                "plan_trade_date": "20260707",
-                "plan_time": "2026-07-07 14:25:21",
-                "target_trade_date": "20260708",
+                "plan_trade_date": "20260715",
+                "plan_time": "2026-07-15 14:25:21",
+                "target_trade_date": "20260716",
                 "buy_rank": 1,
                 "ts_code": "000002.SZ",
                 "name": "乙",
@@ -106,12 +107,12 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
         validation_summary=summary,
     )
     page = path.read_text(encoding="utf-8")
-    assert "14:35 主票累计验证" in page
+    assert "14:20–14:50 主票累计验证" in page
     assert "累计收盘收益" in page
     assert page.count('class="validation-day-details"') == 2
-    assert "2026-07-09" in page
-    assert "每日最多 1 支；缺少窗口数据时回退至 14:25 后最近快照" in page
-    assert ">主票<" in page
+    assert "2026-07-16" in page
+    assert "自 2026-07-15 起；保留窗口内每次实际出现的主票" in page
+    assert ">观察记录<" in page
     assert "次日收益（开 / 高 / 收）" in page
     assert "次日最低" in page
 
