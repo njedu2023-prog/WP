@@ -1,1 +1,1 @@
-2026-07-16 15:10:24 +08:00 initialize close validation recovery trigger
+2026-07-16 15:55:02 +0800 truth_trade_date=20260716 truth_generated_at=2026-07-16T15:50:32+08:00
