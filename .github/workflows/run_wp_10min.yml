@@ -60,7 +60,7 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 40
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - name: Resolve direct data slot
         id: upstream
         run: python scripts/check_upstream_revision.py
@@ -70,7 +70,7 @@ jobs:
         id: upstream-code
         if: steps.upstream.outputs.should_run == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'live')
         continue-on-error: true
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           repository: njedu2023-prog/a-share-top3-data
           ref: main
@@ -85,7 +85,7 @@ jobs:
         id: upstream-revision
         if: steps.upstream-code.outcome == 'success'
         run: echo "sha=$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v6
         if: steps.upstream.outputs.should_run == 'true'
         with:
           python-version: "3.11"
