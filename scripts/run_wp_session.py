@@ -212,11 +212,11 @@ def run_session() -> None:
 def main() -> None:
     mode = os.environ.get("WP_MODE", "").strip().lower()
     event_name = os.environ.get("GITHUB_EVENT_NAME", "").strip()
-    if event_name == "workflow_dispatch" or mode == "backtest":
+    # check_upstream_revision.py is the single gate for push-triggered runs.
+    # Reapplying the market-window gate here used to discard monitor/self-heal
+    # trigger commits after the workflow had already approved them.
+    if event_name in {"workflow_dispatch", "push"} or mode == "backtest":
         run_once()
-        return
-    if event_name == "push":
-        run_once_if_due()
         return
     if os.environ.get("WP_RUN_MODE", "once").strip().lower() == "session":
         run_session()
