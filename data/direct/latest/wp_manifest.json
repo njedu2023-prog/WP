@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-17 15:08:04",
-  "scheduled_slot": "2026-07-17 14:55:00",
-  "trigger_event": "push",
+  "generated_at": "2026-07-17 15:12:24",
+  "scheduled_slot": "2026-07-17 15:05:00",
+  "trigger_event": "schedule",
   "status": "ok",
   "source_trade_date": "20260717",
   "expected_trade_date": "20260717",
@@ -99,8 +99,8 @@
     "required_columns": 21,
     "required_columns_complete": true,
     "unique_codes": 12,
-    "market_data_time_min": "20260717 15:06:30",
-    "market_data_time_max": "20260717 15:07:25",
+    "market_data_time_min": "20260717 15:11:00",
+    "market_data_time_max": "20260717 15:11:43",
     "pct_chg_min": 8.367346938775523,
     "pct_chg_max": 16.01123595505618,
     "history_feature_coverage_pct": 100.0
