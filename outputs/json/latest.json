@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-17 17:22:10",
+  "generated_at": "2026-07-17 18:05:16",
   "market_data_time": "2026-07-17 15:27:49",
   "source_data_hash": "45b535e7639e46374ca3b2ceab7359b315bb071e39debd8d95719ed7aec441a6",
-  "wp_run_time": "2026-07-17 17:22:10",
+  "wp_run_time": "2026-07-17 18:05:16",
   "health": {
     "status": "ok",
     "is_trading_day": true,
@@ -95,16 +95,16 @@
       "buy_model_version": "tail_profit_v1",
       "risk_penalty_score": 0.0,
       "actual_trade_date": "20260717",
-      "actual_open": 67.96,
-      "actual_high": 75.3,
-      "actual_low": 66.8,
-      "actual_close": 71.7,
-      "actual_pct_chg": 1.2855,
-      "return_open_pct": -4.1737,
-      "return_high_pct": 6.176,
-      "return_low_pct": -5.8094,
-      "return_close_pct": 1.0998,
-      "is_limit_up_t1": false,
+      "actual_open": "67.96",
+      "actual_high": "75.3",
+      "actual_low": "66.8",
+      "actual_close": "71.7",
+      "actual_pct_chg": "1.2855",
+      "return_open_pct": "-4.1737",
+      "return_high_pct": "6.176",
+      "return_low_pct": "-5.8094",
+      "return_close_pct": "1.0998",
+      "is_limit_up_t1": "False",
       "truth_status": "verified",
       "truth_error": "",
       "truth_updated_at": "2026-07-17 17:22:10"
@@ -716,5 +716,5 @@
     }
   ],
   "buy_model_version": "tail_profit_v1",
-  "validation_updated_at": "2026-07-17 17:22:10"
+  "validation_updated_at": "2026-07-17 18:05:16"
 }
