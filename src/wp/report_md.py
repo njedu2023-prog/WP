@@ -56,7 +56,7 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
         "risk_reason",
     ]
     content = ["# WP Top50", ""]
-    content.append("## 14:35 尾盘收益观察")
+    content.append("## 尾盘观察")
     if buy_plan.empty:
         content.append("")
         content.append("当前无买入观察计划。")
