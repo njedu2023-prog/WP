@@ -1,1 +1,1 @@
-2026-07-17 06:47:31 +08:00 verify graphql-fallback=3533d46f0e0c897dbe7fcaaed85310d4ae3dae7d
+2026-07-17 10:36:49 +08:00 upstream_generated_at=2026-07-17 10:34:56 target_slot=2026-07-17 10:35:00
