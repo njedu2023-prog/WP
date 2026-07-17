@@ -383,7 +383,7 @@ def render_html(
     .summary-toggle {{ list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px; user-select: none; }}
     .summary-toggle::-webkit-details-marker {{ display: none; }}
     .summary-toggle-title {{ display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }}
-    .summary-toggle-title strong {{ font-size: 18px; line-height: 1.25; font-weight: 700; color: #1d1d1f; }}
+    .summary-toggle-title strong {{ font-size: 16px; line-height: 1.25; font-weight: 700; color: #1d1d1f; }}
     .summary-toggle-meta {{ color: #6e6e73; font-size: 13px; line-height: 1.4; }}
     .summary-toggle-action {{ flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #d2d2d7; border-radius: 50%; background: #f5f5f7; color: #1d1d1f; display: inline-grid; place-items: center; font-size: 20px; line-height: 1; font-weight: 500; }}
     .summary-toggle-action::after {{ content: "+"; transform: translateY(-1px); }}
@@ -459,6 +459,7 @@ def render_html(
     .validation-detail-table th {{ color: #6e6e73; font-weight: 600; }}
     .validation-detail-table tr:last-child td {{ border-bottom: 0; }}
     .section-block {{ background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }}
+    .section-block > strong {{ font-size: 16px; line-height: 1.25; }}
     .section-block strong {{ display: block; color: #1d1d1f; margin-bottom: 6px; }}
     .section-block p {{ margin: 0 0 14px; }}
     .section-block p:last-child {{ margin-bottom: 0; }}
@@ -515,7 +516,7 @@ def render_html(
     </details>
     <section id="buy-plan-section">
       <div class="section-block">
-        <strong>14:35 尾盘收益观察</strong>
+        <strong>尾盘观察</strong>
         <div id="stale-data-banner" class="stale-data-banner" role="alert" hidden>市场数据已超过20分钟，名单仍显示，请核对数据时间。</div>
       </div>
       <div id="buy-plan-table-wrap" class="backtest-scroll">
