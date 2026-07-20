@@ -4,7 +4,7 @@
   "is_trading_time": true,
   "data_time": "2026-07-20 15:00:37",
   "market_data_time": "2026-07-20 15:00:37",
-  "wp_run_time": "2026-07-20 15:58:00",
+  "wp_run_time": "2026-07-20 18:21:06",
   "data_trade_date": "20260720",
   "expected_trade_date": "20260720",
   "raw_count": 51,
@@ -30,11 +30,11 @@
   "model_version": "wp_rule_v2_1",
   "buy_model_version": "tail_profit_v1",
   "source_data_hash": "2d073bec98c5c5582ea5f4cf5d130560a5879fc93355556203dde58d710fe9fb",
-  "report_revision": "2026-07-20 15:58:00",
+  "report_revision": "2026-07-20 18:21:06",
   "direct_attempted": true,
   "direct_error": "",
   "direct_fallback_used": false,
   "preserved_latest_html": false,
   "buy_plan_count": 1,
-  "validation_updated_at": "2026-07-20 15:58:00"
+  "validation_updated_at": "2026-07-20 18:21:06"
 }
