@@ -43,7 +43,39 @@ def enrich_basic_fields(df: pd.DataFrame) -> pd.DataFrame:
     out["amount"] = numeric_series(out, ["amount", "成交额", "turnover_amount"])
     out["sector_name"] = text_series(out, ["sector_name", "industry", "板块", "所属板块"], "未知板块")
     out["limit_up_pct"] = estimate_limit_up_pct(out["ts_code"], out["name"])
-    out["today_limit_up_price"] = numeric_series(out, ["today_limit_up_price", "limit_up_price", "涨停价"])
+    reported_limit_price = numeric_series(
+        out,
+        ["today_limit_up_price", "limit_up_price", "up_limit", "涨停价"],
+    )
+    reported_limit_pct = pd.Series(
+        np.where(
+            (out["pre_close"] > 0) & (reported_limit_price > 0),
+            (reported_limit_price / out["pre_close"] - 1) * 100,
+            np.nan,
+        ),
+        index=out.index,
+        dtype="float64",
+    )
+    # Exchange limit prices are rounded to the price tick, so the observed
+    # ratio is not always exactly 5/10/20/30 percent. Normalize it back to the
+    # applicable rule before filtering by market regime.
+    normalized_limit_rule = pd.Series(
+        np.select(
+            [
+                reported_limit_pct.between(2.5, 7.5, inclusive="left"),
+                reported_limit_pct.between(7.5, 15.0, inclusive="left"),
+                reported_limit_pct.between(15.0, 25.0, inclusive="left"),
+                reported_limit_pct.between(25.0, 35.5, inclusive="both"),
+            ],
+            [5.0, 10.0, 20.0, 30.0],
+            default=np.nan,
+        ),
+        index=out.index,
+        dtype="float64",
+    )
+    out["limit_rule_observed_pct"] = reported_limit_pct
+    out["limit_rule_pct"] = normalized_limit_rule.fillna(out["limit_up_pct"])
+    out["today_limit_up_price"] = reported_limit_price
     out["prev_limit_up_price"] = numeric_series(out, ["prev_limit_up_price", "pre_limit_up_price", "昨日涨停价"])
     out.loc[out["today_limit_up_price"] <= 0, "today_limit_up_price"] = out["pre_close"] * (1 + out["limit_up_pct"] / 100)
     out.loc[out["prev_limit_up_price"] <= 0, "prev_limit_up_price"] = numeric_series(out, ["prev_pre_close", "pre_pre_close"], out["pre_close"]) * (1 + out["limit_up_pct"] / 100)
@@ -91,6 +123,7 @@ def filter_candidates(
     exclude_st: bool = True,
     exclude_suspended: bool = True,
     exclude_new_stock_days: int = 10,
+    max_limit_up_pct: float = 10.0,
 ) -> pd.DataFrame:
     if df.empty:
         return enrich_basic_fields(df)
@@ -106,6 +139,11 @@ def filter_candidates(
     out = out.sort_values(sort_columns, ascending=ascending, kind="mergesort").drop_duplicates("ts_code", keep="last")
     out = out.drop(columns=["_sort_update_time"], errors="ignore")
     mask = (out["pct_chg"] > min_pct_chg) & (out["pre_day_limitup"] != 1) & (out["today_limitup"] != 1)
+    if max_limit_up_pct > 0:
+        mask &= out["limit_rule_pct"] <= max_limit_up_pct
+        # Code/name inference is retained as a safety net for missing or
+        # malformed limit-price data.
+        mask &= out["limit_up_pct"] <= max_limit_up_pct
     if exclude_st:
         mask &= ~out["is_st"]
     if exclude_suspended:

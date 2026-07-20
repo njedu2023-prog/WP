@@ -136,4 +136,8 @@ def assert_top50_rules(top50: pd.DataFrame) -> list[str]:
         errors.append("Top50 contains previous-day limit-up stocks")
     if (top50["today_limitup"].astype(int) == 1).any():
         errors.append("Top50 contains today limit-up stocks")
+    if "limit_rule_pct" in top50.columns:
+        limit_rule = pd.to_numeric(top50["limit_rule_pct"], errors="coerce")
+        if limit_rule.gt(10.0).any():
+            errors.append("Top50 contains stocks with a price-limit regime above 10%")
     return errors

@@ -49,6 +49,59 @@ def test_report_html_polls_manifest_and_keeps_stale_buy_plan_visible(tmp_path):
     assert 'http-equiv="refresh"' not in page
 
 
+def test_report_html_renders_persistent_tail_observation_quality_order(tmp_path):
+    path = tmp_path / "latest.html"
+    observation_pool = pd.DataFrame(
+        [
+            {
+                "quality_rank": 1,
+                "observation_status": "当前主票",
+                "rank_change": "升1",
+                "first_seen": "2026-07-17 14:25:00",
+                "last_seen": "2026-07-17 14:35:00",
+                "ts_code": "000002.SZ",
+                "name": "乙",
+                "pct_chg": 9.4,
+                "sector_name": "设备",
+                "tail_profit_score": 91.2,
+                "risk_penalty_score": 18.0,
+                "amount_ratio_5d": 1.8,
+                "limit_rule_pct": 10.0,
+            },
+            {
+                "quality_rank": 2,
+                "observation_status": "观察票",
+                "rank_change": "降1",
+                "first_seen": "2026-07-17 14:20:00",
+                "last_seen": "2026-07-17 14:35:00",
+                "ts_code": "000001.SZ",
+                "name": "甲",
+                "pct_chg": 8.9,
+                "sector_name": "电气",
+                "tail_profit_score": 86.7,
+                "risk_penalty_score": 24.1,
+                "amount_ratio_5d": 2.0,
+                "limit_rule_pct": 10.0,
+            },
+        ]
+    )
+
+    render_html(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {"status": "ok", "data_time": "2026-07-17 14:35:00"},
+        path,
+        observation_pool=observation_pool,
+    )
+
+    page = path.read_text(encoding="utf-8")
+    assert "质量排名" in page
+    assert "涨跌停规则" in page
+    assert "当前主票" in page
+    assert "观察票" in page
+    assert page.index("000002.SZ") < page.index("000001.SZ")
+
+
 def test_report_html_groups_validation_by_plan_day(tmp_path):
     path = tmp_path / "latest.html"
     validation = pd.DataFrame(

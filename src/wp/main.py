@@ -13,7 +13,7 @@ from .backtest import run_backtest
 from .buy_decision import build_buy_decision
 from .buy_validation import update_buy_plan_validation
 from .calendar import now_cn
-from .candidate_filter import filter_candidates
+from .candidate_filter import enrich_basic_fields, filter_candidates, flag_limitup
 from .data_loader import read_rank_input
 from .feature_engineering import add_feature_scores
 from .ranking import build_ranked_pool, rank_candidates
@@ -21,6 +21,7 @@ from .report_html import render_html
 from .report_md import render_markdown
 from .scoring_model import MODEL_VERSION, add_scores
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
+from .tail_observation import update_tail_observation
 from .utils import ensure_dir, load_yaml, write_json
 from .validation import assert_top50_rules, build_healthcheck, resolve_market_data_time
 
@@ -176,6 +177,7 @@ def run() -> dict:
         exclude_st=bool(config.get("exclude_st", True)),
         exclude_suspended=bool(config.get("exclude_suspended", True)),
         exclude_new_stock_days=int(config.get("exclude_new_stock_days", 10)),
+        max_limit_up_pct=float(config.get("max_limit_up_pct", 10.0)),
     )
     ranked_input = add_tail_profit_scores(add_scores(add_feature_scores(candidates)), config)
     top_n = int(config.get("top_n", 50))
@@ -232,6 +234,21 @@ def run() -> dict:
 
     ensure_dir(output_root / "csv")
     ensure_dir(output_root / "json")
+    market_universe = flag_limitup(enrich_basic_fields(raw))
+    tail_observation_result = update_tail_observation(
+        ranked_input,
+        buy_plan,
+        market_universe,
+        health,
+        output_root / "csv" / "wp_tail_observation.csv",
+        max_limit_up_pct=float(config.get("max_limit_up_pct", 10.0)),
+    )
+    tail_observation = tail_observation_result.table
+    health["tail_observation_count"] = int(tail_observation_result.summary.get("count", 0))
+    health["tail_observation_active_count"] = int(tail_observation_result.summary.get("active_count", 0))
+    health["tail_observation_sealed_count"] = int(tail_observation_result.summary.get("sealed_count", 0))
+    health["tail_observation_review_count"] = int(tail_observation_result.summary.get("review_count", 0))
+    health["tail_observation_state"] = str(tail_observation_result.summary.get("status", ""))
     archive_dir = output_root / "html_reports" / "archive" / current.strftime("%Y%m%d")
     ensure_dir(archive_dir)
     validation_result = update_buy_plan_validation(buy_plan, health, output_root, current)
@@ -255,6 +272,8 @@ def run() -> dict:
         "buy_plan_validation": validation_result.table.to_dict(orient="records"),
         "buy_plan_validation_summary": validation_result.summary,
         "buy_plan": buy_plan.to_dict(orient="records"),
+        "tail_observation": tail_observation.to_dict(orient="records"),
+        "tail_observation_summary": tail_observation_result.summary,
         "top50": top50.to_dict(orient="records"),
         "backtests": backtest_summaries,
         "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
@@ -270,6 +289,18 @@ def run() -> dict:
             "summary": buy_decision.summary,
             "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
             "buy_plan": buy_plan.to_dict(orient="records"),
+            "tail_observation": tail_observation.to_dict(orient="records"),
+            "tail_observation_summary": tail_observation_result.summary,
+        },
+    )
+    write_json(
+        output_root / "json" / "wp_tail_observation.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "source_data_hash": input_hash,
+            "summary": tail_observation_result.summary,
+            "records": tail_observation.to_dict(orient="records"),
         },
     )
     write_json(
@@ -303,6 +334,8 @@ def run() -> dict:
             "report_revision": update_time,
             "top50_count": len(top50),
             "buy_plan_count": len(buy_plan),
+            "tail_observation_count": len(tail_observation),
+            "tail_observation_summary": tail_observation_result.summary,
             "validation_summary": validation_result.summary,
             "model_version": MODEL_VERSION,
             "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
@@ -315,15 +348,16 @@ def run() -> dict:
     if preserve_latest:
         logging.error("Source failed; preserving existing latest.html. error=%s", load_result.error)
     else:
-        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, validation=validation_result.table, validation_summary=validation_result.summary, backtests=backtest_summaries)
-    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, validation=validation_result.table, validation_summary=validation_result.summary, backtests=backtest_summaries)
-    render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan)
+        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=validation_result.table, validation_summary=validation_result.summary, backtests=backtest_summaries)
+    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=validation_result.table, validation_summary=validation_result.summary, backtests=backtest_summaries)
+    render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan, observation_pool=tail_observation)
     logging.info(
-        "WP run completed: raw=%s candidates=%s top50=%s buy_plan=%s missing_fields=%s fallback=%s outputs=%s log=%s",
+        "WP run completed: raw=%s candidates=%s top50=%s buy_plan=%s tail_observation=%s missing_fields=%s fallback=%s outputs=%s log=%s",
         len(raw),
         len(candidates),
         len(top50),
         len(buy_plan),
+        len(tail_observation),
         ",".join(health.get("missing_fields", [])) or "none",
         health.get("fallback_used"),
         output_root,

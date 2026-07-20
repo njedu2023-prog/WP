@@ -22,16 +22,21 @@ def _table(frame: pd.DataFrame, columns: list[str]) -> str:
     return "\n".join([header, divider, *rows])
 
 
-def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.DataFrame | None = None) -> None:
+def render_markdown(
+    top50: pd.DataFrame,
+    output_path: str | Path,
+    buy_plan: pd.DataFrame | None = None,
+    observation_pool: pd.DataFrame | None = None,
+) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
-    if top50.empty:
-        output.write_text("# WP Top50\n\n无符合条件股票。\n", encoding="utf-8")
-        return
-    buy_columns = [
-        "buy_rank",
-        "portfolio_group",
+    observation_pool = observation_pool if observation_pool is not None else buy_plan
+    observation_columns = [
+        "quality_rank",
+        "observation_status",
+        "rank_change",
+        "first_seen",
         "ts_code",
         "name",
         "pct_chg",
@@ -39,6 +44,8 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
         "tail_profit_score",
         "risk_penalty_score",
         "amount_ratio_5d",
+        "limit_rule_pct",
+        "last_seen",
         "buy_reason",
     ]
     columns = [
@@ -57,11 +64,13 @@ def render_markdown(top50: pd.DataFrame, output_path: str | Path, buy_plan: pd.D
     ]
     content = ["# WP Top50", ""]
     content.append("## 尾盘观察")
-    if buy_plan.empty:
+    if observation_pool.empty:
         content.append("")
-        content.append("当前无买入观察计划。")
+        content.append("当前无具备资格的尾盘观察票。")
     else:
         content.append("")
-        content.append(_table(buy_plan, buy_columns))
-    content.extend(["", "## Top50", "", _table(top50, columns), ""])
+        content.append(_table(observation_pool, observation_columns))
+    content.extend(["", "## Top50", ""])
+    content.append(_table(top50, columns) if not top50.empty else "无符合条件股票。")
+    content.append("")
     output.write_text("\n".join(content), encoding="utf-8")

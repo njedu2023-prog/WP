@@ -7,6 +7,7 @@ timezone: Asia/Shanghai
 exclude_st: true
 exclude_suspended: true
 exclude_new_stock_days: 10
+max_limit_up_pct: 10
 buy_max_count: 1
 buy_max_sector_positions: 1
 tail_profit_min_pct_chg: 8

@@ -54,6 +54,10 @@ def run_close_validation(
     top50 = _read_csv(output_root / "csv" / "wp_top50.csv")
     full_rank = _read_csv(output_root / "csv" / "wp_full_rank.csv")
     buy_plan = _read_csv(output_root / "csv" / "wp_buy_plan.csv")
+    tail_observation_path = output_root / "csv" / "wp_tail_observation.csv"
+    tail_observation = _read_csv(tail_observation_path)
+    if not tail_observation_path.exists():
+        tail_observation = buy_plan.copy()
     backtests = load_backtest_summaries(output_root)
 
     latest_path = output_root / "json" / "latest.json"
@@ -106,6 +110,7 @@ def run_close_validation(
         health,
         latest_html,
         buy_plan=buy_plan,
+        observation_pool=tail_observation,
         validation=validation_result.table,
         validation_summary=validation_result.summary,
         backtests=backtests,
@@ -116,6 +121,7 @@ def run_close_validation(
         health,
         archive_html,
         buy_plan=buy_plan,
+        observation_pool=tail_observation,
         validation=validation_result.table,
         validation_summary=validation_result.summary,
         backtests=backtests,

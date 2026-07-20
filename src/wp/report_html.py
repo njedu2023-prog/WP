@@ -35,6 +35,13 @@ def _date_text(value: object) -> str:
     return html.escape(text or "-")
 
 
+def _clock_text(value: object) -> str:
+    text = str(value or "").strip()
+    if len(text) >= 16 and text[10:11] in {" ", "T"}:
+        text = text[11:16]
+    return html.escape(text or "-")
+
+
 def _summary_int(summary: dict, key: str) -> int:
     try:
         return int(summary.get(key, 0))
@@ -197,6 +204,7 @@ def render_html(
     health: dict,
     output_path: str | Path,
     buy_plan: pd.DataFrame | None = None,
+    observation_pool: pd.DataFrame | None = None,
     validation: pd.DataFrame | None = None,
     validation_summary: dict | None = None,
     backtests: list[dict] | None = None,
@@ -204,6 +212,7 @@ def render_html(
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
     buy_plan = buy_plan if buy_plan is not None else pd.DataFrame()
+    observation_pool = observation_pool if observation_pool is not None else buy_plan
     validation = validation if validation is not None else pd.DataFrame()
     validation_summary = validation_summary or {}
     validation_model = str(validation_summary.get("buy_model_version") or "")
@@ -230,11 +239,21 @@ def render_html(
     if not rows:
         rows.append("<tr><td colspan=\"18\" class=\"empty\">无符合条件股票</td></tr>")
     buy_rows = []
-    for _, row in buy_plan.iterrows():
+    for _, row in observation_pool.iterrows():
+        observation_status = str(row.get("observation_status") or row.get("portfolio_group") or "观察票")
+        status_class = {
+            "当前主票": "current-primary",
+            "已封板": "sealed",
+            "资格复核": "under-review",
+        }.get(observation_status, "observed")
+        quality_rank = row.get("quality_rank", row.get("buy_rank", ""))
+        reason = str(row.get("qualification_reason") or row.get("buy_reason") or "")
         buy_rows.append(
-            "<tr>"
-            + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
-            + f"<td>{html.escape(str(row.get('portfolio_group', '')))}</td>"
+            f"<tr class=\"{status_class}\">"
+            + f"<td>{html.escape(str(quality_rank))}</td>"
+            + f"<td><span class=\"observation-status {status_class}\">{html.escape(observation_status)}</span></td>"
+            + f"<td>{html.escape(str(row.get('rank_change', '-')))}</td>"
+            + f"<td>{_clock_text(row.get('first_seen', ''))}</td>"
             + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
             + f"<td>{html.escape(str(row.get('name', '')))}</td>"
             + f"<td>{_fmt(row.get('pct_chg', 0))}%</td>"
@@ -242,13 +261,15 @@ def render_html(
             + f"<td>{_fmt(row.get('tail_profit_score', 0))}</td>"
             + f"<td>{_fmt(row.get('risk_penalty_score', 0))}</td>"
             + f"<td>{_fmt(row.get('amount_ratio_5d', 0))}</td>"
+            + f"<td>{_fmt(row.get('limit_rule_pct', 0), 0)}%</td>"
+            + f"<td>{_clock_text(row.get('last_seen', ''))}</td>"
             + f"<td>{html.escape(str(row.get('confirm_before_buy', '')))}</td>"
             + f"<td>{html.escape(str(row.get('reject_if', '')))}</td>"
-            + f"<td>{html.escape(str(row.get('buy_reason', '')))}</td>"
+            + f"<td>{html.escape(reason)}</td>"
             + "</tr>"
         )
     if not buy_rows:
-        buy_rows.append("<tr><td colspan=\"12\" class=\"empty\">当前无买入观察计划</td></tr>")
+        buy_rows.append("<tr><td colspan=\"16\" class=\"empty\">当前无具备资格的尾盘观察票</td></tr>")
     validation_overview = _validation_overview(validation_summary)
     validation_days = _validation_days(validation)
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
@@ -268,7 +289,8 @@ def render_html(
         ("期望交易日", expected_trade_date),
         ("候选池数量", str(health.get("candidate_count", 0))),
         ("入选 Top50 数量", str(health.get("top50_count", 0))),
-        ("买入观察数量", str(health.get("buy_plan_count", 0))),
+        ("当前主票数量", str(health.get("buy_plan_count", 0))),
+        ("尾盘观察池数量", str(health.get("tail_observation_count", len(observation_pool)))),
         ("原始数据量", str(health.get("raw_count", 0))),
         ("缺失字段", html.escape(", ".join(health.get("missing_fields", [])) or "无")),
         ("读取缓存 fallback", html.escape(str(health.get("data_load_fallback_used", health.get("fallback_used"))))),
@@ -417,10 +439,18 @@ def render_html(
     .rank-table tbody tr:hover td {{ background: #f5f5f7; }}
     .rank-table tr.top10 td {{ background: #fff8dc; }}
     .rank-table tr.risk-high td {{ color: #9f1f1f; }}
-    .buy-table {{ border-collapse: collapse; min-width: 1240px; width: 100%; font-size: 13px; }}
+    .buy-table {{ border-collapse: collapse; min-width: 1720px; width: 100%; font-size: 13px; }}
     .buy-table th, .buy-table td {{ padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }}
     .buy-table th {{ background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }}
-    .buy-table td:nth-child(10), .buy-table td:nth-child(11), .buy-table td:nth-child(12) {{ min-width: 150px; line-height: 1.45; }}
+    .buy-table td:nth-child(14), .buy-table td:nth-child(15), .buy-table td:nth-child(16) {{ min-width: 150px; line-height: 1.45; }}
+    .buy-table tr.current-primary td {{ background: #fff8dc; }}
+    .buy-table tr.sealed td {{ background: #fff2f2; }}
+    .buy-table tr.under-review td {{ color: #6e6e73; background: #fafafa; }}
+    .observation-status {{ font-weight: 700; white-space: nowrap; }}
+    .observation-status.current-primary {{ color: #9a5b00; }}
+    .observation-status.sealed {{ color: #b42318; }}
+    .observation-status.under-review {{ color: #6e6e73; }}
+    .observation-status.observed {{ color: #0b7a3b; }}
     .stale-data-banner {{ margin-top: 10px; padding: 12px 14px; border: 1px solid #f1a7a7; border-radius: 6px; color: #b42318; background: #fff2f2; font-size: 13px; font-weight: 600; }}
     .stale-data-banner[hidden] {{ display: none; }}
     .backtest-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
@@ -521,7 +551,7 @@ def render_html(
       </div>
       <div id="buy-plan-table-wrap" class="backtest-scroll">
         <table class="buy-table">
-          <thead><tr><th>顺序</th><th>类型</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>尾盘收益分</th><th>风险分</th><th>5日量能比</th><th>14:50确认</th><th>放弃</th><th>理由</th></tr></thead>
+          <thead><tr><th>质量排名</th><th>状态</th><th>排名变化</th><th>首次出现</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>质量分</th><th>风险分</th><th>5日量能比</th><th>涨跌停规则</th><th>最近确认</th><th>14:50确认</th><th>放弃</th><th>理由</th></tr></thead>
           <tbody>{''.join(buy_rows)}</tbody>
         </table>
       </div>

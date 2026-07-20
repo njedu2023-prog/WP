@@ -5,7 +5,7 @@ import pandas as pd
 
 OUTPUT_COLUMNS = [
     "rank", "ts_code", "name", "trade_date", "update_time", "price", "pct_chg",
-    "amount", "pre_day_limitup", "today_limitup", "sector_name", "sector_strength_score",
+    "amount", "pre_day_limitup", "today_limitup", "limit_rule_pct", "sector_name", "sector_strength_score",
     "stock_strength_score", "acceptance_score", "momentum_score", "capital_score",
     "pattern_score", "liquidity_score", "risk_penalty_score", "ranking_score",
     "tail_profit_score", "tail_profit_eligible", "tail_profit_filter_reason",
