@@ -273,7 +273,7 @@ def test_report_html_renders_v2_manual_boundary_and_ohlc_intervals(tmp_path):
     )
     page = path.read_text(encoding="utf-8")
     assert "WP V2 人工决策辅助" in page
-    assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" in page
+    assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" not in page
     assert "次日开盘 Q10 / Q50 / Q90" in page
     assert "-2.00% / +0.00% / +2.00%" in page
     assert "T+1 人工卖出建议" in page

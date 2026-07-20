@@ -242,7 +242,6 @@ def _decision_support_panel(decision: dict, regime: dict) -> str:
         "<section class=\"v2-section\">"
         "<div class=\"v2-heading\"><strong>WP V2 人工决策辅助</strong>"
         "<span>目标：提高T+1盈利质量，允许等待与空仓</span></div>"
-        "<div class=\"manual-boundary\">仅辅助人工下单，不接入券商、不读取账户、不自动交易。</div>"
         "<div class=\"decision-line\">"
         f"<span class=\"decision-action {action_class}\">{html.escape(action)}</span>"
         f"<strong>{html.escape(candidate)}</strong>"
@@ -559,7 +558,6 @@ def render_html(
     .v2-heading {{ padding: 16px 20px 12px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }}
     .v2-heading strong {{ font-size: 16px; line-height: 1.25; }}
     .v2-heading span {{ color: #6e6e73; font-size: 12px; }}
-    .manual-boundary {{ padding: 10px 20px; color: #7a4b00; background: #fff8e6; border-top: 1px solid #f1e2bd; border-bottom: 1px solid #f1e2bd; font-size: 13px; font-weight: 600; }}
     .decision-line {{ padding: 16px 20px 10px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }}
     .decision-line > strong {{ font-size: 17px; }}
     .decision-line > span:not(.decision-action) {{ color: #6e6e73; font-size: 13px; }}
