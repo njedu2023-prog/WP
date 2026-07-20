@@ -11,6 +11,7 @@ import pandas as pd
 from .calendar import CN_TZ, next_trading_day_str
 from .data_loader import _read_remote_text
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
+from .t1_forecast import FORECAST_COLUMNS
 
 
 VALIDATION_COLUMNS = [
@@ -31,6 +32,8 @@ VALIDATION_COLUMNS = [
     "tail_profit_score",
     "buy_model_version",
     "risk_penalty_score",
+    "amount_ratio_5d",
+    *FORECAST_COLUMNS,
     "actual_trade_date",
     "actual_open",
     "actual_high",
@@ -145,6 +148,8 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
                 "tail_profit_score": row.get("tail_profit_score", ""),
                 "buy_model_version": row.get("tail_profit_model_version", ""),
                 "risk_penalty_score": row.get("risk_penalty_score", ""),
+                "amount_ratio_5d": row.get("amount_ratio_5d", ""),
+                **{column: row.get(column, "") for column in FORECAST_COLUMNS},
                 "actual_trade_date": target_trade_date,
                 "actual_open": "",
                 "actual_high": "",

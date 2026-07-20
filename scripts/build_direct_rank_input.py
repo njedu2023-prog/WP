@@ -40,6 +40,7 @@ REQUIRED_COLUMNS = {
     "stock_age_days",
 }
 ACCEPTED_SOURCE_STATUSES = {"ok", "empty_schema_ready"}
+MARKET_CONTEXT_MIN_ROWS = 200
 
 
 @dataclass(frozen=True)
@@ -212,6 +213,63 @@ def _validate_source(
     return frame, manifest, quality
 
 
+def _copy_market_context(processor_root: Path, destination_dir: Path, trade_date: str) -> dict:
+    destination = destination_dir / "wp_market_regime_input.csv"
+    candidates = [
+        processor_root / "data" / "latest" / "realtime_quote.csv",
+        processor_root / "data" / "latest" / "realtime_snapshot.csv",
+    ]
+    for source in candidates:
+        if not source.is_file() or source.stat().st_size <= 0:
+            continue
+        try:
+            frame = pd.read_csv(source, encoding="utf-8-sig")
+        except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+            continue
+        required = {
+            "trade_date",
+            "update_time",
+            "ts_code",
+            "name",
+            "price",
+            "open",
+            "high",
+            "low",
+            "pre_close",
+            "pct_chg",
+            "amount",
+        }
+        if len(frame) < MARKET_CONTEXT_MIN_ROWS or not required.issubset(frame.columns):
+            continue
+        codes = frame["ts_code"].fillna("").astype(str).str.strip()
+        if codes.eq("").any() or codes.duplicated().any():
+            continue
+        if "trade_date" in frame.columns:
+            dates = (
+                frame["trade_date"]
+                .fillna("")
+                .astype(str)
+                .str.replace("-", "", regex=False)
+                .str.replace(r"\.0$", "", regex=True)
+            )
+            valid_dates = dates[dates.ne("")]
+            if not valid_dates.empty and not valid_dates.eq(trade_date).all():
+                continue
+        _atomic_copy(source, destination)
+        return {
+            "ok": True,
+            "rows": int(len(frame)),
+            "source": source.name,
+            "path": str(destination),
+        }
+    try:
+        if destination.exists():
+            destination.unlink()
+    except OSError:
+        pass
+    return {"ok": False, "rows": 0, "source": "", "path": str(destination)}
+
+
 def build_direct_rank_input(
     *,
     root: Path = ROOT,
@@ -296,6 +354,7 @@ def build_direct_rank_input(
         destination_csv = destination_dir / "wp_latest_rank_input.csv"
         destination_manifest = destination_dir / "wp_manifest.json"
         _atomic_copy(source_csv, destination_csv)
+        market_context = _copy_market_context(processor_root, destination_dir, str(manifest.get("source_trade_date") or ""))
 
         manifest.update(
             {
@@ -307,6 +366,7 @@ def build_direct_rank_input(
                 "direct_row_count": int(len(frame)),
                 "direct_quality": quality,
                 "archive_mode": "wp_transaction_snapshot",
+                "market_context": market_context,
             }
         )
         _atomic_write_json(manifest, destination_manifest)

@@ -57,6 +57,26 @@ def _prepare_processor(root: Path, *, status: str = "ok") -> Path:
 
 def test_direct_builder_archives_validated_rank_input(tmp_path):
     processor = _prepare_processor(tmp_path)
+    market_latest = processor / "data" / "latest"
+    market_latest.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(
+        [
+            {
+                "trade_date": "20260716",
+                "update_time": "2026-07-16 14:35:10",
+                "ts_code": f"600{index:03d}.SH",
+                "name": f"股票{index}",
+                "price": 10.0,
+                "open": 9.9,
+                "high": 10.2,
+                "low": 9.8,
+                "pre_close": 9.8,
+                "pct_chg": 2.04,
+                "amount": 100_000_000,
+            }
+            for index in range(250)
+        ]
+    ).to_csv(market_latest / "realtime_quote.csv", index=False, encoding="utf-8-sig")
     calls = []
 
     def fake_runner(command, **kwargs):
@@ -86,6 +106,9 @@ def test_direct_builder_archives_validated_rank_input(tmp_path):
     assert manifest["direct_quality"]["unique_codes"] == 1
     assert manifest["direct_quality"]["required_columns_complete"] is True
     assert manifest["direct_quality"]["history_feature_coverage_pct"] == 100.0
+    assert manifest["market_context"]["ok"] is True
+    assert manifest["market_context"]["rows"] == 250
+    assert (tmp_path / "data" / "direct" / "latest" / "wp_market_regime_input.csv").is_file()
 
 
 def test_direct_builder_uses_fetcher_resolved_trade_date(tmp_path):

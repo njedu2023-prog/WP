@@ -4,6 +4,8 @@ WP 在 GitHub Actions 中直连 Tushare 获取当前交易日数据，并复用 
 
 基础特征模型仍为 `wp_rule_v2_1`，尾盘收益排序模型为 `tail_profit_v1`。尾盘模型优先选择涨幅不过热、资金和板块较强、风险较低的股票，并硬性排除涨幅超过 12%、风险分超过 45、收盘位置低于 50、5 日成交额放大超过 2.5 倍的候选。
 
+WP V2 在现有主线外增加人工决策辅助层：市场环境过滤、观察票稳定性、T+1 开高低收经验区间、等待/空仓判断和 T+1 人工卖出建议。它不会替换原有主票累计验证口径。详细说明见 [`docs/WP_V2_人工决策辅助.md`](docs/WP_V2_人工决策辅助.md)。
+
 ## 快速运行
 
 ```bash
@@ -58,7 +60,13 @@ https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/
 outputs/csv/wp_top50.csv
 outputs/csv/wp_full_rank.csv
 outputs/csv/wp_model_debug.csv
+outputs/csv/wp_t1_forecast.csv
+outputs/csv/wp_decision_support.csv
+outputs/csv/wp_t1_exit_guidance.csv
 outputs/json/latest.json
+outputs/json/wp_t1_forecast.json
+outputs/json/wp_decision_support.json
+outputs/json/wp_t1_exit_guidance.json
 outputs/json/wp_manifest.json
 outputs/json/wp_data_healthcheck.json
 outputs/html_reports/latest.html

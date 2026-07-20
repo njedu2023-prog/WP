@@ -38,14 +38,21 @@ LIVE_COMMIT_PATHS = [
     "outputs/csv/wp_buy_decision.csv",
     "outputs/csv/wp_tail_observation.csv",
     "outputs/csv/wp_buy_plan_validation.csv",
+    "outputs/csv/wp_t1_forecast.csv",
+    "outputs/csv/wp_decision_support.csv",
+    "outputs/csv/wp_t1_exit_guidance.csv",
     "outputs/json/latest.json",
     "outputs/json/wp_buy_plan.json",
     "outputs/json/wp_buy_plan_validation.json",
     "outputs/json/wp_tail_observation.json",
+    "outputs/json/wp_t1_forecast.json",
+    "outputs/json/wp_decision_support.json",
+    "outputs/json/wp_t1_exit_guidance.json",
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
     "data/cache/wp_latest_rank_input.csv",
     "data/direct/latest/wp_latest_rank_input.csv",
+    "data/direct/latest/wp_market_regime_input.csv",
     "data/direct/latest/wp_manifest.json",
 ]
 
@@ -93,10 +100,16 @@ def output_commit_paths(mode: str) -> list[str]:
     paths = list(LIVE_COMMIT_PATHS)
     latest_archive = _latest_file("outputs/html_reports/archive/*/*.html")
     latest_log = _latest_file("logs/wp_*.log")
+    latest_tail_snapshot = _latest_file("outputs/snapshots/*/*_tail.csv")
+    latest_decision_snapshot = _latest_file("outputs/snapshots/*/*_decision.json")
+    latest_exit_snapshot = _latest_file("outputs/snapshots/*/*_exit.csv")
     if latest_archive:
         paths.append(latest_archive)
     if latest_log:
         paths.append(latest_log)
+    for snapshot in (latest_tail_snapshot, latest_decision_snapshot, latest_exit_snapshot):
+        if snapshot:
+            paths.append(snapshot)
     if mode == "backtest":
         paths.extend(
             [

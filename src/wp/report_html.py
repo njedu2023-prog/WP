@@ -198,6 +198,98 @@ def _validation_days(validation: pd.DataFrame) -> str:
     return "".join(groups)
 
 
+def _forecast_range(summary: dict, target: str) -> str:
+    values = []
+    for suffix in (10, 50, 90):
+        value = pd.to_numeric(pd.Series([summary.get(f"forecast_{target}_q{suffix}_pct")]), errors="coerce").iloc[0]
+        values.append(None if pd.isna(value) else float(value))
+    if any(value is None for value in values):
+        return "-"
+    return " / ".join(f"{value:+.2f}%" for value in values)
+
+
+def _probability(summary: dict, key: str) -> str:
+    value = pd.to_numeric(pd.Series([summary.get(key)]), errors="coerce").iloc[0]
+    return "-" if pd.isna(value) else f"{float(value):.1f}%"
+
+
+def _decision_support_panel(decision: dict, regime: dict) -> str:
+    action = str(decision.get("action") or "继续观察")
+    action_class = "buy" if action == "建议关注买入" else "avoid" if action == "建议空仓" else "wait"
+    candidate_name = str(decision.get("candidate_name") or "")
+    candidate_code = str(decision.get("candidate_code") or "")
+    candidate = f"{candidate_name} {candidate_code}".strip() or "暂无首选"
+    warning = str(decision.get("forecast_warning") or "")
+    reason = str(decision.get("reason") or "")
+    mode = str(decision.get("forecast_mode") or "样本不足")
+    confidence = _probability(decision, "forecast_confidence")
+    regime_state = str(regime.get("state") or "数据不足")
+    regime_score = _fmt(regime.get("score", 0))
+    regime_reason = str(regime.get("reason") or "")
+    next_checkpoint = str(decision.get("next_checkpoint") or "下一次数据刷新后复核")
+    intervals = [
+        ("次日开盘", _forecast_range(decision, "open")),
+        ("次日最高", _forecast_range(decision, "high")),
+        ("次日最低", _forecast_range(decision, "low")),
+        ("次日收盘", _forecast_range(decision, "close")),
+    ]
+    interval_html = "".join(
+        f"<div class=\"forecast-metric\"><span>{label} Q10 / Q50 / Q90</span><strong>{html.escape(value)}</strong></div>"
+        for label, value in intervals
+    )
+    warning_html = f"<p class=\"model-warning\">{html.escape(warning)}</p>" if warning else ""
+    return (
+        "<section class=\"v2-section\">"
+        "<div class=\"v2-heading\"><strong>WP V2 人工决策辅助</strong>"
+        "<span>目标：提高T+1盈利质量，允许等待与空仓</span></div>"
+        "<div class=\"manual-boundary\">仅辅助人工下单，不接入券商、不读取账户、不自动交易。</div>"
+        "<div class=\"decision-line\">"
+        f"<span class=\"decision-action {action_class}\">{html.escape(action)}</span>"
+        f"<strong>{html.escape(candidate)}</strong>"
+        f"<span>市场：{html.escape(regime_state)} · {regime_score}分</span>"
+        f"<span>预测：{html.escape(mode)} · 置信{confidence}</span>"
+        "</div>"
+        f"<p class=\"decision-reason\">{html.escape(reason or regime_reason)}</p>"
+        f"<div class=\"forecast-grid\">{interval_html}</div>"
+        "<div class=\"probability-line\">"
+        f"<span>收盘盈利概率 <strong>{_probability(decision, 'forecast_profit_probability')}</strong></span>"
+        f"<span>触及+3% <strong>{_probability(decision, 'forecast_touch_plus3_probability')}</strong></span>"
+        f"<span>触及-3% <strong>{_probability(decision, 'forecast_touch_minus3_probability')}</strong></span>"
+        f"<span>下一检查 <strong>{html.escape(next_checkpoint)}</strong></span>"
+        "</div>"
+        f"{warning_html}"
+        f"<p class=\"regime-reason\">市场依据：{html.escape(regime_reason or '-')}</p>"
+        "</section>"
+    )
+
+
+def _exit_guidance_panel(frame: pd.DataFrame) -> str:
+    rows = []
+    for _, row in frame.iterrows():
+        rows.append(
+            "<tr>"
+            + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('name', '')))}</td>"
+            + f"<td>{_pct_cell(row.get('open_return_pct', ''))}</td>"
+            + f"<td>{_pct_cell(row.get('high_return_pct', ''))}</td>"
+            + f"<td>{_pct_cell(row.get('low_return_pct', ''))}</td>"
+            + f"<td>{_pct_cell(row.get('current_return_pct', ''))}</td>"
+            + f"<td>{html.escape(str(row.get('guidance_action', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('guidance_reason', '')))}</td>"
+            + f"<td>{html.escape(str(row.get('next_checkpoint', '')))}</td>"
+            + "</tr>"
+        )
+    if not rows:
+        rows.append("<tr><td colspan=\"9\" class=\"empty\">今天没有需要复核的T+1系统观察记录；实际持仓始终以人工确认为准。</td></tr>")
+    return (
+        "<section class=\"exit-section\"><div class=\"v2-heading\">"
+        "<strong>T+1 人工卖出建议</strong><span>系统记录不等于实际持仓</span></div>"
+        "<div class=\"backtest-scroll\"><table class=\"exit-table\">"
+        "<thead><tr><th>代码</th><th>名称</th><th>开盘收益</th><th>最高收益</th><th>最低收益</th><th>当前收益</th><th>建议</th><th>依据</th><th>下一检查</th></tr></thead>"
+        f"<tbody>{''.join(rows)}</tbody></table></div></section>"
+    )
+
+
 def render_html(
     top50: pd.DataFrame,
     full_rank: pd.DataFrame,
@@ -208,6 +300,10 @@ def render_html(
     validation: pd.DataFrame | None = None,
     validation_summary: dict | None = None,
     backtests: list[dict] | None = None,
+    decision_support: dict | None = None,
+    market_regime: dict | None = None,
+    t1_forecasts: pd.DataFrame | None = None,
+    exit_guidance: pd.DataFrame | None = None,
 ) -> None:
     output = Path(output_path)
     output.parent.mkdir(parents=True, exist_ok=True)
@@ -219,7 +315,13 @@ def render_html(
     validation = scope_validation_table(validation, validation_model, VALIDATION_TRACKING_START_DATE)
     validation_summary = _summary(validation, validation_model, VALIDATION_TRACKING_START_DATE)
     backtests = sorted(backtests or [], key=lambda item: str(item.get("start_date", "")))
+    decision_support = decision_support or {}
+    market_regime = market_regime or {}
+    t1_forecasts = t1_forecasts if t1_forecasts is not None else pd.DataFrame()
+    exit_guidance = exit_guidance if exit_guidance is not None else pd.DataFrame()
     backtest_rows = _backtest_rows(backtests)
+    decision_support_html = _decision_support_panel(decision_support, market_regime)
+    exit_guidance_html = _exit_guidance_panel(exit_guidance)
     sector_top = []
     if not full_rank.empty and "sector_name" in full_rank:
         sector_top = full_rank.groupby("sector_name").size().sort_values(ascending=False).head(10).items()
@@ -453,6 +555,31 @@ def render_html(
     .observation-status.observed {{ color: #0b7a3b; }}
     .stale-data-banner {{ margin-top: 10px; padding: 12px 14px; border: 1px solid #f1a7a7; border-radius: 6px; color: #b42318; background: #fff2f2; font-size: 13px; font-weight: 600; }}
     .stale-data-banner[hidden] {{ display: none; }}
+    .v2-section, .exit-section {{ width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
+    .v2-heading {{ padding: 16px 20px 12px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }}
+    .v2-heading strong {{ font-size: 16px; line-height: 1.25; }}
+    .v2-heading span {{ color: #6e6e73; font-size: 12px; }}
+    .manual-boundary {{ padding: 10px 20px; color: #7a4b00; background: #fff8e6; border-top: 1px solid #f1e2bd; border-bottom: 1px solid #f1e2bd; font-size: 13px; font-weight: 600; }}
+    .decision-line {{ padding: 16px 20px 10px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }}
+    .decision-line > strong {{ font-size: 17px; }}
+    .decision-line > span:not(.decision-action) {{ color: #6e6e73; font-size: 13px; }}
+    .decision-action {{ padding: 5px 9px; border-radius: 5px; font-size: 13px; font-weight: 700; }}
+    .decision-action.buy {{ color: #9f1f1f; background: #fff2f2; }}
+    .decision-action.wait {{ color: #7a4b00; background: #fff8e6; }}
+    .decision-action.avoid {{ color: #0b6332; background: #edf8f1; }}
+    .decision-reason, .model-warning, .regime-reason {{ margin: 0; padding: 0 20px 12px; color: #424245; font-size: 13px; line-height: 1.55; }}
+    .model-warning {{ color: #8a4b08; }}
+    .regime-reason {{ color: #6e6e73; padding-bottom: 16px; }}
+    .forecast-grid {{ display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); border-top: 1px solid #e5e5ea; border-bottom: 1px solid #e5e5ea; }}
+    .forecast-metric {{ min-width: 0; padding: 13px 16px; }}
+    .forecast-metric + .forecast-metric {{ border-left: 1px solid #e5e5ea; }}
+    .forecast-metric span {{ display: block; color: #6e6e73; font-size: 11px; margin-bottom: 5px; }}
+    .forecast-metric strong {{ display: block; font-size: 14px; white-space: nowrap; }}
+    .probability-line {{ padding: 12px 20px; display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: #6e6e73; }}
+    .probability-line strong {{ color: #1d1d1f; }}
+    .exit-table {{ border-collapse: collapse; min-width: 1180px; width: 100%; font-size: 12px; }}
+    .exit-table th, .exit-table td {{ padding: 10px 12px; border-top: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }}
+    .exit-table th {{ color: #6e6e73; background: #fbfbfd; font-weight: 600; }}
     .backtest-section {{ width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }}
     .backtest-scroll {{ width: 100%; overflow-x: auto; border-top: 1px solid #e5e5ea; -webkit-overflow-scrolling: touch; }}
     .backtest-table {{ border-collapse: collapse; min-width: 1480px; width: 100%; font-size: 13px; }}
@@ -512,6 +639,10 @@ def render_html(
       .validation-kpis {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
       .validation-kpi {{ padding: 12px 14px; }}
       .validation-kpi > strong {{ font-size: 16px; }}
+      .forecast-grid {{ grid-template-columns: repeat(2, minmax(0, 1fr)); }}
+      .forecast-metric:nth-child(3) {{ border-left: 0; border-top: 1px solid #e5e5ea; }}
+      .forecast-metric:nth-child(4) {{ border-top: 1px solid #e5e5ea; }}
+      .decision-line {{ align-items: flex-start; }}
     }}
   </style>
 </head>
@@ -544,6 +675,7 @@ def render_html(
         </div>
       </div>
     </details>
+    {decision_support_html}
     <section id="buy-plan-section">
       <div class="section-block">
         <strong>尾盘观察</strong>
@@ -556,6 +688,7 @@ def render_html(
         </table>
       </div>
     </section>
+    {exit_guidance_html}
     <section>
       <div class="table-wrap">
         <table class="rank-table">

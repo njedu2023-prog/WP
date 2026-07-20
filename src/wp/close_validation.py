@@ -59,6 +59,11 @@ def run_close_validation(
     if not tail_observation_path.exists():
         tail_observation = buy_plan.copy()
     backtests = load_backtest_summaries(output_root)
+    decision_payload = _read_json(output_root / "json" / "wp_decision_support.json")
+    market_regime = decision_payload.get("market_regime") or health.get("market_regime") or {}
+    decision_support = decision_payload.get("summary") or {}
+    decision_table = _read_csv(output_root / "csv" / "wp_decision_support.csv")
+    exit_guidance = _read_csv(output_root / "csv" / "wp_t1_exit_guidance.csv")
 
     latest_path = output_root / "json" / "latest.json"
     latest_payload = _read_json(latest_path)
@@ -114,6 +119,10 @@ def run_close_validation(
         validation=validation_result.table,
         validation_summary=validation_result.summary,
         backtests=backtests,
+        decision_support=decision_support,
+        market_regime=market_regime,
+        t1_forecasts=decision_table,
+        exit_guidance=exit_guidance,
     )
     render_html(
         top50,
@@ -125,6 +134,10 @@ def run_close_validation(
         validation=validation_result.table,
         validation_summary=validation_result.summary,
         backtests=backtests,
+        decision_support=decision_support,
+        market_regime=market_regime,
+        t1_forecasts=decision_table,
+        exit_guidance=exit_guidance,
     )
     return validation_result.summary
 

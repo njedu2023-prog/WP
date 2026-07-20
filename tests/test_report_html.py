@@ -237,3 +237,43 @@ def test_backtest_summary_list_hides_contained_windows(tmp_path):
     summaries = load_backtest_summaries(root)
 
     assert [(item["start_date"], item["end_date"]) for item in summaries] == [("20260313", "20260709")]
+
+
+def test_report_html_renders_v2_manual_boundary_and_ohlc_intervals(tmp_path):
+    path = tmp_path / "latest.html"
+    render_html(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {"status": "ok", "data_time": "2026-07-20 14:35:00"},
+        path,
+        decision_support={
+            "action": "建议关注买入",
+            "candidate_name": "甲",
+            "candidate_code": "600001.SH",
+            "forecast_mode": "混合先验",
+            "forecast_confidence": 60,
+            "forecast_open_q10_pct": -2,
+            "forecast_open_q50_pct": 0,
+            "forecast_open_q90_pct": 2,
+            "forecast_high_q10_pct": 1,
+            "forecast_high_q50_pct": 4,
+            "forecast_high_q90_pct": 9,
+            "forecast_low_q10_pct": -5,
+            "forecast_low_q50_pct": -2,
+            "forecast_low_q90_pct": 0,
+            "forecast_close_q10_pct": -3,
+            "forecast_close_q50_pct": 1,
+            "forecast_close_q90_pct": 5,
+            "forecast_profit_probability": 55,
+            "forecast_touch_plus3_probability": 65,
+            "forecast_touch_minus3_probability": 30,
+            "reason": "检查通过",
+        },
+        market_regime={"state": "允许寻找机会", "score": 62, "reason": "市场较强"},
+    )
+    page = path.read_text(encoding="utf-8")
+    assert "WP V2 人工决策辅助" in page
+    assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" in page
+    assert "次日开盘 Q10 / Q50 / Q90" in page
+    assert "-2.00% / +0.00% / +2.00%" in page
+    assert "T+1 人工卖出建议" in page

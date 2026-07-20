@@ -5,6 +5,7 @@ from dataclasses import dataclass
 import pandas as pd
 
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
+from .t1_forecast import FORECAST_COLUMNS
 
 
 DEFAULT_BUY_CONFIG = {
@@ -38,6 +39,7 @@ BUY_COLUMNS = [
     "confirm_before_buy",
     "reject_if",
     "buy_reason",
+    *FORECAST_COLUMNS,
 ]
 
 

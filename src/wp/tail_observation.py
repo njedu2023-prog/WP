@@ -6,6 +6,8 @@ from pathlib import Path
 
 import pandas as pd
 
+from .t1_forecast import FORECAST_COLUMNS
+
 
 TAIL_OBSERVATION_START = time(14, 20)
 INVALID_GRACE_RUNS = 2
@@ -19,6 +21,8 @@ OBSERVATION_COLUMNS = [
     "qualification_status",
     "qualification_reason",
     "invalid_count",
+    "qualified_runs",
+    "leader_runs",
     "entry_order",
     "first_seen",
     "last_seen",
@@ -38,6 +42,7 @@ OBSERVATION_COLUMNS = [
     "confirm_before_buy",
     "reject_if",
     "buy_reason",
+    *FORECAST_COLUMNS,
 ]
 
 LIVE_VALUE_COLUMNS = [
@@ -52,6 +57,7 @@ LIVE_VALUE_COLUMNS = [
     "p_limitup_t1",
     "wp_score",
     "model_confidence",
+    *FORECAST_COLUMNS,
 ]
 
 
@@ -293,6 +299,7 @@ def update_tail_observation(
             _copy_live_values(stored, universe_row)
             stored["last_seen"] = market_time_text
             stored["invalid_count"] = 0
+            stored["leader_runs"] = 0
             stored["qualification_status"] = "已封板"
             stored["qualification_reason"] = "已涨停，停止新买入"
             next_rows.append(stored)
@@ -301,6 +308,12 @@ def update_tail_observation(
             _copy_live_values(stored, current_row)
             stored["last_seen"] = market_time_text
             stored["invalid_count"] = 0
+            stored["qualified_runs"] = int(_number(stored.get("qualified_runs"))) + 1
+            stored["leader_runs"] = (
+                int(_number(stored.get("leader_runs"))) + 1
+                if code in primary_codes
+                else 0
+            )
             stored["qualification_status"] = "合格"
             stored["qualification_reason"] = ""
             stored["peak_tail_profit_score"] = max(
@@ -316,6 +329,7 @@ def update_tail_observation(
                 _copy_live_values(stored, universe_row)
             stored["last_seen"] = market_time_text
             stored["invalid_count"] = invalid_count
+            stored["leader_runs"] = 0
             stored["qualification_status"] = "资格复核"
             reason = "不再满足当前内在资格"
             if code in current_codes:
@@ -358,6 +372,8 @@ def update_tail_observation(
                 "qualification_status": "已封板" if sealed else "合格",
                 "qualification_reason": "已涨停，停止新买入" if sealed else "",
                 "invalid_count": 0,
+                "qualified_runs": 1,
+                "leader_runs": 1 if code in primary_codes else 0,
                 "entry_order": max_entry_order,
                 "first_seen": history_first_seen.get(code, market_time_text),
                 "last_seen": market_time_text,
