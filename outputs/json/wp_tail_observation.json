@@ -1,0 +1,43 @@
+{
+  "generated_at": "2026-07-20 21:30:01",
+  "market_data_time": "2026-07-20 15:00:00",
+  "source_data_hash": "b744dda736d8db314afa37160ac6c3006b7d5c55366668f150d218b9d99ad6df",
+  "summary": {
+    "count": 1,
+    "active_count": 1,
+    "sealed_count": 0,
+    "review_count": 0,
+    "status": "updated"
+  },
+  "records": [
+    {
+      "observation_trade_date": "20260720",
+      "quality_rank": 1,
+      "previous_quality_rank": "",
+      "rank_change": "新",
+      "observation_status": "当前主票",
+      "qualification_status": "合格",
+      "qualification_reason": "",
+      "invalid_count": 0,
+      "entry_order": 1,
+      "first_seen": "2026-07-20 15:00:00",
+      "last_seen": "2026-07-20 15:00:00",
+      "ts_code": "000968.SZ",
+      "name": "蓝焰控股",
+      "price": 7.13,
+      "pct_chg": 8.030303030303031,
+      "sector_name": "石油开采",
+      "limit_rule_pct": 10.0,
+      "tail_profit_score": 80.657895,
+      "peak_tail_profit_score": 80.657895,
+      "risk_penalty_score": 0.0,
+      "amount_ratio_5d": 1.6050876005051522,
+      "p_limitup_t1": 1.876878018561818,
+      "wp_score": 56.24366086176527,
+      "model_confidence": 82.89473684210526,
+      "confirm_before_buy": "守8%、承接稳",
+      "reject_if": "破8%/急回落/板块转弱",
+      "buy_reason": "涨幅不过热、风险低"
+    }
+  ]
+}
