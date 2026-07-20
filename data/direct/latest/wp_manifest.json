@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-20 21:40:02",
+  "generated_at": "2026-07-20 23:30:24",
   "scheduled_slot": "",
   "trigger_event": "push",
   "status": "ok",
@@ -105,5 +105,11 @@
     "pct_chg_max": 24.0844753987868,
     "history_feature_coverage_pct": 100.0
   },
-  "archive_mode": "wp_transaction_snapshot"
+  "archive_mode": "wp_transaction_snapshot",
+  "market_context": {
+    "ok": true,
+    "rows": 6000,
+    "source": "realtime_quote.csv",
+    "path": "/home/runner/work/WP/WP/data/direct/latest/wp_market_regime_input.csv"
+  }
 }
