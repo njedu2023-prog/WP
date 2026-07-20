@@ -235,12 +235,22 @@ def run() -> dict:
     ensure_dir(output_root / "csv")
     ensure_dir(output_root / "json")
     market_universe = flag_limitup(enrich_basic_fields(raw))
+    validation_history_path = output_root / "csv" / "wp_buy_plan_validation.csv"
+    try:
+        historical_primaries = pd.read_csv(
+            validation_history_path,
+            keep_default_na=False,
+            dtype={"plan_trade_date": str, "target_trade_date": str, "ts_code": str},
+        )
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        historical_primaries = pd.DataFrame()
     tail_observation_result = update_tail_observation(
         ranked_input,
         buy_plan,
         market_universe,
         health,
         output_root / "csv" / "wp_tail_observation.csv",
+        historical_primaries=historical_primaries,
         max_limit_up_pct=float(config.get("max_limit_up_pct", 10.0)),
     )
     tail_observation = tail_observation_result.table

@@ -177,3 +177,45 @@ def test_tail_observation_never_adds_above_ten_percent_rule(tmp_path):
     )
 
     assert result.table.empty
+
+
+def test_tail_observation_recovers_today_primaries_from_validation_history(tmp_path):
+    state_path = tmp_path / "wp_tail_observation.csv"
+    current = pd.DataFrame(
+        [
+            _candidate("000001.SZ", 86.0),
+            _candidate("000002.SZ", 92.0),
+        ]
+    )
+    history = pd.DataFrame(
+        [
+            {
+                "plan_trade_date": "20260717",
+                "plan_time": "2026-07-17 14:25:00",
+                "ts_code": "000001.SZ",
+                "name": "历史主票",
+                "tail_profit_score": 82.0,
+            },
+            {
+                "plan_trade_date": "20260716",
+                "plan_time": "2026-07-16 14:25:00",
+                "ts_code": "000003.SZ",
+                "name": "昨日主票",
+                "tail_profit_score": 99.0,
+            },
+        ]
+    )
+
+    result = update_tail_observation(
+        current,
+        _plan("000002.SZ"),
+        current,
+        _health("2026-07-17 14:35:00"),
+        state_path,
+        historical_primaries=history,
+    )
+
+    assert result.table["ts_code"].tolist() == ["000002.SZ", "000001.SZ"]
+    recovered = result.table.set_index("ts_code").loc["000001.SZ"]
+    assert recovered["first_seen"] == "2026-07-17 14:25:00"
+    assert recovered["observation_status"] == "观察票"

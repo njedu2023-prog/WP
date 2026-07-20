@@ -212,6 +212,7 @@ def update_tail_observation(
     health: dict,
     state_path: str | Path,
     *,
+    historical_primaries: pd.DataFrame | None = None,
     max_limit_up_pct: float = 10.0,
     invalid_grace_runs: int = INVALID_GRACE_RUNS,
 ) -> TailObservationResult:
@@ -256,6 +257,29 @@ def update_tail_observation(
         for code in buy_plan.get("ts_code", pd.Series(dtype="object")).tolist()
         if str(code).strip()
     }
+    history = (historical_primaries if historical_primaries is not None else pd.DataFrame()).copy()
+    history_first_seen: dict[str, str] = {}
+    history_by_code: dict[str, pd.Series] = {}
+    history_codes: list[str] = []
+    if not history.empty and "ts_code" in history.columns:
+        history["ts_code"] = history["ts_code"].fillna("").astype(str).str.strip()
+        plan_dates = history.get("plan_trade_date", pd.Series("", index=history.index))
+        plan_dates = plan_dates.fillna("").astype(str).str.replace("-", "", regex=False).str.replace(r"\.0$", "", regex=True)
+        history = history[plan_dates.eq(trade_date) & history["ts_code"].ne("")].copy()
+        history["_plan_datetime"] = pd.to_datetime(
+            history.get("plan_time", pd.Series("", index=history.index)),
+            errors="coerce",
+        )
+        history = history[
+            history["_plan_datetime"].notna()
+            & history["_plan_datetime"].dt.time.ge(TAIL_OBSERVATION_START)
+            & history["_plan_datetime"].le(pd.Timestamp(market_time))
+        ].sort_values("_plan_datetime", kind="mergesort")
+        for code, group in history.groupby("ts_code", sort=False):
+            history_codes.append(str(code))
+            history_first_seen[str(code)] = str(group.iloc[0].get("plan_time") or market_time_text)
+            history_by_code[str(code)] = group.iloc[-1]
+    entry_codes = [*history_codes, *sorted(primary_codes.difference(history_codes))]
     existing_by_code = {str(row["ts_code"]): row.to_dict() for _, row in existing.iterrows()}
     next_rows: list[dict] = []
 
@@ -303,19 +327,26 @@ def update_tail_observation(
     max_entry_order = max(
         [int(_number(row.get("entry_order"))) for row in existing_by_code.values()] or [0]
     )
-    plan_by_code = {
-        str(row["ts_code"]): row
-        for _, row in _dedupe(buy_plan).iterrows()
-    }
-    for code in sorted(primary_codes):
-        if code in existing_by_code or code not in eligible_by_code:
+    plan_by_code = dict(history_by_code)
+    plan_by_code.update(
+        {
+            str(row["ts_code"]): row
+            for _, row in _dedupe(buy_plan).iterrows()
+        }
+    )
+    for code in entry_codes:
+        if code in existing_by_code:
             continue
         universe_row = universe_by_code.get(code)
         if _critical_disqualification(universe_row, max_limit_up_pct):
             continue
-        if universe_row is not None and int(_number(universe_row.get("today_limitup"))) == 1:
+        sealed = universe_row is not None and int(_number(universe_row.get("today_limitup"))) == 1
+        source = eligible_by_code.get(code)
+        if source is None and not sealed:
             continue
-        source = eligible_by_code[code]
+        source = universe_row if sealed else source
+        if source is None:
+            continue
         plan_row = plan_by_code.get(code)
         max_entry_order += 1
         row = {column: "" for column in OBSERVATION_COLUMNS}
@@ -323,20 +354,25 @@ def update_tail_observation(
             {
                 "observation_trade_date": trade_date,
                 "quality_rank": "",
-                "observation_status": "当前主票",
-                "qualification_status": "合格",
-                "qualification_reason": "",
+                "observation_status": "已封板" if sealed else "当前主票",
+                "qualification_status": "已封板" if sealed else "合格",
+                "qualification_reason": "已涨停，停止新买入" if sealed else "",
                 "invalid_count": 0,
                 "entry_order": max_entry_order,
-                "first_seen": market_time_text,
+                "first_seen": history_first_seen.get(code, market_time_text),
                 "last_seen": market_time_text,
                 "ts_code": code,
-                "peak_tail_profit_score": _number(source.get("tail_profit_score")),
+                "peak_tail_profit_score": max(
+                    _number(source.get("tail_profit_score")),
+                    _number(plan_row.get("tail_profit_score")) if plan_row is not None else 0.0,
+                ),
                 "confirm_before_buy": "守8%、承接稳",
                 "reject_if": "破8%/急回落/板块转弱",
                 "buy_reason": "",
             }
         )
+        if plan_row is not None:
+            _copy_live_values(row, plan_row)
         _copy_live_values(row, source)
         if plan_row is not None:
             row["confirm_before_buy"] = _text(plan_row.get("confirm_before_buy")) or row["confirm_before_buy"]
