@@ -1,0 +1,2 @@
+2026-07-20 06:44:15,902 INFO WP run started, source=/home/runner/work/WP/WP/data/direct/latest/wp_latest_rank_input.csv
+2026-07-20 06:44:16,238 INFO WP run completed: raw=38 candidates=38 top50=38 buy_plan=1 missing_fields=none fallback=False outputs=/home/runner/work/WP/WP/outputs log=/home/runner/work/WP/WP/logs/wp_20260720_1444.log
