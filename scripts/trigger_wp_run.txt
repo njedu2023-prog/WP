@@ -1,1 +1,1 @@
-2026-07-21 14:55:19 +08:00 target_slot=2026-07-21 14:50:00 reason=self_heal_current_market_slot
+2026-07-21 15:10:49 +08:00 target_slot=2026-07-21 15:05:00 reason=self_heal_current_market_slot
