@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-21 09:44:18",
-  "market_data_time": "2026-07-21 09:43:49",
-  "source_data_hash": "1f0c7d2f98a4f001094739ae8c8905e53f65804a3c42c3e9c108c564a8871bb8",
-  "wp_run_time": "2026-07-21 09:44:18",
+  "generated_at": "2026-07-21 09:55:39",
+  "market_data_time": "2026-07-21 09:55:13",
+  "source_data_hash": "d3c33ce7eaaf9c06f40fb8279cb464f474f12b689f32170f4f011b4e7c8ba842",
+  "wp_run_time": "2026-07-21 09:55:39",
   "summary": {
     "buy_model_version": "tail_profit_v1",
     "total_plan_days": 4,
