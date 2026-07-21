@@ -1,0 +1,2 @@
+2026-07-21 03:12:53,539 INFO WP run started, source=https://raw.githubusercontent.com/njedu2023-prog/a-share-top3-data/main/data/wp/latest/wp_latest_rank_input.csv
+2026-07-21 03:12:54,743 INFO WP run completed: raw=84 candidates=10 top50=10 buy_plan=1 tail_observation=0 missing_fields=none fallback=False outputs=/home/runner/work/WP/WP/outputs log=/home/runner/work/WP/WP/logs/wp_20260721_1112.log
