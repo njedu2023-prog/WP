@@ -1,0 +1,20 @@
+{
+  "market_data_time": "2026-07-21 14:30:05",
+  "trade_date": "20260721",
+  "decision": {
+    "version": "human_tail_decision_v2",
+    "action": "建议空仓",
+    "candidate_code": "",
+    "candidate_name": "",
+    "market_state": "回避",
+    "market_score": 36.21,
+    "reason": "主板上涨40.7%；强势15.1%；涨停73只/跌停32只；尾盘候选22只",
+    "next_checkpoint": "下一次数据刷新后复核",
+    "manual_execution_only": true,
+    "order_routing_enabled": false,
+    "broker_connection": "disabled"
+  },
+  "records": [],
+  "manual_execution_only": true,
+  "order_routing_enabled": false
+}
