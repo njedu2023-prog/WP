@@ -1,5 +1,5 @@
 {
-  "latest_update": "2026-07-21 11:12:53",
+  "latest_update": "2026-07-21 11:24:06",
   "market_data_time": "2026-07-21 11:04:51",
   "data_revision": "2026-07-21 11:04:51",
   "source_trade_date": "20260721",
@@ -12,8 +12,8 @@
   "direct_fallback_used": true,
   "direct_error": "direct rank input contains blank name",
   "source_data_hash": "584f1b4afd9c485654801cdf2925d17d515a52251bad64b791eb4b95b71f166f",
-  "wp_run_time": "2026-07-21 11:12:53",
-  "report_revision": "2026-07-21 11:12:53",
+  "wp_run_time": "2026-07-21 11:24:06",
+  "report_revision": "2026-07-21 11:24:06",
   "top50_count": 10,
   "buy_plan_count": 1,
   "tail_observation_count": 0,
