@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-21 09:37:41",
-  "scheduled_slot": "2026-07-21 09:25:00",
+  "generated_at": "2026-07-21 09:44:18",
+  "scheduled_slot": "2026-07-21 09:35:00",
   "trigger_event": "push",
   "status": "ok",
   "source_trade_date": "20260721",
@@ -91,7 +91,7 @@
   ],
   "source_mode": "direct_tushare",
   "source_repository": "njedu2023-prog/a-share-top3-data",
-  "processor_revision": "d17cb99f835cfd2f3bf017a056d431f0f2941ee2",
+  "processor_revision": "9c4444f07c8bce0c9c65e62bfe73562f5d38677b",
   "direct_row_count": 14,
   "direct_quality": {
     "rows": 14,
@@ -99,10 +99,10 @@
     "required_columns": 21,
     "required_columns_complete": true,
     "unique_codes": 14,
-    "market_data_time_min": "20260721 09:36:51",
-    "market_data_time_max": "20260721 09:37:07",
-    "pct_chg_min": 8.068965517241367,
-    "pct_chg_max": 197.9944674965422,
+    "market_data_time_min": "20260721 09:43:30",
+    "market_data_time_max": "20260721 09:43:49",
+    "pct_chg_min": 8.03036356372353,
+    "pct_chg_max": 177.38589211618256,
     "history_feature_coverage_pct": 92.86
   },
   "archive_mode": "wp_transaction_snapshot",
