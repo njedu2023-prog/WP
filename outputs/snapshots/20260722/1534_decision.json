@@ -1,23 +1,7 @@
 {
-  "generated_at": "2026-07-22 15:35:26",
   "market_data_time": "2026-07-22 15:34:27",
-  "market_regime": {
-    "model_version": "market_regime_v1",
-    "state": "谨慎",
-    "score": 46.87,
-    "manual_action": "只接受高置信度主票",
-    "reason": "主板上涨32.7%；强势7.9%；涨停44只/跌停11只；尾盘候选6只",
-    "universe_count": 3190,
-    "breadth_up_rate": 32.7,
-    "breadth_strong_rate": 7.93,
-    "breadth_weak_rate": 11.69,
-    "limit_up_count": 44,
-    "limit_down_count": 11,
-    "candidate_count": 6,
-    "candidate_sector_count": 6,
-    "manual_decision_support_only": true
-  },
-  "summary": {
+  "trade_date": "20260722",
+  "decision": {
     "version": "human_tail_decision_v2",
     "action": "建议空仓",
     "candidate_code": "000034.SZ",
