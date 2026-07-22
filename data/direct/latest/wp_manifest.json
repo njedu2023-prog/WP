@@ -1,7 +1,7 @@
 {
-  "generated_at": "2026-07-22 15:35:25",
+  "generated_at": "2026-07-22 17:20:34",
   "scheduled_slot": "",
-  "trigger_event": "workflow_dispatch",
+  "trigger_event": "push",
   "status": "ok",
   "source_trade_date": "20260722",
   "expected_trade_date": "20260722",
@@ -100,7 +100,7 @@
     "required_columns_complete": true,
     "unique_codes": 51,
     "market_data_time_min": "20260722 15:00:03",
-    "market_data_time_max": "20260722 15:34:27",
+    "market_data_time_max": "20260722 15:36:00",
     "pct_chg_min": 8.048289738430592,
     "pct_chg_max": 30.98885793871866,
     "history_feature_coverage_pct": 98.04
