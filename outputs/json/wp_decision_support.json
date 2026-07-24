@@ -1,6 +1,6 @@
 {
-  "generated_at": "2026-07-24 15:32:04",
-  "market_data_time": "2026-07-24 15:30:54",
+  "generated_at": "2026-07-24 22:12:19",
+  "market_data_time": "2026-07-24 15:00:00",
   "market_regime": {
     "model_version": "market_regime_v1",
     "state": "回避",
@@ -19,13 +19,13 @@
   },
   "summary": {
     "version": "human_tail_decision_v2",
-    "action": "建议空仓",
+    "action": "已收盘",
     "candidate_code": "",
     "candidate_name": "",
     "market_state": "回避",
     "market_score": 4.03,
-    "reason": "主板上涨8.6%；强势2.5%；涨停38只/跌停31只；尾盘候选3只",
-    "next_checkpoint": "下一次数据刷新后复核",
+    "reason": "15:00已收盘，停止生成尾盘名单和新开仓建议",
+    "next_checkpoint": "下一交易日14:20",
     "manual_execution_only": true,
     "order_routing_enabled": false,
     "broker_connection": "disabled"

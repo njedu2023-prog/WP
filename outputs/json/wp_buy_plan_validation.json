@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-24 18:25:13",
-  "market_data_time": "2026-07-24 15:30:54",
-  "source_data_hash": "a44d22e3754a4a7b3a1c8f8355dc56f3c4c4351c0b5c68cc495319f86ec6320a",
-  "wp_run_time": "2026-07-24 18:25:13",
+  "generated_at": "2026-07-24 22:12:19",
+  "market_data_time": "2026-07-24 15:00:00",
+  "source_data_hash": "a1f40ed1f8ab0dbd6cd71304e0d978745944615b3f515e1d7b873ccab6a300c2",
+  "wp_run_time": "2026-07-24 22:12:19",
   "summary": {
     "buy_model_version": "tail_profit_v1",
     "total_plan_days": 5,
@@ -25,7 +25,50 @@
     "plan_day_win_rate": 80.0,
     "cumulative_pct_chg": -2.86,
     "return_basis": "plan_price_to_next_trade_day",
-    "tracking_start_date": "20260715"
+    "tracking_start_date": "20260715",
+    "sampling_days": [
+      {
+        "plan_trade_date": "20260721",
+        "target_trade_date": "20260722",
+        "sample_status": "captured",
+        "record_count": 2,
+        "first_sample_time": "2026-07-21 14:30:05",
+        "last_sample_time": "2026-07-21 14:45:46",
+        "note": "已取得14:20-14:50合法窗口样本",
+        "updated_at": "2026-07-24 21:45:00"
+      },
+      {
+        "plan_trade_date": "20260722",
+        "target_trade_date": "20260723",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
+        "updated_at": "2026-07-24 21:45:00"
+      },
+      {
+        "plan_trade_date": "20260723",
+        "target_trade_date": "20260724",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
+        "updated_at": "2026-07-24 21:45:00"
+      },
+      {
+        "plan_trade_date": "20260724",
+        "target_trade_date": "20260727",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
+        "updated_at": "2026-07-24 15:00:00"
+      }
+    ],
+    "sampling_missing_days": 3
   },
   "records": [
     {
@@ -703,6 +746,5 @@
       "truth_error": "",
       "truth_updated_at": "2026-07-22 17:20:34"
     }
-  ],
-  "validation_updated_at": "2026-07-24 18:25:13"
+  ]
 }

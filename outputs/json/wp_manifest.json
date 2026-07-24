@@ -1,28 +1,28 @@
 {
-  "latest_update": "2026-07-24 18:25:13",
-  "market_data_time": "2026-07-24 15:30:54",
-  "data_revision": "2026-07-24 15:30:54",
+  "latest_update": "2026-07-24 22:12:19",
+  "market_data_time": "2026-07-24 15:00:00",
+  "data_revision": "2026-07-24 15:00:00",
   "source_trade_date": "20260724",
-  "source_generated_at": "2026-07-24 15:32:03",
+  "source_generated_at": "2026-07-24 22:12:18",
   "source_scheduled_slot": "",
   "source_mode": "direct_tushare",
   "source_repository": "njedu2023-prog/a-share-top3-data",
-  "source_processor_revision": "33951ec751946d3e72b90d5b335cd0f43fca0ec3",
+  "source_processor_revision": "3c181c88e356754cf608cb1ad630e45aec5fbb5b",
   "direct_attempted": true,
   "direct_fallback_used": false,
   "direct_error": "",
-  "source_data_hash": "a44d22e3754a4a7b3a1c8f8355dc56f3c4c4351c0b5c68cc495319f86ec6320a",
-  "wp_run_time": "2026-07-24 18:25:13",
-  "report_revision": "2026-07-24 18:25:13",
+  "source_data_hash": "a1f40ed1f8ab0dbd6cd71304e0d978745944615b3f515e1d7b873ccab6a300c2",
+  "wp_run_time": "2026-07-24 22:12:19",
+  "report_revision": "2026-07-24 22:12:19",
   "top50_count": 3,
-  "buy_plan_count": 1,
-  "tail_observation_count": 1,
+  "buy_plan_count": 0,
+  "tail_observation_count": 0,
   "tail_observation_summary": {
-    "count": 1,
-    "active_count": 1,
+    "count": 0,
+    "active_count": 0,
     "sealed_count": 0,
     "review_count": 0,
-    "status": "updated"
+    "status": "market_closed"
   },
   "validation_summary": {
     "buy_model_version": "tail_profit_v1",
@@ -46,7 +46,50 @@
     "plan_day_win_rate": 80.0,
     "cumulative_pct_chg": -2.86,
     "return_basis": "plan_price_to_next_trade_day",
-    "tracking_start_date": "20260715"
+    "tracking_start_date": "20260715",
+    "sampling_days": [
+      {
+        "plan_trade_date": "20260721",
+        "target_trade_date": "20260722",
+        "sample_status": "captured",
+        "record_count": 2,
+        "first_sample_time": "2026-07-21 14:30:05",
+        "last_sample_time": "2026-07-21 14:45:46",
+        "note": "已取得14:20-14:50合法窗口样本",
+        "updated_at": "2026-07-24 21:45:00"
+      },
+      {
+        "plan_trade_date": "20260722",
+        "target_trade_date": "20260723",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
+        "updated_at": "2026-07-24 21:45:00"
+      },
+      {
+        "plan_trade_date": "20260723",
+        "target_trade_date": "20260724",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
+        "updated_at": "2026-07-24 21:45:00"
+      },
+      {
+        "plan_trade_date": "20260724",
+        "target_trade_date": "20260727",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
+        "updated_at": "2026-07-24 15:00:00"
+      }
+    ],
+    "sampling_missing_days": 3
   },
   "forecast_summary": {
     "model_version": "t1_ohlc_quantile_v1",
@@ -75,13 +118,13 @@
   },
   "decision_support": {
     "version": "human_tail_decision_v2",
-    "action": "建议空仓",
+    "action": "已收盘",
     "candidate_code": "",
     "candidate_name": "",
     "market_state": "回避",
     "market_score": 4.03,
-    "reason": "主板上涨8.6%；强势2.5%；涨停38只/跌停31只；尾盘候选3只",
-    "next_checkpoint": "下一次数据刷新后复核",
+    "reason": "15:00已收盘，停止生成尾盘名单和新开仓建议",
+    "next_checkpoint": "下一交易日14:20",
     "manual_execution_only": true,
     "order_routing_enabled": false,
     "broker_connection": "disabled"
@@ -101,6 +144,5 @@
   "buy_model_version": "tail_profit_v1",
   "backtest_window_count": 1,
   "health_status": "ok",
-  "preserved_latest_html": false,
-  "validation_updated_at": "2026-07-24 18:25:13"
+  "preserved_latest_html": false
 }
