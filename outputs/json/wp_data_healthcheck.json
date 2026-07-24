@@ -4,7 +4,7 @@
   "is_trading_time": false,
   "data_time": "2026-07-24 15:30:54",
   "market_data_time": "2026-07-24 15:30:54",
-  "wp_run_time": "2026-07-24 17:35:00",
+  "wp_run_time": "2026-07-24 18:25:13",
   "data_trade_date": "20260724",
   "expected_trade_date": "20260724",
   "raw_count": 20,
@@ -59,7 +59,7 @@
   "market_context_count": 6000,
   "market_context_source": "/home/runner/work/WP/WP/data/direct/latest/wp_market_regime_input.csv",
   "source_data_hash": "a44d22e3754a4a7b3a1c8f8355dc56f3c4c4351c0b5c68cc495319f86ec6320a",
-  "report_revision": "2026-07-24 17:35:00",
+  "report_revision": "2026-07-24 18:25:13",
   "direct_attempted": true,
   "direct_error": "",
   "direct_fallback_used": false,
@@ -77,5 +77,5 @@
   ],
   "preserved_latest_html": false,
   "buy_plan_count": 1,
-  "validation_updated_at": "2026-07-24 17:35:00"
+  "validation_updated_at": "2026-07-24 18:25:13"
 }
