@@ -1,23 +1,7 @@
 {
-  "generated_at": "2026-07-24 15:32:04",
   "market_data_time": "2026-07-24 15:30:54",
-  "market_regime": {
-    "model_version": "market_regime_v1",
-    "state": "回避",
-    "score": 4.03,
-    "manual_action": "建议空仓",
-    "reason": "主板上涨8.6%；强势2.5%；涨停38只/跌停31只；尾盘候选3只",
-    "universe_count": 3190,
-    "breadth_up_rate": 8.62,
-    "breadth_strong_rate": 2.54,
-    "breadth_weak_rate": 43.48,
-    "limit_up_count": 38,
-    "limit_down_count": 31,
-    "candidate_count": 3,
-    "candidate_sector_count": 3,
-    "manual_decision_support_only": true
-  },
-  "summary": {
+  "trade_date": "20260724",
+  "decision": {
     "version": "human_tail_decision_v2",
     "action": "建议空仓",
     "candidate_code": "",
