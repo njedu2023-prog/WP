@@ -85,3 +85,5 @@ def test_close_validation_settles_pending_record_and_renders_report(tmp_path, mo
     assert "百利天恒" in page
     assert "+5.00%" in page
     assert "已验证" in page
+    assert "15:00已收盘，停止生成尾盘名单" in page
+    assert "15:00已收盘，停止生成尾盘名单和新开仓建议" in page

@@ -1,9 +1,16 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time
+from datetime import time
 
 import pandas as pd
+
+from .tail_window import (
+    TAIL_PHASE_CLOSED,
+    TAIL_PHASE_FROZEN,
+    TAIL_WINDOW_START,
+    tail_window_phase,
+)
 
 
 DECISION_SUPPORT_VERSION = "human_tail_decision_v2"
@@ -111,11 +118,28 @@ def build_decision_support(
     """Choose one human-review candidate, or explicitly recommend waiting/no trade."""
     cfg = _config(config)
     current_time = _parse_clock(market_data_time)
+    phase = tail_window_phase(market_data_time)
     wait_until = _parse_clock(cfg["guidance_wait_until"]) or time(14, 30)
     final_time = _parse_clock(cfg["guidance_final_time"]) or time(14, 50)
     state = str(market_regime.get("state") or "数据不足")
 
-    if current_time is None or current_time < time(14, 20):
+    if phase == TAIL_PHASE_CLOSED:
+        summary = _empty_summary(
+            market_regime,
+            "已收盘",
+            "15:00已收盘，停止生成尾盘名单和新开仓建议",
+        )
+        summary["next_checkpoint"] = "下一交易日14:20"
+        return DecisionSupportResult(pd.DataFrame(columns=DECISION_COLUMNS), summary)
+    if phase == TAIL_PHASE_FROZEN:
+        summary = _empty_summary(
+            market_regime,
+            "建议空仓",
+            "14:50候选生成窗口已结束，15:00前仅保留最后一次观察记录",
+        )
+        summary["next_checkpoint"] = "停止新开仓"
+        return DecisionSupportResult(pd.DataFrame(columns=DECISION_COLUMNS), summary)
+    if current_time is None or current_time < TAIL_WINDOW_START:
         summary = _empty_summary(market_regime, "非尾盘时段", "14:20后才启动尾盘人工决策辅助")
         return DecisionSupportResult(pd.DataFrame(columns=DECISION_COLUMNS), summary)
     if state in {"回避", "数据不足"}:

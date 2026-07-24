@@ -219,3 +219,52 @@ def test_tail_observation_recovers_today_primaries_from_validation_history(tmp_p
     recovered = result.table.set_index("ts_code").loc["000001.SZ"]
     assert recovered["first_seen"] == "2026-07-17 14:25:00"
     assert recovered["observation_status"] == "观察票"
+
+
+def test_tail_observation_freezes_after_1450_without_adding_a_new_primary(tmp_path):
+    state_path = tmp_path / "wp_tail_observation.csv"
+    first = pd.DataFrame([_candidate("000001.SZ", 82.0)])
+    initial = update_tail_observation(
+        first,
+        _plan("000001.SZ"),
+        first,
+        _health("2026-07-17 14:45:00"),
+        state_path,
+    )
+    later = pd.DataFrame([_candidate("000002.SZ", 99.0)])
+
+    result = update_tail_observation(
+        later,
+        _plan("000002.SZ"),
+        later,
+        _health("2026-07-17 14:55:00"),
+        state_path,
+    )
+
+    assert result.summary["status"] == "frozen_after_tail_window"
+    assert result.table.to_dict(orient="records") == initial.table.to_dict(orient="records")
+
+
+def test_tail_observation_hides_live_pool_at_market_close_without_losing_audit(tmp_path):
+    state_path = tmp_path / "wp_tail_observation.csv"
+    first = pd.DataFrame([_candidate("000001.SZ", 82.0)])
+    update_tail_observation(
+        first,
+        _plan("000001.SZ"),
+        first,
+        _health("2026-07-17 14:45:00"),
+        state_path,
+    )
+
+    result = update_tail_observation(
+        first,
+        _plan("000001.SZ"),
+        first,
+        _health("2026-07-17 15:00:00"),
+        state_path,
+    )
+
+    assert result.summary["status"] == "market_closed"
+    assert result.table.empty
+    persisted = pd.read_csv(state_path, dtype={"ts_code": str})
+    assert persisted["ts_code"].tolist() == ["000001.SZ"]

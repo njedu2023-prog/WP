@@ -92,13 +92,18 @@ def _validation_overview(summary: dict) -> str:
     limit_up_records = _summary_int(summary, "limit_up_records")
     positive_rate = float(summary.get("positive_rate", 0.0) or 0.0)
     limit_up_rate = float(summary.get("limit_up_rate", 0.0) or 0.0)
+    missing_days = sum(
+        1
+        for item in summary.get("sampling_days", [])
+        if str(item.get("sample_status") or "") == "missing"
+    )
     has_verified_days = verified_days > 0
     average_open = _pct_cell(summary.get("average_open_return_pct")) if verified_records else "<span class=\"pct-pending\">待验证</span>"
     average_high = _pct_cell(summary.get("average_high_return_pct")) if verified_records else "<span class=\"pct-pending\">待验证</span>"
     daily_average = _pct_cell(summary.get("daily_average_pct_chg")) if has_verified_days else "<span class=\"pct-pending\">待验证</span>"
     cumulative = _pct_cell(summary.get("cumulative_pct_chg")) if has_verified_days else "<span class=\"pct-pending\">待验证</span>"
     metrics = [
-        ("已验证日", f"{verified_days} / {total_days}"),
+        ("已验证日", f"{verified_days} / {total_days}<small>采样缺失{missing_days}日</small>"),
         ("已验证票", f"{verified_records} / {total_records}"),
         ("上涨", f"{positive_records} / {verified_records}<small>{positive_rate:.2f}%</small>"),
         ("触及涨停", f"{limit_up_records} / {verified_records}<small>{limit_up_rate:.2f}%</small>"),
@@ -112,90 +117,123 @@ def _validation_overview(summary: dict) -> str:
     )
 
 
-def _validation_days(validation: pd.DataFrame) -> str:
-    if validation.empty:
+def _validation_days(
+    validation: pd.DataFrame,
+    sampling_days: list[dict] | None = None,
+) -> str:
+    sampling_days = sampling_days or []
+    if validation.empty and not sampling_days:
         return "<div class=\"empty\">暂无主票验证记录</div>"
 
-    view = validation.copy()
-    view["plan_trade_date"] = view.get("plan_trade_date", "").fillna("").astype(str)
-    view["_rank_sort"] = pd.to_numeric(view.get("buy_rank"), errors="coerce").fillna(999)
-    numeric_column = lambda name: pd.to_numeric(view[name], errors="coerce") if name in view.columns else pd.Series(float("nan"), index=view.index, dtype="float64")
-    legacy_return = numeric_column("actual_pct_chg")
-    close_return = numeric_column("return_close_pct")
-    view["_close_return"] = close_return.where(close_return.notna(), legacy_return)
-    view["_open_return"] = numeric_column("return_open_pct")
-    view["_high_return"] = numeric_column("return_high_pct")
-    view = view.sort_values(["plan_trade_date", "plan_time", "_rank_sort"], ascending=[False, False, True])
-    groups = []
-    for plan_date, day in view.groupby("plan_trade_date", sort=False):
-        day = day.sort_values(["plan_time", "_rank_sort"], ascending=[False, True])
-        verified_mask = day.get("truth_status", "").fillna("").astype(str).eq("verified")
-        verified_count = int(verified_mask.sum())
-        total_count = int(len(day))
-        close_pct = day.loc[verified_mask, "_close_return"].dropna()
-        open_pct = day.loc[verified_mask, "_open_return"].dropna()
-        high_pct = day.loc[verified_mask, "_high_return"].dropna()
-        returns_cell = (
-            f"<span class=\"validation-return\">开 {_pct_cell(open_pct.mean())} · 高 {_pct_cell(high_pct.mean())} · 收 {_pct_cell(close_pct.mean())}</span>"
-            if len(close_pct)
-            else "<span class=\"pct-pending\">待验证</span>"
-        )
-        positive_count = int(close_pct.gt(0).sum())
-        limit_up_count = int(
-            day.loc[verified_mask, "is_limit_up_t1"].astype(str).str.lower().isin({"true", "1", "yes"}).sum()
-        )
-        if verified_count == total_count and total_count:
-            status_label = "已验证"
-            status_class = "verified"
-        elif verified_count:
-            status_label = "部分验证"
-            status_class = "partial"
-        else:
-            status_label = "待验证"
-            status_class = "pending"
-        target_dates = [str(value) for value in day.get("target_trade_date", pd.Series(dtype=str)).tolist() if str(value)]
-        target_date = target_dates[0] if target_dates else ""
-        positive_text = f"{positive_count} / {verified_count}" if verified_count else "-"
-        limit_up_text = f"{limit_up_count} / {verified_count}" if verified_count else "-"
-        detail_rows = []
-        for _, row in day.iterrows():
-            truth_status = str(row.get("truth_status", ""))
-            is_limit_up = str(row.get("is_limit_up_t1", "")).lower() in {"true", "1", "yes"}
-            close_value = row.get("return_close_pct", "")
-            if _fmt(close_value) in {"", "nan", "None"}:
-                close_value = row.get("actual_pct_chg", "")
-            detail_rows.append(
-                "<tr>"
-                + f"<td>{html.escape(str(row.get('plan_time', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
-                + f"<td>{html.escape(str(row.get('name', '')))}</td>"
-                + f"<td>{_fmt(row.get('plan_price', ''))}</td>"
-                + f"<td>{_fmt(row.get('pct_chg_plan', 0))}%</td>"
-                + f"<td>{_pct_cell(row.get('return_open_pct', ''))}</td>"
-                + f"<td>{_pct_cell(row.get('return_high_pct', ''))}</td>"
-                + f"<td>{_pct_cell(row.get('return_low_pct', ''))}</td>"
-                + f"<td>{_pct_cell(close_value)}</td>"
-                + f"<td>{'是' if is_limit_up else '否' if truth_status == 'verified' else '待验证'}</td>"
-                + "</tr>"
+    groups: list[tuple[str, str]] = []
+    represented_dates: set[str] = set()
+    if not validation.empty:
+        view = validation.copy()
+        view["plan_trade_date"] = view.get("plan_trade_date", "").fillna("").astype(str)
+        view["_rank_sort"] = pd.to_numeric(view.get("buy_rank"), errors="coerce").fillna(999)
+        numeric_column = lambda name: pd.to_numeric(view[name], errors="coerce") if name in view.columns else pd.Series(float("nan"), index=view.index, dtype="float64")
+        legacy_return = numeric_column("actual_pct_chg")
+        close_return = numeric_column("return_close_pct")
+        view["_close_return"] = close_return.where(close_return.notna(), legacy_return)
+        view["_open_return"] = numeric_column("return_open_pct")
+        view["_high_return"] = numeric_column("return_high_pct")
+        view = view.sort_values(["plan_trade_date", "plan_time", "_rank_sort"], ascending=[False, False, True])
+        for plan_date, day in view.groupby("plan_trade_date", sort=False):
+            plan_date = str(plan_date)
+            represented_dates.add(plan_date.replace("-", ""))
+            day = day.sort_values(["plan_time", "_rank_sort"], ascending=[False, True])
+            verified_mask = day.get("truth_status", "").fillna("").astype(str).eq("verified")
+            verified_count = int(verified_mask.sum())
+            total_count = int(len(day))
+            close_pct = day.loc[verified_mask, "_close_return"].dropna()
+            open_pct = day.loc[verified_mask, "_open_return"].dropna()
+            high_pct = day.loc[verified_mask, "_high_return"].dropna()
+            returns_cell = (
+                f"<span class=\"validation-return\">开 {_pct_cell(open_pct.mean())} · 高 {_pct_cell(high_pct.mean())} · 收 {_pct_cell(close_pct.mean())}</span>"
+                if len(close_pct)
+                else "<span class=\"pct-pending\">待验证</span>"
             )
-        groups.append(
-            "<details class=\"validation-day-details\">"
-            + "<summary class=\"validation-day-summary validation-grid\">"
+            positive_count = int(close_pct.gt(0).sum())
+            limit_up_count = int(
+                day.loc[verified_mask, "is_limit_up_t1"].astype(str).str.lower().isin({"true", "1", "yes"}).sum()
+            )
+            if verified_count == total_count and total_count:
+                status_label = "已验证"
+                status_class = "verified"
+            elif verified_count:
+                status_label = "部分验证"
+                status_class = "partial"
+            else:
+                status_label = "待验证"
+                status_class = "pending"
+            target_dates = [str(value) for value in day.get("target_trade_date", pd.Series(dtype=str)).tolist() if str(value)]
+            target_date = target_dates[0] if target_dates else ""
+            positive_text = f"{positive_count} / {verified_count}" if verified_count else "-"
+            limit_up_text = f"{limit_up_count} / {verified_count}" if verified_count else "-"
+            detail_rows = []
+            for _, row in day.iterrows():
+                truth_status = str(row.get("truth_status", ""))
+                is_limit_up = str(row.get("is_limit_up_t1", "")).lower() in {"true", "1", "yes"}
+                close_value = row.get("return_close_pct", "")
+                if _fmt(close_value) in {"", "nan", "None"}:
+                    close_value = row.get("actual_pct_chg", "")
+                detail_rows.append(
+                    "<tr>"
+                    + f"<td>{html.escape(str(row.get('plan_time', '')))}</td>"
+                    + f"<td>{html.escape(str(row.get('buy_rank', '')))}</td>"
+                    + f"<td>{html.escape(str(row.get('ts_code', '')))}</td>"
+                    + f"<td>{html.escape(str(row.get('name', '')))}</td>"
+                    + f"<td>{_fmt(row.get('plan_price', ''))}</td>"
+                    + f"<td>{_fmt(row.get('pct_chg_plan', 0))}%</td>"
+                    + f"<td>{_pct_cell(row.get('return_open_pct', ''))}</td>"
+                    + f"<td>{_pct_cell(row.get('return_high_pct', ''))}</td>"
+                    + f"<td>{_pct_cell(row.get('return_low_pct', ''))}</td>"
+                    + f"<td>{_pct_cell(close_value)}</td>"
+                    + f"<td>{'是' if is_limit_up else '否' if truth_status == 'verified' else '待验证'}</td>"
+                    + "</tr>"
+                )
+            content = (
+                "<details class=\"validation-day-details\">"
+                + "<summary class=\"validation-day-summary validation-grid\">"
+                + f"<span>{_date_text(plan_date)}</span>"
+                + f"<span>{_date_text(target_date)}</span>"
+                + f"<span>{total_count}</span>"
+                + f"<span>{returns_cell}</span>"
+                + f"<span>{positive_text}</span>"
+                + f"<span>{limit_up_text}</span>"
+                + f"<span class=\"validation-status {status_class}\">{status_label}</span>"
+                + "<span class=\"validation-day-action\" aria-hidden=\"true\"></span>"
+                + "</summary>"
+                + "<div class=\"validation-detail-wrap\"><table class=\"validation-detail-table\">"
+                + "<thead><tr><th>计划时间</th><th>买入序</th><th>代码</th><th>名称</th><th>计划价</th><th>计划涨幅</th><th>次日开盘</th><th>次日最高</th><th>次日最低</th><th>次日收盘</th><th>触及涨停</th></tr></thead>"
+                + f"<tbody>{''.join(detail_rows)}</tbody></table></div></details>"
+            )
+            groups.append((plan_date.replace("-", ""), content))
+
+    for sample in sampling_days:
+        plan_date = str(sample.get("plan_trade_date") or "").replace("-", "")
+        if (
+            str(sample.get("sample_status") or "") != "missing"
+            or not plan_date
+            or plan_date in represented_dates
+        ):
+            continue
+        target_date = str(sample.get("target_trade_date") or "")
+        note = html.escape(str(sample.get("note") or "当日尾盘采样缺失"))
+        content = (
+            "<div class=\"validation-day-summary validation-grid validation-day-missing\">"
             + f"<span>{_date_text(plan_date)}</span>"
             + f"<span>{_date_text(target_date)}</span>"
-            + f"<span>{total_count}</span>"
-            + f"<span>{returns_cell}</span>"
-            + f"<span>{positive_text}</span>"
-            + f"<span>{limit_up_text}</span>"
-            + f"<span class=\"validation-status {status_class}\">{status_label}</span>"
-            + "<span class=\"validation-day-action\" aria-hidden=\"true\"></span>"
-            + "</summary>"
-            + "<div class=\"validation-detail-wrap\"><table class=\"validation-detail-table\">"
-            + "<thead><tr><th>计划时间</th><th>买入序</th><th>代码</th><th>名称</th><th>计划价</th><th>计划涨幅</th><th>次日开盘</th><th>次日最高</th><th>次日最低</th><th>次日收盘</th><th>触及涨停</th></tr></thead>"
-            + f"<tbody>{''.join(detail_rows)}</tbody></table></div></details>"
+            + "<span>0</span>"
+            + f"<span class=\"sampling-missing-note\">{note}</span>"
+            + "<span>-</span><span>-</span>"
+            + "<span class=\"validation-status missing\">采样缺失</span><span></span>"
+            + "</div>"
         )
-    return "".join(groups)
+        groups.append((plan_date, content))
+
+    groups.sort(key=lambda item: item[0], reverse=True)
+    return "".join(content for _, content in groups)
 
 
 def _forecast_range(summary: dict, target: str) -> str:
@@ -310,9 +348,11 @@ def render_html(
     observation_pool = observation_pool if observation_pool is not None else buy_plan
     validation = validation if validation is not None else pd.DataFrame()
     validation_summary = validation_summary or {}
+    sampling_days = list(validation_summary.get("sampling_days") or [])
     validation_model = str(validation_summary.get("buy_model_version") or "")
     validation = scope_validation_table(validation, validation_model, VALIDATION_TRACKING_START_DATE)
     validation_summary = _summary(validation, validation_model, VALIDATION_TRACKING_START_DATE)
+    validation_summary["sampling_days"] = sampling_days
     backtests = sorted(backtests or [], key=lambda item: str(item.get("start_date", "")))
     decision_support = decision_support or {}
     market_regime = market_regime or {}
@@ -370,9 +410,14 @@ def render_html(
             + "</tr>"
         )
     if not buy_rows:
-        buy_rows.append("<tr><td colspan=\"16\" class=\"empty\">当前无具备资格的尾盘观察票</td></tr>")
+        empty_message = (
+            "15:00已收盘，停止生成尾盘名单"
+            if str(health.get("tail_window_state") or health.get("tail_observation_state") or "") == "market_closed"
+            else "当前无具备资格的尾盘观察票"
+        )
+        buy_rows.append(f"<tr><td colspan=\"16\" class=\"empty\">{empty_message}</td></tr>")
     validation_overview = _validation_overview(validation_summary)
-    validation_days = _validation_days(validation)
+    validation_days = _validation_days(validation, sampling_days)
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
@@ -432,6 +477,16 @@ def render_html(
         return (minuteOfDay >= 565 && minuteOfDay <= 695) || (minuteOfDay >= 775 && minuteOfDay <= 910);
       }
 
+      function applyTailWindowVisibility(now) {
+        const parts = beijingParts(now);
+        const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
+        const visible = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday)
+          && minuteOfDay >= 860
+          && minuteOfDay < 900;
+        const section = document.getElementById("buy-plan-section");
+        if (section) section.hidden = !visible;
+      }
+
       function parseBeijingTime(value) {
         const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
         if (!match) return null;
@@ -440,6 +495,7 @@ def render_html(
 
       function applyFreshness(marketDataTime) {
         const now = new Date();
+        applyTailWindowVisibility(now);
         const dataTime = parseBeijingTime(marketDataTime);
         const ageMinutes = dataTime ? (now.getTime() - dataTime.getTime()) / 60_000 : Infinity;
         const stale = isTradingWindow(now) && (!dataTime || ageMinutes > STALE_AFTER_MINUTES || ageMinutes < -5);
@@ -607,6 +663,9 @@ def render_html(
     .validation-status.verified {{ color: #0b7a3b; }}
     .validation-status.partial {{ color: #b26a00; }}
     .validation-status.pending {{ color: #86868b; }}
+    .validation-status.missing {{ color: #b42318; }}
+    .validation-day-missing {{ cursor: default; background: #fff8f7; }}
+    .sampling-missing-note {{ color: #b42318; font-weight: 500; }}
     .validation-detail-wrap {{ padding: 0 16px 14px; background: #fbfbfd; border-bottom: 1px solid #e5e5ea; overflow-x: auto; }}
     .validation-return {{ display: flex; align-items: center; gap: 5px; white-space: nowrap; }}
     .validation-detail-table {{ border-collapse: collapse; min-width: 1180px; width: 100%; font-size: 12px; }}

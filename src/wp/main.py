@@ -4,7 +4,7 @@ import json
 import hashlib
 import logging
 import os
-from datetime import datetime, time
+from datetime import datetime
 from pathlib import Path
 
 import pandas as pd
@@ -25,6 +25,8 @@ from .report_md import render_markdown
 from .scoring_model import MODEL_VERSION, add_scores
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
 from .tail_observation import update_tail_observation
+from .tail_sampling import update_tail_sampling
+from .tail_window import accepts_new_tail_primary, tail_window_phase
 from .t1_forecast import FORECAST_COLUMNS, T1_FORECAST_MODEL_VERSION, build_t1_forecasts
 from .utils import ensure_dir, load_yaml, write_json
 from .validation import assert_top50_rules, build_healthcheck, resolve_market_data_time
@@ -172,9 +174,10 @@ def _archive_decision_snapshots(
     decision_summary: dict,
     health: dict,
 ) -> list[str]:
-    parsed = pd.to_datetime(str(health.get("market_data_time") or ""), errors="coerce")
-    if pd.isna(parsed) or not (time(14, 20) <= parsed.time() <= time(15, 40)):
+    market_data_time = str(health.get("market_data_time") or "")
+    if not accepts_new_tail_primary(market_data_time):
         return []
+    parsed = pd.to_datetime(market_data_time, errors="coerce")
     trade_date = str(health.get("data_trade_date") or "").replace("-", "")
     if len(trade_date) != 8:
         return []
@@ -361,6 +364,14 @@ def run() -> dict:
         }
         health["market_regime"] = market_regime
 
+    tail_phase = tail_window_phase(str(health.get("market_data_time") or ""))
+    health["tail_window_state"] = tail_phase
+    if not accepts_new_tail_primary(str(health.get("market_data_time") or "")):
+        buy_plan = buy_plan.iloc[0:0].copy()
+        buy_decision_table = buy_decision_table.iloc[0:0].copy()
+        buy_decision.summary["buy_count"] = 0
+        buy_decision.summary["tail_window_state"] = tail_phase
+
     market_universe = flag_limitup(enrich_basic_fields(market_context))
     tail_observation_result = update_tail_observation(
         ranked_input,
@@ -389,6 +400,14 @@ def run() -> dict:
     archive_dir = output_root / "html_reports" / "archive" / current.strftime("%Y%m%d")
     ensure_dir(archive_dir)
     validation_result = update_buy_plan_validation(buy_plan, health, output_root, current)
+    sampling_result = update_tail_sampling(
+        validation_result.table,
+        health,
+        output_root / "csv" / "wp_tail_sampling.csv",
+    )
+    validation_result.summary["sampling_days"] = sampling_result.summary["days"]
+    validation_result.summary["sampling_missing_days"] = sampling_result.summary["missing_day_count"]
+    health["tail_sampling_missing_days"] = sampling_result.summary["missing_day_count"]
     exit_guidance = build_exit_guidance(
         validation_result.table,
         market_universe,
@@ -432,6 +451,7 @@ def run() -> dict:
         "health": health,
         "buy_plan_validation": validation_result.table.to_dict(orient="records"),
         "buy_plan_validation_summary": validation_result.summary,
+        "tail_sampling": sampling_result.table.to_dict(orient="records"),
         "buy_plan": buy_plan.to_dict(orient="records"),
         "tail_observation": tail_observation.to_dict(orient="records"),
         "tail_observation_summary": tail_observation_result.summary,
@@ -515,6 +535,15 @@ def run() -> dict:
             "wp_run_time": update_time,
             "summary": validation_result.summary,
             "records": validation_result.table.to_dict(orient="records"),
+        },
+    )
+    write_json(
+        output_root / "json" / "wp_tail_sampling.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "summary": sampling_result.summary,
+            "records": sampling_result.table.to_dict(orient="records"),
         },
     )
     write_json(

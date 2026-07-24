@@ -69,3 +69,15 @@ def test_decision_support_never_buys_in_avoid_regime():
     result = build_decision_support(_observation(), {"state": "回避", "score": 20}, "2026-07-20 14:40:00")
     assert result.summary["action"] == "建议空仓"
     assert result.summary["broker_connection"] == "disabled"
+
+
+def test_decision_support_never_generates_a_candidate_after_market_close():
+    result = build_decision_support(
+        _observation(),
+        {"state": "允许寻找机会", "score": 80},
+        "2026-07-20 15:00:00",
+    )
+
+    assert result.summary["action"] == "已收盘"
+    assert result.summary["candidate_code"] == ""
+    assert result.table.empty

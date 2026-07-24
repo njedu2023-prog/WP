@@ -10,7 +10,9 @@ from .buy_validation import update_buy_plan_validation
 from .calendar import now_cn
 from .main import ROOT, load_backtest_summaries
 from .report_html import render_html
+from .tail_sampling import update_tail_sampling
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
+from .tail_window import TAIL_PHASE_CLOSED, tail_window_phase
 from .utils import ensure_dir, write_json
 
 
@@ -51,6 +53,14 @@ def run_close_validation(
 
     # An empty buy plan prevents the close job from changing the locked tail snapshot.
     validation_result = update_buy_plan_validation(pd.DataFrame(), health, output_root, current)
+    sampling_result = update_tail_sampling(
+        validation_result.table,
+        health,
+        output_root / "csv" / "wp_tail_sampling.csv",
+    )
+    validation_result.summary["sampling_days"] = sampling_result.summary["days"]
+    validation_result.summary["sampling_missing_days"] = sampling_result.summary["missing_day_count"]
+    health["tail_sampling_missing_days"] = sampling_result.summary["missing_day_count"]
     top50 = _read_csv(output_root / "csv" / "wp_top50.csv")
     full_rank = _read_csv(output_root / "csv" / "wp_full_rank.csv")
     buy_plan = _read_csv(output_root / "csv" / "wp_buy_plan.csv")
@@ -58,11 +68,29 @@ def run_close_validation(
     tail_observation = _read_csv(tail_observation_path)
     if not tail_observation_path.exists():
         tail_observation = buy_plan.copy()
+    market_closed = tail_window_phase(health.get("market_data_time")) == TAIL_PHASE_CLOSED
+    if market_closed:
+        buy_plan = buy_plan.iloc[0:0].copy()
+        tail_observation = tail_observation.iloc[0:0].copy()
+        health["tail_window_state"] = TAIL_PHASE_CLOSED
+        health["buy_plan_count"] = 0
+        health["tail_observation_count"] = 0
     backtests = load_backtest_summaries(output_root)
     decision_payload = _read_json(output_root / "json" / "wp_decision_support.json")
     market_regime = decision_payload.get("market_regime") or health.get("market_regime") or {}
     decision_support = decision_payload.get("summary") or {}
     decision_table = _read_csv(output_root / "csv" / "wp_decision_support.csv")
+    if market_closed:
+        decision_support = {
+            **decision_support,
+            "action": "已收盘",
+            "candidate_code": "",
+            "candidate_name": "",
+            "candidate_count": 0,
+            "reason": "15:00已收盘，停止生成尾盘名单和新开仓建议",
+            "next_checkpoint": "下一交易日14:20",
+        }
+        decision_table = decision_table.iloc[0:0].copy()
     exit_guidance = _read_csv(output_root / "csv" / "wp_t1_exit_guidance.csv")
 
     latest_path = output_root / "json" / "latest.json"
@@ -74,6 +102,7 @@ def run_close_validation(
             "validation_updated_at": update_time,
             "buy_plan_validation": validation_result.table.to_dict(orient="records"),
             "buy_plan_validation_summary": validation_result.summary,
+            "tail_sampling": sampling_result.table.to_dict(orient="records"),
         }
     )
     write_json(latest_path, latest_payload)
@@ -91,6 +120,15 @@ def run_close_validation(
         }
     )
     write_json(validation_path, validation_payload)
+    write_json(
+        output_root / "json" / "wp_tail_sampling.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "summary": sampling_result.summary,
+            "records": sampling_result.table.to_dict(orient="records"),
+        },
+    )
 
     manifest_path = output_root / "json" / "wp_manifest.json"
     manifest = _read_json(manifest_path)

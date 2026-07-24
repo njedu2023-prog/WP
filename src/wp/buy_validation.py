@@ -11,6 +11,7 @@ import pandas as pd
 from .calendar import CN_TZ, next_trading_day_str
 from .data_loader import _read_remote_text
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
+from .tail_window import TAIL_WINDOW_END, TAIL_WINDOW_START
 from .t1_forecast import FORECAST_COLUMNS
 
 
@@ -51,8 +52,6 @@ VALIDATION_COLUMNS = [
 ]
 
 VALIDATION_TRACKING_START_DATE = "20260715"
-TAIL_WINDOW_START = time(14, 20)
-TAIL_WINDOW_END = time(14, 50)
 
 
 @dataclass

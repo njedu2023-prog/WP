@@ -1,15 +1,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import datetime, time
 from pathlib import Path
 
 import pandas as pd
 
 from .t1_forecast import FORECAST_COLUMNS
+from .tail_window import (
+    TAIL_PHASE_CLOSED,
+    TAIL_PHASE_FROZEN,
+    TAIL_WINDOW_START,
+    parse_market_datetime,
+    tail_window_phase,
+)
 
 
-TAIL_OBSERVATION_START = time(14, 20)
+TAIL_OBSERVATION_START = TAIL_WINDOW_START
 INVALID_GRACE_RUNS = 2
 
 OBSERVATION_COLUMNS = [
@@ -91,13 +97,6 @@ def _read_state(path: Path) -> pd.DataFrame:
 def _write_state(path: Path, frame: pd.DataFrame) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     frame.to_csv(path, index=False, encoding="utf-8-sig")
-
-
-def _parse_market_time(value: object) -> datetime | None:
-    parsed = pd.to_datetime(str(value or "").strip(), errors="coerce")
-    if pd.isna(parsed):
-        return None
-    return parsed.to_pydatetime()
 
 
 def _text(value: object) -> str:
@@ -222,11 +221,11 @@ def update_tail_observation(
     max_limit_up_pct: float = 10.0,
     invalid_grace_runs: int = INVALID_GRACE_RUNS,
 ) -> TailObservationResult:
-    """Persist every post-14:20 primary while its intrinsic qualification remains valid."""
+    """Persist primaries only inside 14:20-14:50 and hide the pool after close."""
     path = Path(state_path)
     existing = _dedupe(_read_state(path))
     market_time_text = str(health.get("market_data_time") or health.get("data_time") or "")
-    market_time = _parse_market_time(market_time_text)
+    market_time = parse_market_datetime(market_time_text)
     trade_date = str(health.get("data_trade_date") or health.get("source_trade_date") or "").replace("-", "")
     data_reliable = (
         health.get("status") in {"ok", "无符合条件股票"}
@@ -234,14 +233,19 @@ def update_tail_observation(
         and len(trade_date) == 8
     )
 
+    phase = tail_window_phase(market_time_text)
+    if phase == TAIL_PHASE_CLOSED:
+        empty = _empty()
+        return TailObservationResult(empty, _summary(empty, "market_closed"))
     if not data_reliable or market_time is None:
         return TailObservationResult(
             existing,
             _summary(existing, "preserved_unverified"),
         )
-
     if not existing.empty:
         existing = existing[existing["observation_trade_date"].astype(str).eq(trade_date)].copy()
+    if phase == TAIL_PHASE_FROZEN:
+        return TailObservationResult(existing, _summary(existing, "frozen_after_tail_window"))
 
     if market_time.time() < TAIL_OBSERVATION_START:
         empty = _empty()

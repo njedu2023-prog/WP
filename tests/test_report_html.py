@@ -46,6 +46,8 @@ def test_report_html_polls_manifest_and_keeps_stale_buy_plan_visible(tmp_path):
     assert 'id="buy-plan-table-wrap"' in page
     assert "市场数据已超过20分钟，名单仍显示，请核对数据时间" in page
     assert "tableWrap.hidden = stale" not in page
+    assert "applyTailWindowVisibility(now)" in page
+    assert "minuteOfDay < 900" in page
     assert 'http-equiv="refresh"' not in page
 
 
@@ -168,6 +170,33 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
     assert ">观察记录<" in page
     assert "次日收益（开 / 高 / 收）" in page
     assert "次日最低" in page
+
+
+def test_report_html_shows_missing_sampling_days_and_closed_message(tmp_path):
+    path = tmp_path / "latest.html"
+    render_html(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {"status": "ok", "tail_window_state": "market_closed"},
+        path,
+        validation_summary={
+            "sampling_days": [
+                {
+                    "plan_trade_date": "20260723",
+                    "target_trade_date": "20260724",
+                    "sample_status": "missing",
+                    "note": "当日未取得14:20-14:50合法窗口快照",
+                }
+            ]
+        },
+    )
+
+    page = path.read_text(encoding="utf-8")
+    assert "15:00已收盘，停止生成尾盘名单" in page
+    assert "2026-07-23" in page
+    assert "采样缺失" in page
+    assert "采样缺失1日" in page
+    assert "当日未取得14:20-14:50合法窗口快照" in page
 
 
 def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
