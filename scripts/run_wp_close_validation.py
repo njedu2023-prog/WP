@@ -11,8 +11,10 @@ from run_wp_session import is_trade_day, now_cn
 CLOSE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
     "outputs/csv/wp_buy_plan_validation.csv",
+    "outputs/csv/wp_tail_sampling.csv",
     "outputs/json/latest.json",
     "outputs/json/wp_buy_plan_validation.json",
+    "outputs/json/wp_tail_sampling.json",
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
 ]
