@@ -64,6 +64,7 @@ def main() -> int:
         pro,
         args.cache_dir,
         page_size=config.history.tushare_page_size,
+        requests_per_minute=config.history.tushare_requests_per_minute,
     )
     manifest = build_three_year_panel(
         client,

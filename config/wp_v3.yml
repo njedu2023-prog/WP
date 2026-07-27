@@ -69,5 +69,7 @@ history:
   end_date: "20260724"
   partition: month
   tushare_page_size: 8000
+  tushare_requests_per_minute: 180
+  minute_fetch_workers: 4
   raw_cache_days: 7
   minimum_minute_universe_coverage: 0.90

@@ -3,11 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 import shutil
+import threading
 import time
+from concurrent.futures import Future, ThreadPoolExecutor
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable, Iterator, TypeVar
 
 import numpy as np
 import pandas as pd
@@ -45,6 +47,26 @@ INDUSTRY_FIELDS = (
     "l1_code,l1_name,l2_code,l2_name,l3_code,l3_name,"
     "ts_code,name,in_date,out_date,is_new"
 )
+T = TypeVar("T")
+R = TypeVar("R")
+
+
+class _RequestStartLimiter:
+    def __init__(self, requests_per_minute: int) -> None:
+        if requests_per_minute <= 0:
+            raise ValueError("requests_per_minute must be positive")
+        self._minimum_interval = 60.0 / float(requests_per_minute)
+        self._next_start = 0.0
+        self._lock = threading.Lock()
+
+    def wait(self) -> None:
+        with self._lock:
+            current = time.monotonic()
+            scheduled = max(current, self._next_start)
+            self._next_start = scheduled + self._minimum_interval
+        delay = scheduled - current
+        if delay > 0:
+            time.sleep(delay)
 
 
 class TushareHistoryClient:
@@ -55,11 +77,13 @@ class TushareHistoryClient:
         *,
         page_size: int = 8_000,
         attempts: int = 6,
+        requests_per_minute: int = 180,
     ) -> None:
         self.pro = pro
         self.cache_dir = Path(cache_dir)
         self.page_size = page_size
         self.attempts = attempts
+        self._request_limiter = _RequestStartLimiter(requests_per_minute)
         self.cache_dir.mkdir(parents=True, exist_ok=True)
 
     def query(
@@ -122,6 +146,7 @@ class TushareHistoryClient:
         last_error: Exception | None = None
         for attempt in range(self.attempts):
             try:
+                self._request_limiter.wait()
                 frame = self.pro.query(api_name, fields=fields, **params)
                 return frame if isinstance(frame, pd.DataFrame) else pd.DataFrame(frame)
             except Exception as error:  # Tushare raises several transport-specific types.
@@ -761,29 +786,43 @@ def _build_historical_minute_partitions(
         raise RuntimeError(
             f"historical main-board minute universe has only {len(codes)} symbols"
         )
+    records = list(enumerate(codes.to_dict(orient="records"), start=1))
+
+    def fetch_symbol(
+        item: tuple[int, dict[str, Any]],
+    ) -> tuple[int, str, pd.DataFrame, Exception | None]:
+        index, row = item
+        code = str(row["ts_code"])
+        symbol_start = max(start_date, _date_field(row.get("list_date"), start_date))
+        symbol_end = min(end_date, _date_field(row.get("delist_date"), end_date))
+        try:
+            raw = client.query(
+                "stk_mins",
+                cache_key=(
+                    f"{code.replace('.', '_')}_{symbol_start}_{symbol_end}_5min"
+                ),
+                paged=True,
+                ts_code=code,
+                start_date=f"{_dash(symbol_start)} 09:30:00",
+                end_date=f"{_dash(symbol_end)} 15:00:00",
+                freq="5min",
+                fields=MINUTE_FIELDS,
+            )
+            selected = _normalize_historical_minutes(
+                raw,
+                signal_slots=config.strategy.signal_slots,
+            )
+        except Exception as error:
+            return index, code, pd.DataFrame(), error
+        return index, code, selected, None
+
     try:
-        for index, row in enumerate(codes.to_dict(orient="records"), start=1):
-            code = str(row["ts_code"])
-            symbol_start = max(start_date, _date_field(row.get("list_date"), start_date))
-            symbol_end = min(end_date, _date_field(row.get("delist_date"), end_date))
-            try:
-                raw = client.query(
-                    "stk_mins",
-                    cache_key=(
-                        f"{code.replace('.', '_')}_{symbol_start}_{symbol_end}_5min"
-                    ),
-                    paged=True,
-                    ts_code=code,
-                    start_date=f"{_dash(symbol_start)} 09:30:00",
-                    end_date=f"{_dash(symbol_end)} 15:00:00",
-                    freq="5min",
-                    fields=MINUTE_FIELDS,
-                )
-                selected = _normalize_historical_minutes(
-                    raw,
-                    signal_slots=config.strategy.signal_slots,
-                )
-            except Exception as error:
+        for index, code, selected, error in _ordered_bounded_map(
+            fetch_symbol,
+            records,
+            workers=config.history.minute_fetch_workers,
+        ):
+            if error is not None:
                 query_failures.append({"ts_code": code, "error": str(error)[:300]})
                 if index == 1:
                     raise RuntimeError(
@@ -859,6 +898,38 @@ def _build_historical_minute_partitions(
     )
     shutil.rmtree(building)
     return paths
+
+
+def _ordered_bounded_map(
+    function: Callable[[T], R],
+    items: list[T],
+    *,
+    workers: int,
+) -> Iterator[R]:
+    if workers <= 1:
+        for item in items:
+            yield function(item)
+        return
+
+    maximum_pending = workers * 2
+    next_submit = 0
+    pending: dict[int, Future[R]] = {}
+    with ThreadPoolExecutor(
+        max_workers=workers,
+        thread_name_prefix="wp-v3-minute",
+    ) as executor:
+        while next_submit < min(maximum_pending, len(items)):
+            pending[next_submit] = executor.submit(function, items[next_submit])
+            next_submit += 1
+        for index in range(len(items)):
+            future = pending.pop(index)
+            yield future.result()
+            if next_submit < len(items):
+                pending[next_submit] = executor.submit(
+                    function,
+                    items[next_submit],
+                )
+                next_submit += 1
 
 
 def _historical_minute_codes(

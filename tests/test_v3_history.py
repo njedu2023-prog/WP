@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import threading
+import time
+
 import pandas as pd
 import pytest
 
@@ -9,6 +12,7 @@ from wp.v3.history import (
     _industry_at,
     _minute_universe_quality,
     _normalize_historical_minutes,
+    _ordered_bounded_map,
     _slot_features,
 )
 
@@ -33,6 +37,27 @@ def test_pagination_continues_when_api_cap_is_below_requested_page_size(tmp_path
         fields="ts_code,value",
     )
     assert result["value"].tolist() == [0, 1, 2, 3, 4]
+
+
+def test_bounded_parallel_map_preserves_order_and_uses_multiple_workers():
+    lock = threading.Lock()
+    active = 0
+    maximum_active = 0
+
+    def work(value: int) -> int:
+        nonlocal active, maximum_active
+        with lock:
+            active += 1
+            maximum_active = max(maximum_active, active)
+        time.sleep(0.02 if value == 0 else 0.01)
+        with lock:
+            active -= 1
+        return value * 10
+
+    result = list(_ordered_bounded_map(work, list(range(8)), workers=3))
+
+    assert result == [value * 10 for value in range(8)]
+    assert maximum_active >= 2
 
 
 def test_industry_membership_is_resolved_at_the_signal_date():

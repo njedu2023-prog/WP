@@ -107,6 +107,8 @@ class HistoryContract:
     end_date: str = "20260724"
     partition: str = "month"
     tushare_page_size: int = 8_000
+    tushare_requests_per_minute: int = 180
+    minute_fetch_workers: int = 4
     raw_cache_days: int = 7
     minimum_minute_universe_coverage: float = 0.90
 
@@ -169,6 +171,10 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("stress costs cannot be below the baseline all-in cost")
     if config.execution.non_fill_penalty_pct >= 0:
         raise ValueError("non-fill penalty must be negative")
+    if config.history.tushare_requests_per_minute < 30:
+        raise ValueError("tushare_requests_per_minute cannot be below 30")
+    if not 1 <= config.history.minute_fetch_workers <= 8:
+        raise ValueError("minute_fetch_workers must be between 1 and 8")
 
 
 def policy_fingerprint(config: V3Config) -> str:
