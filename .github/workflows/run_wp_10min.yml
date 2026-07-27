@@ -1,40 +1,13 @@
-name: Run WP Tail Session
+name: Run WP V3 Tail Session
 
 on:
-  repository_dispatch:
-    types:
-      - wp_data_ready
   workflow_dispatch:
-    inputs:
-      mode:
-        description: "Run mode"
-        required: true
-        default: "live"
-        type: choice
-        options:
-          - live
-          - backtest
-      start_date:
-        description: "Backtest start date YYYYMMDD"
-        required: false
-        type: string
-      end_date:
-        description: "Backtest end date YYYYMMDD"
-        required: false
-        type: string
-      force_rebuild:
-        description: "Rebuild even when upstream data is unchanged"
-        required: false
-        default: false
-        type: boolean
   push:
-    branches:
-      - main
+    branches: [main]
     paths:
       - scripts/trigger_wp_run.txt
   schedule:
-    # 06:16 UTC = 14:16 Asia/Shanghai. One warm runner samples every five
-    # minutes through 15:00, avoiding repeated cold starts during execution.
+    # 06:16 UTC = 14:16 Asia/Shanghai. One warm process covers the full session.
     - cron: "16 6 * * 1-5"
 
 permissions:
@@ -43,65 +16,32 @@ permissions:
   id-token: write
 
 concurrency:
-  # Live ranking and next-day validation both commit generated outputs.
-  group: wp-output-writer-${{ github.ref }}
+  group: wp-v3-output-writer-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
-  run-wp:
+  tail-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 70
+    timeout-minutes: 75
     steps:
       - uses: actions/checkout@v5
-      - name: Resolve direct data slot
-        id: upstream
-        run: python scripts/check_upstream_revision.py
-        env:
-          GITHUB_EVENT_NAME: ${{ github.event_name }}
-      - name: Checkout upstream processor
-        id: upstream-code
-        if: steps.upstream.outputs.should_run == 'true' && (github.event_name != 'workflow_dispatch' || github.event.inputs.mode == 'live')
-        continue-on-error: true
-        uses: actions/checkout@v5
-        with:
-          repository: njedu2023-prog/a-share-top3-data
-          ref: main
-          path: upstream
-          fetch-depth: 1
-          persist-credentials: false
-          sparse-checkout: |
-            scripts
-            requirements.txt
-          sparse-checkout-cone-mode: false
-      - name: Record upstream processor revision
-        id: upstream-revision
-        if: steps.upstream-code.outcome == 'success'
-        run: echo "sha=$(git -C upstream rev-parse HEAD)" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v6
-        if: steps.upstream.outputs.should_run == 'true'
         with:
           python-version: "3.11"
           cache: pip
       - name: Install dependencies
-        if: steps.upstream.outputs.should_run == 'true'
         run: pip install -r requirements.txt
-      - name: Run WP update
-        if: steps.upstream.outputs.should_run == 'true'
+      - name: Run causal V3 tail session
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
-          WP_MODE: ${{ github.event.inputs.mode || 'live' }}
-          WP_BACKTEST_START: ${{ github.event.inputs.start_date }}
-          WP_BACKTEST_END: ${{ github.event.inputs.end_date }}
+          WP_ENGINE_VERSION: v3
+          WP_MODE: live
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_FORCE_REBUILD: ${{ github.event.inputs.force_rebuild || 'false' }}
-          WP_DIRECT_SOURCE_ENABLED: "1"
-          WP_UPSTREAM_WORKTREE: "${{ github.workspace }}/upstream"
-          WP_UPSTREAM_PROCESSOR_REVISION: ${{ steps.upstream-revision.outputs.sha }}
-          WP_TARGET_SLOT: ${{ steps.upstream.outputs.target_slot }}
-          WP_DIRECT_TIMEOUT_SECONDS: "1500"
-          WP_SCHEDULE_GRACE_SECONDS: "120"
-          WP_SESSION_INTERVAL_SECONDS: "300"
           WP_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'once' }}
+          WP_SESSION_INTERVAL_SECONDS: "300"
+          WP_SCHEDULE_GRACE_SECONDS: "120"
+          WP_MAX_SLOT_LATENESS_SECONDS: "420"
+          LOKY_MAX_CPU_COUNT: "2"

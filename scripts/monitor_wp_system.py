@@ -28,6 +28,7 @@ PAGES_MANIFEST_URL = os.environ.get(
 )
 MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "10"))
 ACCEPTED_HEALTH_STATUSES = {"ok", "无符合条件股票"}
+ACCEPTED_SOURCE_MODES = {"direct_tushare_v3"}
 ACTIVE_RUN_STATUSES = {"queued", "in_progress", "waiting", "pending"}
 
 
@@ -123,10 +124,7 @@ def dispatch_workflow(repo: str, workflow: str, token: str) -> None:
         f"https://api.github.com/repos/{repo}/actions/workflows/{workflow}/dispatches",
         token=token,
         method="POST",
-        payload={
-            "ref": "main",
-            "inputs": {"mode": "live", "force_rebuild": "true"},
-        },
+        payload={"ref": "main"},
         user_agent="WP-direct-system-monitor",
     )
 
@@ -152,14 +150,22 @@ def wp_health(manifest: dict[str, Any], slot: datetime) -> tuple[bool, list[str]
     coverage = source_coverage(manifest)
     if health not in ACCEPTED_HEALTH_STATUSES:
         reasons.append(f"health_status={health or 'missing'}")
-    if source_mode != "direct_tushare":
+    if source_mode not in ACCEPTED_SOURCE_MODES:
         reasons.append(f"source_mode={source_mode or 'missing'}")
     if source_trade_date != slot.strftime("%Y%m%d"):
         reasons.append(f"source_trade_date={source_trade_date or 'missing'}")
-    if coverage is None or coverage < slot:
-        reasons.append(
-            f"coverage={coverage.strftime('%Y-%m-%d %H:%M:%S') if coverage else 'missing'}"
-        )
+    if slot.time() <= time(14, 50):
+        if coverage is None or coverage < slot:
+            reasons.append(
+                f"coverage={coverage.strftime('%Y-%m-%d %H:%M:%S') if coverage else 'missing'}"
+            )
+    elif slot.time() >= time(15, 0):
+        if str(manifest.get("session_phase")) != "CLOSED":
+            reasons.append(
+                f"session_phase={manifest.get('session_phase') or 'missing'}"
+            )
+        if int(manifest.get("buy_plan_count") or 0) != 0:
+            reasons.append(f"buy_plan_count={manifest.get('buy_plan_count')}")
     if bool(manifest.get("direct_fallback_used")):
         reasons.append("direct_fallback_used=true")
     return not reasons, reasons

@@ -12,8 +12,10 @@ import tushare as ts
 
 try:
     from build_direct_rank_input import build_direct_rank_input
+    from build_wp_v3_live_input import build_live_input
 except ModuleNotFoundError:  # pragma: no cover - package import in tests
     from scripts.build_direct_rank_input import build_direct_rank_input
+    from scripts.build_wp_v3_live_input import build_live_input
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
@@ -22,6 +24,9 @@ SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
 PREP_START = time(14, 15)
 RUN_START = time(14, 20)
 RUN_END = time(15, 0)
+MAX_SLOT_LATENESS_SECONDS = int(
+    os.environ.get("WP_MAX_SLOT_LATENESS_SECONDS", "420")
+)
 LIVE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
     "outputs/html_reports/latest.md",
@@ -38,6 +43,7 @@ LIVE_COMMIT_PATHS = [
     "outputs/csv/wp_strategy_ledger.csv",
     "outputs/csv/wp_legacy_history_audit.csv",
     "outputs/csv/wp_t1_exit_guidance.csv",
+    "outputs/csv/wp_v3_live_predictions.csv",
     "outputs/json/latest.json",
     "outputs/json/wp_buy_plan.json",
     "outputs/json/wp_buy_plan_validation.json",
@@ -48,12 +54,16 @@ LIVE_COMMIT_PATHS = [
     "outputs/json/wp_strategy_ledger.json",
     "outputs/json/wp_legacy_history_audit.json",
     "outputs/json/wp_t1_exit_guidance.json",
+    "outputs/json/wp_v3_candidate_ledger.json",
+    "outputs/json/wp_model_registry_v3.json",
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
     "data/cache/wp_latest_rank_input.csv",
     "data/direct/latest/wp_latest_rank_input.csv",
     "data/direct/latest/wp_market_regime_input.csv",
     "data/direct/latest/wp_manifest.json",
+    "data/v3/latest/wp_v3_live_features.csv",
+    "data/v3/latest/wp_v3_live_manifest.json",
 ]
 
 
@@ -127,9 +137,28 @@ def run_once() -> None:
         # logic and report rendering cannot remain hidden behind old outputs.
         env["WP_FORCE_REBUILD"] = "true"
     mode = env["WP_MODE"].strip().lower()
+    engine = env.get("WP_ENGINE_VERSION", "v3").strip().lower()
+    env["WP_ENGINE_VERSION"] = engine
     direct_enabled = env.get("WP_DIRECT_SOURCE_ENABLED", "1").strip().lower() not in {"0", "false", "no"}
     explicit_source = env.get("WP_SOURCE_CSV", "").strip()
-    if mode == "live" and direct_enabled and not explicit_source:
+    if mode == "live" and engine == "v3":
+        current = now_cn()
+        live_path = Path("data/v3/latest/wp_v3_live_features.csv")
+        if time(14, 20) <= current.time() <= time(14, 50):
+            source_path, source_manifest = build_live_input(root=Path.cwd(), env=env)
+            env["WP_V3_SOURCE_CSV"] = source_path.as_posix()
+            env["WP_EXPECTED_TRADE_DATE"] = str(source_manifest["trade_date"])
+            env["WP_V3_SIGNAL_SLOT"] = str(source_manifest["signal_slot"])
+            print(
+                "WP V3 causal source ready: "
+                f"{source_path} slot={source_manifest['signal_slot']}"
+            )
+        elif current.time() > time(14, 50) and live_path.exists():
+            env["WP_V3_SOURCE_CSV"] = live_path.as_posix()
+            print("WP V3 uses the frozen 14:50 feature snapshot for close-state rendering.")
+        else:
+            print("::warning::WP V3 live source is absent after the signal window.")
+    elif mode == "live" and direct_enabled and not explicit_source:
         direct = build_direct_rank_input(root=Path.cwd(), env=env)
         env["WP_DIRECT_ATTEMPTED"] = str(direct.attempted).lower()
         env["WP_DIRECT_ERROR"] = direct.error
@@ -205,19 +234,44 @@ def run_session() -> None:
         print(f"Wait until WP session start: {start_dt:%Y-%m-%d %H:%M:%S}, wait={wait_seconds:.0f}s")
         time_module.sleep(wait_seconds)
 
-    while now_cn() <= end_dt:
-        iteration_start = now_cn()
-        print(f"WP iteration started: {iteration_start:%Y-%m-%d %H:%M:%S}")
-        run_once()
-        next_at = iteration_start + timedelta(seconds=INTERVAL_SECONDS)
+    failures: list[str] = []
+    schedule = [
+        datetime.combine(current.date(), time(14, minute), CN_TZ)
+        for minute in (20, 25, 30, 35, 40, 45, 50, 55)
+    ] + [datetime.combine(current.date(), time(15, 0), CN_TZ)]
+    for scheduled_at in schedule:
         current = now_cn()
-        sleep_seconds = min((next_at - current).total_seconds(), (end_dt - current).total_seconds())
-        if sleep_seconds <= 0:
+        if current < scheduled_at:
+            wait_seconds = (scheduled_at - current).total_seconds()
+            print(
+                f"Wait for anchored WP slot {scheduled_at:%H:%M}; "
+                f"wait={wait_seconds:.0f}s"
+            )
+            time_module.sleep(wait_seconds)
+        started_at = now_cn()
+        lateness = (started_at - scheduled_at).total_seconds()
+        if lateness > MAX_SLOT_LATENESS_SECONDS:
+            message = (
+                f"missed anchored slot {scheduled_at:%H:%M}; "
+                f"lateness={lateness:.0f}s"
+            )
+            failures.append(message)
+            print(f"::error::{message}")
             continue
-        print(f"Next WP iteration at {next_at:%Y-%m-%d %H:%M:%S}, sleep={sleep_seconds:.0f}s")
-        time_module.sleep(sleep_seconds)
+        print(
+            f"WP anchored iteration {scheduled_at:%H:%M} started: "
+            f"{started_at:%Y-%m-%d %H:%M:%S}; lateness={lateness:.0f}s"
+        )
+        try:
+            run_once()
+        except Exception as error:
+            message = f"{scheduled_at:%H:%M} failed: {error}"
+            failures.append(message)
+            print(f"::error::{message}")
 
     print(f"WP session completed: {now_cn():%Y-%m-%d %H:%M:%S}")
+    if failures:
+        raise RuntimeError("WP session completed with slot failures: " + "; ".join(failures))
 
 
 def main() -> None:

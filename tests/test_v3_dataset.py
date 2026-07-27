@@ -1,0 +1,194 @@
+from __future__ import annotations
+
+import pandas as pd
+import pytest
+
+from wp.v3.contracts import V3Config
+from wp.v3.dataset import build_supervised_panel, first_crossing_candidates
+from wp.v3.features import assert_feature_contract
+
+
+def test_label_uses_slipped_signal_price_and_t1_close_after_costs():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "t1_close": 10.10,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": True,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert panel.loc[0, "entry_price"] == pytest.approx(10.01)
+    assert 0.64 < panel.loc[0, "net_return_pct"] < 0.66
+    assert panel.loc[0, "target_net_positive"] == 1
+
+
+def test_non_executable_exit_is_always_a_failure():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "t1_close": 11.0,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": False,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert panel.loc[0, "target_net_positive"] == 0
+    assert panel.loc[0, "net_return_pct"] < 0
+
+
+def test_missing_t1_close_on_suspension_is_an_observed_failure():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "t1_close": float("nan"),
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": False,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert bool(panel.loc[0, "label_available"]) is True
+    assert panel.loc[0, "target_net_positive"] == 0
+    assert panel.loc[0, "net_return_pct"] < 0
+
+
+def test_label_uses_adjustment_factor_total_return_across_ex_dividend_day():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "adj_factor": 1.0,
+                "t1_close": 9.0,
+                "t1_total_return_close": 10.2,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": True,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert panel.loc[0, "gross_return_pct"] == pytest.approx(
+        (10.2 / 10.01 - 1.0) * 100.0
+    )
+    assert panel.loc[0, "target_net_positive"] == 1
+
+
+def test_missing_current_adjustment_factor_is_not_execution_eligible():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "adj_factor": float("nan"),
+                "t1_close": 10.2,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": True,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert bool(panel.loc[0, "execution_eligible"]) is False
+
+
+def test_stale_symbol_bar_is_not_execution_eligible():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "adj_factor": 1.0,
+                "t1_close": 10.2,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "slot_bar_lag_minutes": 10,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": True,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert bool(panel.loc[0, "execution_eligible"]) is False
+
+
+def test_first_crossing_keeps_the_first_signal_per_stock():
+    predictions = pd.DataFrame(
+        [
+            {"trade_date": "20260723", "signal_slot": "14:30", "ts_code": "600001.SH", "passes_policy": True, "signal_price": 10.2},
+            {"trade_date": "20260723", "signal_slot": "14:20", "ts_code": "600001.SH", "passes_policy": True, "signal_price": 10.0},
+            {"trade_date": "20260723", "signal_slot": "14:25", "ts_code": "600002.SH", "passes_policy": False, "signal_price": 8.0},
+        ]
+    )
+    selected = first_crossing_candidates(predictions, V3Config())
+    assert selected[["ts_code", "signal_slot", "signal_price"]].to_dict("records") == [
+        {"ts_code": "600001.SH", "signal_slot": "14:20", "signal_price": 10.0}
+    ]
+
+
+def test_future_columns_cannot_enter_feature_contract():
+    try:
+        assert_feature_contract(["next_close"])
+    except ValueError as error:
+        assert "unregistered" in str(error) or "future-aware" in str(error)
+    else:
+        raise AssertionError("future feature was accepted")

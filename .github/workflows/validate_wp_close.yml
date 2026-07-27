@@ -16,7 +16,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wp-output-writer-${{ github.ref }}
+  group: wp-v3-output-writer-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
@@ -36,6 +36,7 @@ jobs:
         env:
           PYTHONPATH: src
           WP_MODE: live
+          WP_ENGINE_VERSION: v3
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -43,3 +44,4 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           WP_CLOSE_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'once' }}
           WP_CLOSE_INTERVAL_SECONDS: "300"
+          LOKY_MAX_CPU_COUNT: "2"

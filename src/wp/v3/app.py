@@ -1,0 +1,257 @@
+from __future__ import annotations
+
+import json
+import os
+from datetime import datetime
+from pathlib import Path
+from typing import Any
+
+import pandas as pd
+
+from wp.calendar import now_cn
+from wp.utils import ensure_dir, write_json
+
+from .contracts import V3Config, load_v3_config, session_phase
+from .dashboard import render_v3_dashboard
+from .ledger import (
+    assert_ledger_invariants,
+    freeze_shadow_session,
+    load_shadow_ledger,
+    record_shadow_slot,
+    save_shadow_ledger,
+)
+from .live import inference_manifest, run_live_inference
+from .registry import load_registry
+
+
+ROOT = Path(__file__).resolve().parents[3]
+
+
+def run_v3() -> dict[str, Any]:
+    current = now_cn()
+    output = ROOT / "outputs"
+    ensure_dir(output / "json")
+    ensure_dir(output / "csv")
+    ensure_dir(output / "html_reports")
+    config = load_v3_config(ROOT / "config" / "wp_v3.yml")
+    source_path = Path(
+        os.environ.get("WP_V3_SOURCE_CSV", "").strip()
+        or ROOT / "data" / "v3" / "latest" / "wp_v3_live_features.csv"
+    )
+    source_manifest_path = source_path.with_name("wp_v3_live_manifest.json")
+    if not source_path.exists() or not source_manifest_path.exists():
+        return _write_not_ready(
+            output,
+            config,
+            current,
+            f"V3 causal live input is missing: {source_path}",
+        )
+    frame = pd.read_csv(source_path, keep_default_na=False, dtype={"ts_code": str})
+    source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
+    market_time = pd.to_datetime(source_manifest.get("market_data_time"), errors="coerce")
+    if pd.notna(market_time):
+        current_naive = current.replace(tzinfo=None)
+        frame["data_age_seconds"] = max(
+            0.0,
+            (current_naive - market_time.to_pydatetime().replace(tzinfo=None)).total_seconds(),
+        )
+    else:
+        frame["data_age_seconds"] = float("inf")
+    trade_date = str(source_manifest.get("trade_date") or current.strftime("%Y%m%d"))
+    signal_slot = str(source_manifest.get("signal_slot") or "")
+    phase = session_phase(current, config)
+    registry_path = ROOT / "outputs" / "json" / "wp_model_registry_v3.json"
+    registry = load_registry(registry_path)
+    model_path = _resolve_model_path(registry)
+    explicit_model_path = os.environ.get("WP_V3_MODEL_PATH", "").strip()
+    if explicit_model_path:
+        model_path = Path(explicit_model_path)
+    inference = run_live_inference(
+        frame,
+        config,
+        model_path=model_path,
+        registry_path=registry_path,
+    )
+    ledger_path = output / "json" / "wp_v3_candidate_ledger.json"
+    ledger = load_shadow_ledger(ledger_path)
+    if (
+        phase == "SIGNAL"
+        and signal_slot in config.strategy.signal_slots
+        and inference.model_fingerprint
+    ):
+        record_shadow_slot(
+            ledger,
+            inference.predictions,
+            trade_date=trade_date,
+            signal_slot=signal_slot,
+            config=config,
+            observed_at=str(source_manifest.get("market_data_time") or current.isoformat()),
+        )
+    if phase in {"FROZEN", "CLOSED"} and inference.model_fingerprint:
+        freeze_shadow_session(
+            ledger,
+            trade_date=trade_date,
+            config=config,
+            model_fingerprint=inference.model_fingerprint,
+            policy_fingerprint=inference.policy_fingerprint,
+        )
+    assert_ledger_invariants(ledger, config)
+    save_shadow_ledger(ledger, ledger_path)
+    replay = _read_json(output / "json" / "wp_v3_historical_replay.json")
+
+    formal = inference.predictions.loc[
+        inference.predictions.get(
+            "passes_policy",
+            pd.Series(False, index=inference.predictions.index),
+        ).fillna(False)
+        & inference.formal_authorization
+    ].copy()
+    if phase != "SIGNAL":
+        formal = formal.iloc[0:0].copy()
+    update_time = current.strftime("%Y-%m-%d %H:%M:%S")
+    manifest = {
+        "schema_version": "wp_manifest_v3",
+        "latest_update": update_time,
+        "report_revision": update_time,
+        "source_trade_date": trade_date,
+        "target_trade_date": source_manifest.get("target_trade_date"),
+        "signal_slot": signal_slot,
+        "source_scheduled_slot": signal_slot,
+        "market_data_time": source_manifest.get("market_data_time"),
+        "source_mode": "direct_tushare_v3",
+        "source_repository": "njedu2023-prog/WP",
+        "session_phase": phase,
+        "buy_plan_count": int(len(formal)),
+        "shadow_qualified_count": int(
+            inference.predictions.get(
+                "passes_policy",
+                pd.Series(False, index=inference.predictions.index),
+            ).sum()
+        ),
+        "live_universe_count": int(len(frame)),
+        "eligible_universe_count": int(frame.get("execution_eligible", pd.Series(dtype=bool)).sum()),
+        "health_status": "ok",
+        "manual_execution_only": True,
+        "order_routing_enabled": False,
+        **inference_manifest(inference),
+    }
+    predictions_path = output / "csv" / "wp_v3_live_predictions.csv"
+    inference.predictions.to_csv(predictions_path, index=False, encoding="utf-8-sig")
+    formal.to_csv(output / "csv" / "wp_buy_plan.csv", index=False, encoding="utf-8-sig")
+    write_json(output / "json" / "wp_manifest.json", manifest)
+    write_json(
+        output / "json" / "wp_decision_support.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": manifest["market_data_time"],
+            "summary": manifest,
+            "records": inference.predictions.loc[
+                inference.predictions.get(
+                    "passes_policy",
+                    pd.Series(False, index=inference.predictions.index),
+                ).fillna(False)
+            ].to_dict(orient="records"),
+            "manual_execution_only": True,
+            "order_routing_enabled": False,
+        },
+    )
+    write_json(
+        output / "json" / "wp_strategy_ledger.json",
+        {
+            "generated_at": update_time,
+            "schema_version": "wp_strategy_ledger_v3_bridge",
+            "summary": {
+                "state": inference.state,
+                "formal_authorization": inference.formal_authorization,
+                "candidate_semantics": "model_candidates_not_user_fills",
+            },
+            "sessions": ledger.get("sessions", []),
+        },
+    )
+    report_path = output / "html_reports" / "latest.html"
+    render_v3_dashboard(
+        report_path,
+        manifest=manifest,
+        predictions=inference.predictions,
+        ledger=ledger,
+        registry=registry,
+        config=config,
+        replay=replay,
+    )
+    archive = (
+        output
+        / "html_reports"
+        / "archive"
+        / trade_date
+        / f"{current.strftime('%H%M%S')}_v3.html"
+    )
+    render_v3_dashboard(
+        archive,
+        manifest=manifest,
+        predictions=inference.predictions,
+        ledger=ledger,
+        registry=registry,
+        config=config,
+        replay=replay,
+    )
+    return manifest
+
+
+def _write_not_ready(
+    output: Path,
+    config: V3Config,
+    current: datetime,
+    error: str,
+) -> dict[str, Any]:
+    manifest = {
+        "schema_version": "wp_manifest_v3",
+        "latest_update": current.strftime("%Y-%m-%d %H:%M:%S"),
+        "report_revision": current.strftime("%Y-%m-%d %H:%M:%S"),
+        "source_trade_date": current.strftime("%Y%m%d"),
+        "market_data_time": None,
+        "session_phase": session_phase(current, config),
+        "buy_plan_count": 0,
+        "shadow_qualified_count": 0,
+        "health_status": "v3_input_not_ready",
+        "v3_state": "MODEL_NOT_READY",
+        "v3_message": error,
+    }
+    ledger = load_shadow_ledger(output / "json" / "wp_v3_candidate_ledger.json")
+    registry = load_registry(output / "json" / "wp_model_registry_v3.json")
+    replay = _read_json(output / "json" / "wp_v3_historical_replay.json")
+    write_json(output / "json" / "wp_manifest.json", manifest)
+    render_v3_dashboard(
+        output / "html_reports" / "latest.html",
+        manifest=manifest,
+        predictions=pd.DataFrame(),
+        ledger=ledger,
+        registry=registry,
+        config=config,
+        replay=replay,
+    )
+    return manifest
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def _resolve_model_path(registry: dict[str, Any]) -> Path:
+    fingerprint = (
+        registry.get("active_model_fingerprint")
+        or registry.get("shadow_model_fingerprint")
+    )
+    record = next(
+        (
+            model
+            for model in registry.get("models", [])
+            if model.get("fingerprint") == fingerprint
+        ),
+        None,
+    )
+    if not record or not record.get("artifact_path"):
+        return ROOT / "artifacts" / "wp_v3_research" / "model_not_ready.joblib"
+    return ROOT / str(record["artifact_path"])

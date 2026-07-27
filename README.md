@@ -1,49 +1,86 @@
-# WP - 尾盘合格票 T+1 净收益系统
+# WP V3 - 尾盘 T+1 净盈利概率系统
 
-WP 只服务一个目标：
+WP V3 只优化一个可检验目标：
 
-> 在 A 股交易日 14:20-14:50 发布全部通过固定门槛的可成交候选，并提高这些候选按 T+1 收盘卖出、扣除往返成本后净收益大于 0 的概率。
+> 最大化 A 股主板股票在 T 日 14:20-14:50 可成交买入后，按固定 T+1 收盘卖出并扣除既定往返成本后，净收益大于 0 的概率。
 
-系统不替用户选择唯一股票。一个时点可以有多支合格票，由人工决定是否买入以及买哪一支。没有股票通过门槛时，正式记录 `NO_SIGNAL`，绝不为凑名单降低门槛。
+系统发布全部通过固定门槛的候选，由人工决定是否买入以及买哪一支。零候选是正常结果，模型不得为了生成名单放宽门槛。
 
-## 生产合同
+## V3 与旧系统的根本区别
 
-- `14:20-14:50`：每 5 分钟逐票判定；任何股票第一次通过全部门槛时立即写入 `QUALIFIED`。
-- `14:50` 是候选生成截止分钟；人工可在 `15:00` 收盘前决定是否买入及买哪一支。
-- 首次合格时间、首次合格价、模型版本和 T+1 目标日写入后不可修改。
-- 同一股票当天再次合格只增加出现次数和最后出现时间，不产生独立交易样本。
-- `14:50` 后禁止新增合格票；`15:00` 后页面不展示可继续买入的名单。
-- 每支合格票都按 `T+1收盘价 / 首次合格价 - 1 - 往返成本` 验证。
-- 模型候选统计与用户实际成交记录严格分离。
+- 不再把 `涨幅 8%-12%` 当作生产入口；模型从全市场主板可成交样本学习。
+- 历史训练与实时推理使用同一套 5 分钟因果特征。
+- 标签是实际交易合同的净收益正负，不是涨停、排名或未来最高价代理。
+- 采用时间窗口集成、概率校准、期望收益回归和下行分位回归共同决策。
+- 每支股票第一次通过即锁定信号时间、信号价、政策/模型指纹和 T+1 目标日。
+- 所有候选逐票验证；模型候选与用户实际成交严格分离。
+- 三年滚动样本外回测通过后，仍必须完成至少 150 个交易日的前瞻影子运行。
 
-详细合同见 [`docs/STRATEGY_CONTRACT.md`](docs/STRATEGY_CONTRACT.md)。
+## 固定交易合同
 
-## 两层账本
+| 项目 | 合同 |
+| --- | --- |
+| 信号时点 | 14:20、14:25、14:30、14:35、14:40、14:45、14:50 |
+| 股票范围 | A 股主板，其他板块只能作为独立 challenger |
+| 参考订单 | 100,000 元，且不超过当前 5 分钟成交额的 1% |
+| 入场价 | 首次信号价加 10bp 滑点 |
+| 往返成本 | 25bp |
+| 退出 | 下一 A 股交易日收盘 |
+| 无法退出 | 停牌或 T+1 收盘钉在跌停价时计为失败，缺价采用预先声明的 -10% 惩罚 |
+| 截止 | 14:50 后禁止新增，14:55 冻结，15:00 清除可买展示 |
 
-- `wp_buy_plan_validation`：基础资格快照研究账本，用于积累真实因果样本和训练校准，不代表正式合格票。
-- `wp_strategy_ledger`：合格候选不可变账本，是页面逐票净胜率和净收益统计的正式口径。
+完整定义见 [STRATEGY_CONTRACT.md](docs/STRATEGY_CONTRACT.md)。
 
-分层可以避免冷启动自锁：研究样本可以持续积累，但只有通过概率、样本、风险、稳定性和数据新鲜度全部门槛的股票才进入正式候选统计。
+## 模型与研究
 
-## 运行
+V3 分类器是三个时间窗口上的正则逻辑回归与直方图梯度提升集成。分类概率通过独立的最近 21 个交易日做 Platt 校准；另有均值回归和 10% 分位回归预测净收益及下行风险。
+
+逐票资格同时要求：
+
+- 可成交、流动性、上市时间、价格和涨跌停距离合格；
+- 校准盈利概率、模型间保守下界、经验 Wilson 下界和按交易日聚类下界合格；
+- 所在校准概率区间同时有足够股票数和独立交易日；
+- 期望净收益和下行分位合格；
+- 模型间分歧不超过上限；
+- 市场数据年龄不超过 7 分钟。
+
+算法、特征和限制见 [WP_V3_MODEL_CARD.md](docs/WP_V3_MODEL_CARD.md)。三年回测协议见 [WP_V3_BACKTEST_PROTOCOL.md](docs/WP_V3_BACKTEST_PROTOCOL.md)。
+
+## 三条生产链路
+
+1. `Run WP V3 Tail Session`：14:16 启动一个持续进程，锚定七个信号槽、14:55 冻结和 15:00 清场。
+2. `Validate WP Close`：15:08-16:10 轮询 T+1 收盘真值，逐票结算并更新模型登记册。
+3. `Research WP V3 Three-Year Model`：构建三年 point-in-time 数据，执行时间滚动样本外回测，登记影子模型。
+
+上游仓库不再阻塞实时推理。实时和历史数据均由 WP 自己使用 Tushare 构建并执行完整性检查。
+
+## 本地验证
 
 ```bash
-pip install -r requirements.txt
-PYTHONPATH=src python -m wp.main
-python -m pytest -q
+python -m venv .venv
+.venv/bin/pip install -r requirements.txt
+PYTHONPATH=src:. .venv/bin/pytest -q
 ```
 
-生产工作流在北京时间 14:16 启动连续会话，覆盖 14:20、14:25、14:30、14:35、14:40、14:45、14:50、14:55 和 15:00。收盘真值工作流从 15:08 开始轮询。
+三年研究需要 `TUSHARE_TOKEN`：
+
+```bash
+PYTHONPATH=src .venv/bin/python scripts/build_wp_v3_history.py
+PYTHONPATH=src .venv/bin/python scripts/run_wp_v3_research.py
+```
 
 ## 关键输出
 
 ```text
-outputs/csv/wp_strategy_ledger.csv
-outputs/json/wp_strategy_ledger.json
-outputs/csv/wp_buy_plan_validation.csv
-outputs/json/wp_decision_support.json
-outputs/json/wp_manifest.json
 outputs/html_reports/latest.html
+outputs/json/wp_manifest.json
+outputs/json/wp_model_registry_v3.json
+outputs/json/wp_v3_candidate_ledger.json
+outputs/json/wp_v3_historical_replay.json
+outputs/csv/wp_v3_live_predictions.csv
+outputs/csv/wp_buy_plan_validation.csv
+artifacts/wp_v3_research/wp_v3_backtest.json
+artifacts/wp_v3_research/models/<fingerprint>.joblib
 ```
 
 GitHub Pages：

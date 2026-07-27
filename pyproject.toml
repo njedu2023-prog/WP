@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "wp-limitup-probability"
-version = "0.1.0"
+version = "3.0.0"
 description = "WP A股尾盘买入后T+1净盈利概率决策系统"
 requires-python = ">=3.10"
 dependencies = [
@@ -12,7 +12,10 @@ dependencies = [
   "numpy>=1.24",
   "PyYAML>=6.0",
   "requests>=2.31",
-  "tushare>=1.4"
+  "tushare>=1.4",
+  "scikit-learn>=1.4,<2.0",
+  "joblib>=1.3",
+  "pyarrow>=22.0,<26.0"
 ]
 
 [tool.setuptools.packages.find]

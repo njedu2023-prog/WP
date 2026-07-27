@@ -26,6 +26,8 @@ CLOSE_COMMIT_PATHS = [
     "outputs/json/wp_tail_sampling.json",
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
+    "outputs/json/wp_v3_candidate_ledger.json",
+    "outputs/json/wp_model_registry_v3.json",
 ]
 
 
@@ -69,6 +71,38 @@ def _pending_due_count(path: Path, today: str) -> int:
 
 
 def run_once() -> int:
+    if os.environ.get("WP_ENGINE_VERSION", "v3").strip().lower() == "v3":
+        tracked_paths = [
+            Path("outputs/json/wp_v3_candidate_ledger.json"),
+            Path("outputs/json/wp_model_registry_v3.json"),
+        ]
+        before = tuple(path.read_bytes() if path.exists() else b"" for path in tracked_paths)
+        env = os.environ.copy()
+        env["WP_ENGINE_VERSION"] = "v3"
+        subprocess.run([sys.executable, "-m", "wp.close_validation"], check=True, env=env)
+        after = tuple(path.read_bytes() if path.exists() else b"" for path in tracked_paths)
+        payload_path = Path("outputs/json/wp_buy_plan_validation.json")
+        payload = {}
+        if payload_path.exists():
+            import json
+
+            payload = json.loads(payload_path.read_text(encoding="utf-8"))
+        pending = int(payload.get("summary", {}).get("pending_count", 0))
+        if before == after:
+            print(f"No V3 close-truth state change; pending_due={pending}.")
+            return pending
+        commit_paths = list(CLOSE_COMMIT_PATHS)
+        archive = _latest_close_archive()
+        if archive:
+            commit_paths.append(archive)
+        subprocess.run(
+            [sys.executable, "scripts/github_commit_paths.py", "Validate WP V3 next-day close", *commit_paths],
+            check=True,
+            env=env,
+        )
+        print(f"V3 close-truth state committed; pending_due={pending}.")
+        return pending
+
     tracked = [
         Path("outputs/csv/wp_buy_plan_validation.csv"),
         Path("outputs/csv/wp_strategy_ledger.csv"),
@@ -117,7 +151,7 @@ def main() -> None:
         return
 
     interval = int(os.environ.get("WP_CLOSE_INTERVAL_SECONDS", "300"))
-    end = datetime.combine(current.date(), time(16, 5), current.tzinfo)
+    end = datetime.combine(current.date(), time(16, 10), current.tzinfo)
     while now_cn() <= end:
         pending = run_once()
         if pending == 0:

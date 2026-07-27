@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from pathlib import Path
 
@@ -15,6 +16,7 @@ from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
 from .tail_sampling import update_tail_sampling
 from .tail_window import TAIL_PHASE_CLOSED, tail_window_phase
 from .utils import ensure_dir, write_json
+from .v3.truth import run_v3_close_validation
 
 
 def _read_json(path: Path) -> dict:
@@ -37,7 +39,7 @@ def _read_csv(path: Path) -> pd.DataFrame:
         return pd.DataFrame()
 
 
-def run_close_validation(
+def _run_v2_close_validation(
     output_root: Path | None = None,
     current: datetime | None = None,
 ) -> dict:
@@ -205,6 +207,18 @@ def run_close_validation(
         exit_guidance=exit_guidance,
     )
     return validation_result.summary
+
+
+def run_close_validation(
+    output_root: Path | None = None,
+    current: datetime | None = None,
+) -> dict:
+    engine = os.environ.get("WP_ENGINE_VERSION", "v3").strip().lower()
+    if engine == "v3":
+        return run_v3_close_validation(output_root=output_root, current=current)
+    if engine == "v2":
+        return _run_v2_close_validation(output_root=output_root, current=current)
+    raise ValueError(f"unsupported WP_ENGINE_VERSION: {engine}")
 
 
 if __name__ == "__main__":

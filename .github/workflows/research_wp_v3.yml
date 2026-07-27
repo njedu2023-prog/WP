@@ -1,0 +1,103 @@
+name: Research WP V3 Three-Year Model
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: "History start YYYYMMDD"
+        required: true
+        default: "20230727"
+        type: string
+      end_date:
+        description: "History end YYYYMMDD"
+        required: true
+        default: "20260724"
+        type: string
+      rebuild_history:
+        description: "Ignore the restored panel cache"
+        required: false
+        default: false
+        type: boolean
+  schedule:
+    # Monthly challenger research outside trading hours.
+    - cron: "20 18 1 * *"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: wp-v3-output-writer-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore Tushare response cache
+        uses: actions/cache@v4
+        with:
+          path: .cache/wp_v3_tushare
+          key: wp-v3-raw-${{ github.run_id }}
+          restore-keys: |
+            wp-v3-raw-
+      - name: Restore causal panel cache
+        if: github.event.inputs.rebuild_history != 'true'
+        uses: actions/cache@v4
+        with:
+          path: artifacts/wp_v3_history/panel
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r3-${{ github.run_id }}
+          restore-keys: |
+            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r3-
+      - name: Build three-year point-in-time panel
+        run: >-
+          python scripts/build_wp_v3_history.py
+          --start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.start_date || '20230727') }}"
+          --end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.end_date || '20260724') }}"
+        env:
+          PYTHONPATH: src
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+      - name: Run chronological walk-forward research
+        run: python scripts/run_wp_v3_research.py
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "2"
+      - name: Verify V3 contracts and tests
+        run: pytest tests/test_v3_*.py -q
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "2"
+      - name: Publish model, registry, and audit evidence through GitHub API
+        run: >-
+          python scripts/github_commit_paths.py
+          "Publish WP V3 three-year research"
+          artifacts/wp_v3_history/wp_v3_dataset_manifest.json
+          artifacts/wp_v3_research
+          outputs/json/wp_model_registry_v3.json
+          outputs/json/wp_v3_candidate_ledger.json
+          outputs/json/wp_v3_historical_replay.json
+          outputs/csv/wp_v3_historical_replay.csv
+          outputs/json/wp_manifest.json
+          outputs/html_reports/latest.html
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          GITHUB_REF_NAME: main
+      - name: Upload reproducibility evidence
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v3-research-${{ github.run_id }}
+          path: |
+            artifacts/wp_v3_history/wp_v3_dataset_manifest.json
+            artifacts/wp_v3_research/wp_v3_backtest.json
+            artifacts/wp_v3_research/wp_v3_model_metadata.json
+            artifacts/wp_v3_research/wp_v3_research_summary.json
+            artifacts/wp_v3_research/wp_v3_oos_candidates.csv
+          retention-days: 90

@@ -1,0 +1,71 @@
+strategy:
+  strategy_id: wp_t1_net_profit_v3
+  model_family: calibrated_temporal_ensemble_v3
+  timezone: Asia/Shanghai
+  signal_slots: ["14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50"]
+  candidate_freeze_time: "14:55"
+  clear_live_display_time: "15:00"
+  exit_contract: T+1_close
+  board_scope: main_board
+
+execution:
+  entry_price_contract: signal_price_plus_slippage
+  entry_slippage_bps: 10
+  round_trip_cost_bps: 25
+  stress_cost_bps: [35, 50]
+  min_listing_days: 60
+  min_price: 2.0
+  max_price: 150.0
+  min_prev_20d_amount: 50000000
+  min_slot_amount: 3000000
+  reference_order_notional: 100000
+  max_entry_pct_of_slot_amount: 0.01
+  max_distance_to_up_limit_pct: 0.50
+  min_distance_to_down_limit_pct: 1.00
+  max_market_data_age_seconds: 420
+  non_fill_penalty_pct: -10.00
+
+model:
+  policy_implementation_version: wp_v3_policy_20260727_1
+  feature_version: wp_v3_causal_features_1
+  minimum_train_days: 252
+  calibration_days: 21
+  test_days: 21
+  purge_days: 2
+  ensemble_windows_days: [252, 504, 756]
+  probability_threshold: 0.60
+  probability_lower_threshold: 0.52
+  min_expected_net_return_pct: 0.30
+  min_downside_q10_pct: -4.50
+  min_calibration_bin_samples: 100
+  min_calibration_bin_days: 10
+  min_calibration_bin_wilson_lower: 0.52
+  min_calibration_bin_clustered_lower: 0.50
+  max_probability_model_spread: 0.10
+  min_train_rows: 20000
+  random_seed: 20260727
+
+promotion:
+  mode: shadow
+  minimum_shadow_trading_days: 150
+  minimum_shadow_candidate_days: 80
+  minimum_shadow_candidates: 250
+  minimum_oos_candidates: 250
+  minimum_oos_win_rate: 0.60
+  minimum_oos_win_rate_lower: 0.52
+  minimum_clustered_win_rate_lower: 0.52
+  minimum_mean_net_return_pct: 0.30
+  minimum_clustered_mean_return_lower_pct: 0.00
+  minimum_median_net_return_pct: 0.00
+  minimum_profit_factor: 1.30
+  maximum_ece: 0.05
+  require_50bps_stress_nonnegative: true
+  auto_promote_when_all_gates_pass: true
+
+history:
+  start_date: "20230727"
+  end_date: "20260724"
+  partition: month
+  tushare_page_size: 8000
+  raw_cache_days: 7
+  minimum_minute_universe_coverage: 0.90

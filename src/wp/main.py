@@ -39,6 +39,7 @@ from .tail_window import TAIL_PHASE_CLOSED, accepts_new_tail_primary, tail_windo
 from .t1_forecast import FORECAST_COLUMNS, T1_FORECAST_MODEL_VERSION, build_t1_forecasts
 from .utils import ensure_dir, load_yaml, write_json
 from .validation import assert_top50_rules, build_healthcheck, resolve_market_data_time
+from .v3.app import run_v3
 
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -256,7 +257,7 @@ def _qualified_buy_plan(
     ].copy()
 
 
-def run() -> dict:
+def _run_v2() -> dict:
     current = now_cn()
     update_time = current.strftime("%Y-%m-%d %H:%M:%S")
     update_key = current.strftime("%Y%m%d_%H%M")
@@ -727,6 +728,15 @@ def run() -> dict:
         log_path,
     )
     return health
+
+
+def run() -> dict:
+    engine = os.environ.get("WP_ENGINE_VERSION", "v3").strip().lower()
+    if engine == "v3":
+        return run_v3()
+    if engine == "v2":
+        return _run_v2()
+    raise ValueError(f"unsupported WP_ENGINE_VERSION: {engine}")
 
 
 if __name__ == "__main__":

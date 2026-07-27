@@ -25,6 +25,7 @@ def test_direct_source_date_is_passed_to_core_engine(monkeypatch, tmp_path):
     monkeypatch.setenv("WP_MODE", "live")
     monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
     monkeypatch.setenv("WP_DIRECT_SOURCE_ENABLED", "1")
+    monkeypatch.setenv("WP_ENGINE_VERSION", "v2")
     monkeypatch.delenv("WP_SOURCE_CSV", raising=False)
     monkeypatch.setattr(
         run_wp_session,

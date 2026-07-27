@@ -10,6 +10,7 @@ from wp.close_validation import run_close_validation
 
 
 def test_close_validation_settles_pending_record_and_renders_report(tmp_path, monkeypatch):
+    monkeypatch.setenv("WP_ENGINE_VERSION", "v2")
     output_root = tmp_path / "outputs"
     (output_root / "csv").mkdir(parents=True)
     (output_root / "json").mkdir(parents=True)
