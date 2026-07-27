@@ -1,7 +1,10 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import threading
 import time
+from dataclasses import asdict
 
 import pandas as pd
 import pytest
@@ -9,6 +12,7 @@ import pytest
 from wp.v3.contracts import V3Config
 from wp.v3.history import (
     TushareHistoryClient,
+    _build_prior_day_features,
     _day,
     _index_by_trade_date,
     _industry_at,
@@ -16,6 +20,7 @@ from wp.v3.history import (
     _minute_universe_quality,
     _normalize_historical_minutes,
     _ordered_bounded_map,
+    _reusable_panel_manifest,
     _slot_features,
     _slot_features_for_slots,
 )
@@ -165,8 +170,77 @@ def test_vectorized_slot_features_match_the_signal_contract():
     assert first["tail_range_10m_pct"] == pytest.approx((14.5 / 12.5 - 1) * 100)
     assert first["tail_close_position_10m"] == pytest.approx(0.75)
     assert first["tail_amount_acceleration"] == pytest.approx(2.0)
+    assert first["tail_return_from_1400_pct"] == pytest.approx(40.0)
+    assert first["tail_cumulative_amount"] == pytest.approx(160.0)
+    assert first["tail_latest_amount_share"] == pytest.approx(60.0 / 160.0)
+    assert first["tail_amount_concentration"] == pytest.approx(60.0 / 160.0)
+    assert first["tail_directional_efficiency"] > 0
+    assert 0 <= first["tail_trend_r2"] <= 1
     assert features.loc["600002.SH", "intraday_snapshot_count"] == 2
     assert pd.isna(features.loc["600002.SH", "ret_10m_pct"])
+
+
+def test_tail_features_cannot_change_when_a_future_bar_is_appended():
+    times = pd.date_range("2026-07-27 14:00:00", periods=6, freq="5min")
+    bars = pd.DataFrame(
+        {
+            "ts_code": ["600001.SH"] * 6,
+            "trade_time": times,
+            "open": [10.0, 10.1, 10.2, 10.3, 10.4, 99.0],
+            "high": [10.2, 10.3, 10.4, 10.5, 10.6, 120.0],
+            "low": [9.9, 10.0, 10.1, 10.2, 10.3, 1.0],
+            "close": [10.1, 10.2, 10.3, 10.4, 10.5, 110.0],
+            "amount": [10, 20, 30, 40, 50, 9_999_999],
+        }
+    )
+    feature_columns = [
+        column
+        for column in _slot_features(bars.iloc[:5], "14:20").columns
+        if column != "slot_bar_time"
+    ]
+    before = _slot_features(bars.iloc[:5], "14:20")[feature_columns].iloc[0]
+    after = _slot_features(bars, "14:20")[feature_columns].iloc[0]
+
+    pd.testing.assert_series_equal(before, after)
+
+
+def test_prior_day_features_are_strictly_lagged():
+    dates = pd.bdate_range("2026-01-01", periods=25)
+    daily = pd.DataFrame(
+        {
+            "ts_code": ["600001.SH"] * len(dates),
+            "trade_date": dates.strftime("%Y%m%d"),
+            "open": [10.0 + index for index in range(len(dates))],
+            "high": [10.5 + index for index in range(len(dates))],
+            "low": [9.5 + index for index in range(len(dates))],
+            "close": [10.2 + index for index in range(len(dates))],
+            "pre_close": [9.8 + index for index in range(len(dates))],
+            "pct_chg": [1.0] * len(dates),
+            "amount": [100.0 + index for index in range(len(dates))],
+            "adj_factor": [1.0] * len(dates),
+        }
+    )
+    basic = pd.DataFrame(
+        {
+            "ts_code": ["600001.SH"] * len(dates),
+            "trade_date": dates.strftime("%Y%m%d"),
+            "turnover_rate": range(1, len(dates) + 1),
+            "volume_ratio": [1.0] * len(dates),
+            "pe_ttm": [12.0] * len(dates),
+            "pb": [1.5] * len(dates),
+            "total_mv": [1_000.0] * len(dates),
+            "circ_mv": [800.0] * len(dates),
+        }
+    )
+    features = _build_prior_day_features(daily, basic)
+    last = features.iloc[-1]
+    prior = daily.iloc[-2]
+
+    assert last["prev_day_gap_pct"] == pytest.approx(
+        (prior["open"] / prior["pre_close"] - 1.0) * 100.0
+    )
+    assert last["prev_turnover_rate"] == basic.iloc[-2]["turnover_rate"]
+    assert last["prev_volume_ratio"] == basic.iloc[-2]["volume_ratio"]
 
 
 def test_multi_slot_features_compute_once_and_keep_full_session_count():
@@ -255,3 +329,50 @@ def test_historical_minutes_keep_warmup_and_signal_bars_without_redefining_ohlcv
     assert result["day_open"].tolist() == [10.0, 10.0, 10.0]
     assert result["high"].tolist() == [10.2, 10.4, 10.5]
     assert result["slot_amount"].tolist() == [2_000.0, 3_000.0, 4_000.0]
+
+
+def test_verified_panel_cache_is_reused_only_for_the_same_contract(tmp_path):
+    config = V3Config()
+    partition_dir = tmp_path / "panel"
+    partition_dir.mkdir()
+    partition = partition_dir / "wp_v3_panel_202607.parquet"
+    partition.write_bytes(b"verified-panel")
+    manifest = {
+        "schema_version": "wp_v3_causal_panel_1",
+        "strategy_id": config.strategy.strategy_id,
+        "feature_version": config.model.feature_version,
+        "requested_start": config.history.start_date,
+        "requested_end": config.history.end_date,
+        "execution_contract": asdict(config.execution),
+        "signal_slots": list(config.strategy.signal_slots),
+        "exit_contract": config.strategy.exit_contract,
+        "coverage": 1.0,
+        "failed_trade_days": [],
+        "partitions": [
+            {
+                "path": "artifacts/wp_v3_history/panel/wp_v3_panel_202607.parquet",
+                "sha256": hashlib.sha256(b"verified-panel").hexdigest(),
+            }
+        ],
+    }
+    manifest_path = tmp_path / "wp_v3_dataset_manifest.json"
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+
+    reused = _reusable_panel_manifest(
+        manifest_path,
+        partition_dir=partition_dir,
+        config=config,
+    )
+    assert reused is not None
+    assert reused["requested_start"] == manifest["requested_start"]
+    assert reused["partitions"] == manifest["partitions"]
+
+    partition.write_bytes(b"tampered")
+    assert (
+        _reusable_panel_manifest(
+            manifest_path,
+            partition_dir=partition_dir,
+            config=config,
+        )
+        is None
+    )

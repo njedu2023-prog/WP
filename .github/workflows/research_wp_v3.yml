@@ -1,4 +1,4 @@
-name: Research WP V3 Three-Year Model
+name: Research WP V4 Three-Year Model
 
 on:
   workflow_dispatch:
@@ -57,9 +57,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r7-${{ github.run_id }}
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
           restore-keys: |
-            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r7-
+            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
       - name: Build three-year point-in-time panel
         run: >-
           python scripts/build_wp_v3_history.py
@@ -79,13 +79,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r7-${{ github.run_id }}
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
       - name: Run chronological walk-forward research
         run: python scripts/run_wp_v3_research.py
         env:
           PYTHONPATH: src
           LOKY_MAX_CPU_COUNT: "2"
-      - name: Verify V3 contracts and tests
+      - name: Verify V4 contracts and tests
         run: pytest tests/test_v3_*.py -q
         env:
           PYTHONPATH: src
@@ -93,7 +93,7 @@ jobs:
       - name: Publish model, registry, and audit evidence through GitHub API
         run: >-
           python scripts/github_commit_paths.py
-          "Publish WP V3 three-year research"
+          "Publish WP V4 three-year research"
           artifacts/wp_v3_history/wp_v3_dataset_manifest.json
           artifacts/wp_v3_research
           outputs/json/wp_model_registry_v3.json

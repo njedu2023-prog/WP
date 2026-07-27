@@ -25,8 +25,8 @@ DEFAULT_SIGNAL_SLOTS = (
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v3"
-    model_family: str = "calibrated_temporal_ensemble_v3"
+    strategy_id: str = "wp_t1_net_profit_v4"
+    model_family: str = "calibrated_tail_rank_ensemble_v4"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
     candidate_freeze_time: str = "14:55"
@@ -61,22 +61,24 @@ class ExecutionContract:
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v3_policy_20260727_9"
-    feature_version: str = "wp_v3_causal_features_5"
+    policy_implementation_version: str = "wp_v4_policy_20260727_11"
+    feature_version: str = "wp_v4_causal_features_6"
     minimum_train_days: int = 252
-    calibration_days: int = 21
+    calibration_days: int = 84
     test_days: int = 42
     purge_days: int = 2
     ensemble_windows_days: tuple[int, ...] = (126, 252, 504)
-    probability_threshold: float = 0.60
-    probability_lower_threshold: float = 0.52
-    min_expected_net_return_pct: float = 0.30
-    min_downside_q10_pct: float = -4.50
-    min_calibration_bin_samples: int = 100
-    min_calibration_bin_days: int = 10
+    probability_threshold: float = 0.55
+    probability_lower_threshold: float = 0.50
+    min_expected_net_return_pct: float = 0.20
+    min_downside_q10_pct: float = -3.50
+    minimum_selection_rank_percentile: float = 0.997
+    min_calibration_bin_samples: int = 250
+    min_calibration_bin_days: int = 25
     min_calibration_bin_wilson_lower: float = 0.52
     min_calibration_bin_clustered_lower: float = 0.50
-    max_probability_model_spread: float = 0.10
+    max_probability_model_spread: float = 0.12
+    max_selection_rank_spread: float = 0.20
     min_train_rows: int = 20_000
     max_training_rows_per_slot: int = 300
     random_seed: int = 20_260_727
@@ -153,11 +155,13 @@ def validate_contract(config: V3Config) -> None:
     if config.strategy.clear_live_display_time < config.strategy.candidate_freeze_time:
         raise ValueError("live display cannot clear before the candidate ledger freezes")
     if config.strategy.exit_contract != "T+1_close":
-        raise ValueError("V3 has one immutable exit contract: T+1_close")
+        raise ValueError("WP has one immutable exit contract: T+1_close")
     if config.promotion.minimum_shadow_trading_days < 150:
         raise ValueError("production promotion requires at least 150 shadow trading days")
     if not 0.5 <= config.model.probability_threshold < 1.0:
         raise ValueError("probability_threshold must be in [0.5, 1.0)")
+    if not 0.90 <= config.model.minimum_selection_rank_percentile < 1.0:
+        raise ValueError("minimum_selection_rank_percentile must be in [0.90, 1.0)")
     if len(set(config.model.ensemble_windows_days)) < 2:
         raise ValueError("temporal ensemble requires at least two distinct windows")
     if config.model.max_training_rows_per_slot < 100:

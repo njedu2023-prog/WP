@@ -5,11 +5,15 @@ from dataclasses import replace
 import numpy as np
 import pandas as pd
 
+from wp.v3.backtest import evaluate_backtest_gate
 from wp.v3.contracts import V3Config
 from wp.v3.dataset import build_supervised_panel
 from wp.v3.features import FEATURE_COLUMNS
 from wp.v3.model import (
+    TARGET_RANK_COLUMN,
+    _attach_full_universe_rank_target,
     _deterministic_training_sample,
+    _ranking_target_and_groups,
     predict_bundle,
     train_bundle,
 )
@@ -66,6 +70,9 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
     assert prediction["p_net_positive"].between(0, 1).all()
     assert prediction["p_net_positive_lower"].between(0, 1).all()
     assert prediction["expected_net_return_pct"].notna().all()
+    assert prediction["selection_rank_pct"].between(0, 1).all()
+    assert bundle.calibration_fit_end < bundle.evidence_start
+    assert bundle.selection_evidence["period_start"] == bundle.evidence_start
     assert prediction["passes_policy"].dtype == bool
 
 
@@ -91,3 +98,43 @@ def test_training_sample_is_capped_and_independent_of_target_values():
 
     assert len(first) == 7
     assert first["ts_code"].tolist() == second["ts_code"].tolist()
+
+
+def test_rank_target_is_computed_on_full_slot_before_training_sample():
+    frame = pd.DataFrame(
+        {
+            "trade_date": ["20260105"] * 20,
+            "signal_slot": ["14:20"] * 20,
+            "ts_code": [f"600{index:03d}.SH" for index in range(20)],
+            "net_return_pct": np.arange(20, dtype=float),
+        }
+    )
+    ranked = _attach_full_universe_rank_target(frame)
+    sampled = _deterministic_training_sample(ranked, rows_per_slot=7)
+    target, groups = _ranking_target_and_groups(sampled)
+
+    expected = sampled[TARGET_RANK_COLUMN].to_numpy(dtype=float)
+    assert np.array_equal(target, expected)
+    assert groups.tolist() == [7]
+    assert set(np.round(target * 20).astype(int)).issubset(set(range(1, 21)))
+
+
+def test_backtest_gate_treats_zero_boundary_as_observed_value():
+    metrics = {
+        "candidate_events": 250,
+        "win_rate": 0.60,
+        "win_rate_wilson_lower": 0.52,
+        "win_rate_day_clustered_lower": 0.52,
+        "mean_net_return_pct": 0.30,
+        "mean_net_return_day_clustered_lower_pct": 0.0,
+        "median_net_return_pct": 0.0,
+        "profit_factor": 1.30,
+        "ece": 0.05,
+        "stress": {"50bps": {"positive_total_return": True}},
+    }
+
+    gate = evaluate_backtest_gate(metrics, V3Config())
+
+    assert gate["passed"] is True
+    assert gate["checks"]["minimum_clustered_mean_return_lower"] is True
+    assert gate["checks"]["minimum_median_net_return"] is True

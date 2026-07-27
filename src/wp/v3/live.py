@@ -43,7 +43,7 @@ def run_live_inference(
             policy_fingerprint=None,
             formal_authorization=False,
             predictions=empty,
-            message="V3 has no trained artifact; no candidate can be authorized.",
+            message="V4 has no trained artifact; no candidate can be authorized.",
         )
 
     bundle: ModelBundle = load_bundle(artifact)

@@ -77,7 +77,7 @@ def walk_forward_backtest(
             training,
             config,
             allow_below_minimum=False,
-            model_version=f"wpv3-wf-{test_dates[0]}",
+            model_version=f"wpv4-wf-{test_dates[0]}",
         )
         prediction = predict_bundle(bundle, testing)
         prediction["fold"] = fold_number
@@ -199,27 +199,39 @@ def evaluate_backtest_gate(metrics: dict[str, Any], config: V3Config) -> dict[st
     checks = {
         "minimum_oos_candidates": metrics.get("candidate_events", 0)
         >= promotion.minimum_oos_candidates,
-        "minimum_oos_win_rate": (metrics.get("win_rate") or 0)
+        "minimum_oos_win_rate": _number_or_default(metrics.get("win_rate"), 0.0)
         >= promotion.minimum_oos_win_rate,
-        "minimum_oos_win_rate_lower": (metrics.get("win_rate_wilson_lower") or 0)
+        "minimum_oos_win_rate_lower": _number_or_default(
+            metrics.get("win_rate_wilson_lower"),
+            0.0,
+        )
         >= promotion.minimum_oos_win_rate_lower,
-        "minimum_clustered_win_rate_lower": (
-            metrics.get("win_rate_day_clustered_lower") or 0
+        "minimum_clustered_win_rate_lower": _number_or_default(
+            metrics.get("win_rate_day_clustered_lower"),
+            0.0,
         )
         >= promotion.minimum_clustered_win_rate_lower,
-        "minimum_mean_net_return": (metrics.get("mean_net_return_pct") or -999)
+        "minimum_mean_net_return": _number_or_default(
+            metrics.get("mean_net_return_pct"),
+            -999.0,
+        )
         >= promotion.minimum_mean_net_return_pct,
-        "minimum_clustered_mean_return_lower": (
-            metrics.get("mean_net_return_day_clustered_lower_pct")
-            if metrics.get("mean_net_return_day_clustered_lower_pct") is not None
-            else -999
+        "minimum_clustered_mean_return_lower": _number_or_default(
+            metrics.get("mean_net_return_day_clustered_lower_pct"),
+            -999.0,
         )
         >= promotion.minimum_clustered_mean_return_lower_pct,
-        "minimum_median_net_return": (metrics.get("median_net_return_pct") or -999)
+        "minimum_median_net_return": _number_or_default(
+            metrics.get("median_net_return_pct"),
+            -999.0,
+        )
         >= promotion.minimum_median_net_return_pct,
-        "minimum_profit_factor": (metrics.get("profit_factor") or 0)
+        "minimum_profit_factor": _number_or_default(
+            metrics.get("profit_factor"),
+            0.0,
+        )
         >= promotion.minimum_profit_factor,
-        "maximum_ece": (metrics.get("ece") if metrics.get("ece") is not None else 999)
+        "maximum_ece": _number_or_default(metrics.get("ece"), 999.0)
         <= promotion.maximum_ece,
         "stress_50bps_nonnegative": (
             not promotion.require_50bps_stress_nonnegative
@@ -282,6 +294,9 @@ def _policy_score(frame: pd.DataFrame, threshold: float, config: V3Config) -> fl
         & pd.to_numeric(candidate["expected_net_return_pct"], errors="coerce").ge(
             config.model.min_expected_net_return_pct
         )
+        & pd.to_numeric(candidate["selection_rank_pct"], errors="coerce").ge(
+            config.model.minimum_selection_rank_percentile
+        )
         & candidate["execution_eligible"].fillna(False)
     )
     selected = first_crossing_candidates(candidate, config, status_column="variant_pass")
@@ -336,3 +351,11 @@ def _finite_or_none(value: Any) -> Any:
         return None
     numeric = float(value)
     return numeric if np.isfinite(numeric) else None
+
+
+def _number_or_default(value: Any, default: float) -> float:
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return default
+    return numeric if np.isfinite(numeric) else default

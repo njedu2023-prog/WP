@@ -3,12 +3,12 @@ requires = ["setuptools>=68", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "wp-limitup-probability"
-version = "3.0.0"
+name = "wp-tail-t1-profit"
+version = "4.0.0"
 description = "WP A股尾盘买入后T+1净盈利概率决策系统"
 requires-python = ">=3.10"
 dependencies = [
-  "pandas>=2.0",
+  "pandas>=2.0,<3.0",
   "numpy>=1.24",
   "PyYAML>=6.0",
   "requests>=2.31",

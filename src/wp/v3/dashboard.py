@@ -46,11 +46,21 @@ def render_v3_dashboard(
     ].copy()
     passed = _attach_locked_candidate_fields(passed, session)
     if not passed.empty:
-        passed = passed.sort_values(
-            ["p_net_positive_lower", "expected_net_return_pct"],
-            ascending=False,
-            kind="stable",
-        )
+        passed_sort = [
+            column
+            for column in (
+                "selection_score",
+                "p_net_positive_lower",
+                "expected_net_return_pct",
+            )
+            if column in passed
+        ]
+        if passed_sort:
+            passed = passed.sort_values(
+                passed_sort,
+                ascending=False,
+                kind="stable",
+            )
     session_candidates = pd.DataFrame(session.get("candidates", []))
     near = _near_candidates(predictions)
     historical = [
@@ -85,7 +95,7 @@ def render_v3_dashboard(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V3 尾盘 T+1 决策台</title>
+<title>WP V4 尾盘 T+1 决策台</title>
 <style>
 :root {{
   --ink:#171a1f; --muted:#66707b; --line:#d9dee5; --paper:#ffffff;
@@ -134,7 +144,7 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
 </head>
 <body>
 <header><div class="header-inner">
-  <div><h1>WP V3 尾盘 T+1 决策台</h1>
+  <div><h1>WP V4 尾盘 T+1 决策台</h1>
   <div class="sub">目标：14:20–14:50 可成交买入，固定 T+1 收盘卖出后净收益为正</div></div>
   <div class="run-state"><div>{_e(trade_date)} · {_e(manifest.get('signal_slot', ''))}</div>
   <strong class="{status_class}">{_e(title_state)}</strong></div>
@@ -222,6 +232,7 @@ def _candidate_table(frame: pd.DataFrame, *, live: bool) -> str:
             + f"<td class='num'>{int(row.get('appearance_count') or 1)}</td>"
             f"<td class='num good'>{_pct(row.get('p_net_positive'))}</td>"
             f"<td class='num'>{_pct(row.get('p_net_positive_lower'))}</td>"
+            f"<td class='num'>{_pct(row.get('selection_rank_pct'))}</td>"
             f"<td class='num'>{_pct(row.get('expected_net_return_pct'), already_percent=True)}</td>"
             f"<td class='num'>{_pct(row.get('downside_q10_pct'), already_percent=True)}</td>"
             f"<td>{_e(_candidate_status(row))}</td>"
@@ -235,7 +246,7 @@ def _candidate_table(frame: pd.DataFrame, *, live: bool) -> str:
     return (
         '<div class="table-wrap"><table><thead><tr><th>股票</th>'
         + timing_headers
-        + "<th>出现次数</th><th>净盈利概率</th><th>保守下界</th><th>期望净收益</th>"
+        + "<th>出现次数</th><th>净盈利概率</th><th>保守下界</th><th>同槽选择分位</th><th>期望净收益</th>"
         "<th>下行 Q10</th><th>状态</th></tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
@@ -263,6 +274,8 @@ def _attach_locked_candidate_fields(
             "last_signal_time",
             "appearance_count",
             "status",
+            "selection_rank_pct",
+            "selection_score",
         ):
             result.at[index, field] = candidate.get(field)
     return result
@@ -294,7 +307,20 @@ def _near_candidates(predictions: pd.DataFrame) -> pd.DataFrame:
         predictions.get("execution_eligible", pd.Series(False, index=predictions.index)).fillna(False)
         & ~predictions.get("passes_policy", pd.Series(False, index=predictions.index)).fillna(False)
     ].copy()
-    return eligible.sort_values("p_net_positive", ascending=False).head(20)
+    sort_columns = [
+        column
+        for column in (
+            "selection_score",
+            "selection_rank_pct",
+            "p_net_positive",
+        )
+        if column in eligible
+    ]
+    return eligible.sort_values(
+        sort_columns,
+        ascending=False,
+        kind="stable",
+    ).head(20)
 
 
 def _near_table(frame: pd.DataFrame) -> str:
@@ -309,6 +335,7 @@ def _near_table(frame: pd.DataFrame) -> str:
                 ("passes_probability_lower", "下界"),
                 ("passes_expected_return", "期望收益"),
                 ("passes_downside", "下行风险"),
+                ("passes_selection_rank", "同槽排序"),
                 ("passes_sample", "校准样本"),
                 ("passes_empirical_lower", "经验下界"),
                 ("passes_stability", "稳定性"),
@@ -332,7 +359,7 @@ def _near_table(frame: pd.DataFrame) -> str:
 
 def _validation_table(records: list[dict[str, Any]]) -> str:
     if not records:
-        return '<div class="empty">V3 尚无完成 T+1 真值验证的候选。</div>'
+        return '<div class="empty">尚无完成 T+1 真值验证的候选。</div>'
     rows = []
     for row in records[-100:][::-1]:
         net_return = row.get("net_return_pct")
@@ -367,12 +394,12 @@ def _diagnostic_section(backtest: dict[str, Any]) -> str:
         return ""
     quality = diagnostics.get("score_quality", {})
     probability = quality.get("probability", {})
-    composite = quality.get("composite_rank", {})
+    composite = quality.get("selection_score", {})
     funnel = diagnostics.get("policy_funnel", [])
     top_rows = [
         row
         for row in diagnostics.get("top_n_per_slot", [])
-        if row.get("score") in {"probability", "composite_rank"}
+        if row.get("score") in {"probability", "selection_score"}
         and int(row.get("top_n") or 0) in {1, 3, 5}
     ]
     funnel_rows = "".join(
@@ -404,9 +431,9 @@ def _diagnostic_section(backtest: dict[str, Any]) -> str:
             "概率-收益秩相关",
             _number(probability.get("rank_correlation_to_net_return"), 3),
         )
-        + _metric("组合 ROC AUC", _number(composite.get("roc_auc"), 3))
+        + _metric("选择分 ROC AUC", _number(composite.get("roc_auc"), 3))
         + _metric(
-            "组合-收益秩相关",
+            "选择分-收益秩相关",
             _number(composite.get("rank_correlation_to_net_return"), 3),
         )
         + "</div>"
@@ -416,7 +443,7 @@ def _diagnostic_section(backtest: dict[str, Any]) -> str:
         + funnel_rows
         + "</tbody></table></div>"
         '<h3 style="margin-top:16px">每时点 Top-N 诊断</h3>'
-        '<p class="foot">仅检验排序能力；这些组合没有被用来回填或改写固定策略。</p>'
+        '<p class="foot">仅检验排序能力；这些诊断组合没有被用来回填或改写固定策略。</p>'
         '<div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th>'
         "<th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th>"
         "</tr></thead><tbody>"

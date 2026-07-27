@@ -20,7 +20,7 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build the three-year point-in-time WP V3 causal feature panel."
+        description="Build the three-year point-in-time WP V4 causal feature panel."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument("--output-dir", default=str(ROOT / "artifacts" / "wp_v3_history"))

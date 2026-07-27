@@ -17,6 +17,7 @@ GATE_ORDER = (
     ("passes_probability_lower", "probability_lower"),
     ("passes_expected_return", "expected_return"),
     ("passes_downside", "downside"),
+    ("passes_selection_rank", "selection_rank"),
     ("passes_sample", "calibration_sample"),
     ("passes_empirical_lower", "empirical_lower"),
     ("passes_stability", "model_stability"),
@@ -27,6 +28,8 @@ SCORE_COLUMNS = {
     "probability": "p_net_positive",
     "expected_return": "expected_net_return_pct",
     "conservative_probability": "p_net_positive_lower",
+    "learned_rank": "ranking_score",
+    "selection_score": "selection_score",
 }
 
 
@@ -37,7 +40,7 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v3_prediction_diagnostics_1",
+            "schema_version": "wp_v4_prediction_diagnostics_2",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
@@ -61,6 +64,8 @@ def build_prediction_diagnostics(
         *SCORE_COLUMNS.values(),
         "downside_q10_pct",
         "probability_model_spread",
+        "selection_rank_spread",
+        "selection_rank_pct",
     }:
         frame[column] = pd.to_numeric(frame.get(column), errors="coerce")
     frame = frame.loc[frame["target_net_positive"].notna()].copy()
@@ -69,7 +74,7 @@ def build_prediction_diagnostics(
 
     score_columns = {
         **SCORE_COLUMNS,
-        "composite_rank": "_composite_rank",
+        "legacy_composite_rank": "_composite_rank",
     }
     score_quality = {
         name: _score_quality(frame, column)
@@ -100,7 +105,7 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v3_prediction_diagnostics_1",
+        "schema_version": "wp_v4_prediction_diagnostics_2",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),
@@ -111,6 +116,8 @@ def build_prediction_diagnostics(
                 **score_columns,
                 "downside_q10": "downside_q10_pct",
                 "model_spread": "probability_model_spread",
+                "selection_rank_spread": "selection_rank_spread",
+                "selection_rank_percentile": "selection_rank_pct",
             }.items()
         },
         "score_quality": score_quality,
@@ -140,7 +147,11 @@ def _policy_funnel(frame: pd.DataFrame) -> list[dict[str, Any]]:
     cumulative = pd.Series(True, index=frame.index, dtype=bool)
     rows: list[dict[str, Any]] = []
     for column, label in GATE_ORDER:
-        gate = _boolean(frame.get(column), frame.index)
+        gate = (
+            _boolean(frame[column], frame.index)
+            if column in frame
+            else pd.Series(True, index=frame.index, dtype=bool)
+        )
         cumulative &= gate
         rows.append(
             {

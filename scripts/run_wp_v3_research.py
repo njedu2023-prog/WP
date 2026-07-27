@@ -30,9 +30,19 @@ ROOT = Path(__file__).resolve().parents[1]
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
 
+def _strict_json(value: object) -> str:
+    return json.dumps(
+        value,
+        ensure_ascii=False,
+        indent=2,
+        sort_keys=True,
+        allow_nan=False,
+    )
+
+
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run full walk-forward research and register a WP V3 shadow model."
+        description="Run full walk-forward research and register a WP V4 shadow model."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument(
@@ -75,19 +85,19 @@ def main() -> int:
 
     backtest_path = output / "wp_v3_backtest.json"
     backtest_path.write_text(
-        json.dumps(backtest.summary(), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        _strict_json(backtest.summary()) + "\n",
         encoding="utf-8",
     )
     metadata_path = output / "wp_v3_model_metadata.json"
     metadata_path.write_text(
-        json.dumps(metadata, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        _strict_json(metadata) + "\n",
         encoding="utf-8",
     )
     candidate_path = output / "wp_v3_oos_candidates.csv"
     backtest.candidates.to_csv(candidate_path, index=False, encoding="utf-8-sig")
     diagnostics = backtest.metrics.get("diagnostics", {})
     (output / "wp_v3_prediction_diagnostics.json").write_text(
-        json.dumps(diagnostics, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        _strict_json(diagnostics) + "\n",
         encoding="utf-8",
     )
     for name, table in diagnostics_tables(diagnostics).items():
@@ -102,7 +112,7 @@ def main() -> int:
     replay_json_path.parent.mkdir(parents=True, exist_ok=True)
     replay_csv_path.parent.mkdir(parents=True, exist_ok=True)
     replay_json_path.write_text(
-        json.dumps(replay, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        _strict_json(replay) + "\n",
         encoding="utf-8",
     )
     pd.DataFrame(replay["candidates"]).to_csv(
@@ -128,7 +138,7 @@ def main() -> int:
     save_registry(registry, args.registry)
 
     summary = {
-        "schema_version": "wp_v3_research_summary_1",
+        "schema_version": "wp_v4_research_summary_1",
         "dataset": asdict(audit),
         "date_start": str(panel["trade_date"].min()),
         "date_end": str(panel["trade_date"].max()),
@@ -139,7 +149,7 @@ def main() -> int:
         "minimum_shadow_trading_days": config.promotion.minimum_shadow_trading_days,
     }
     (output / "wp_v3_research_summary.json").write_text(
-        json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        _strict_json(summary) + "\n",
         encoding="utf-8",
     )
     _render_research_audit_dashboard(
@@ -151,7 +161,7 @@ def main() -> int:
         research_start=str(panel["trade_date"].min()),
         research_end=str(panel["trade_date"].max()),
     )
-    print(json.dumps(summary, ensure_ascii=False, indent=2))
+    print(_strict_json(summary))
     return 0
 
 

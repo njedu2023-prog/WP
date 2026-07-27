@@ -98,14 +98,14 @@ def run_once(signal_slot: str | None = None) -> None:
         env["WP_EXPECTED_TRADE_DATE"] = str(source_manifest["trade_date"])
         env["WP_V3_SIGNAL_SLOT"] = str(source_manifest["signal_slot"])
         print(
-            "WP V3 causal source ready: "
+            "WP V4 causal source ready: "
             f"{source_path} slot={source_manifest['signal_slot']}"
         )
     elif current.time() > time(14, 50) and live_path.exists():
         env["WP_V3_SOURCE_CSV"] = live_path.as_posix()
-        print("WP V3 uses the frozen 14:50 feature snapshot for close-state rendering.")
+        print("WP V4 uses the frozen 14:50 feature snapshot for close-state rendering.")
     else:
-        print("::warning::WP V3 live source is absent before the signal window.")
+        print("::warning::WP V4 live source is absent before the signal window.")
     manifest_path = Path("outputs/json/wp_manifest.json")
     manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
@@ -199,7 +199,7 @@ def run_session() -> None:
                     env=os.environ,
                 )
                 print(
-                    "WP V3 warmup snapshot ready: "
+                    "WP V4 warmup snapshot ready: "
                     f"slot={slot} rows={manifest['row_count']} "
                     f"coverage={manifest['tail_universe_coverage']:.2%}"
                 )

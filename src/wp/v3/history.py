@@ -167,6 +167,19 @@ def build_three_year_panel(
     output = Path(output_dir)
     partition_dir = output / "panel"
     partition_dir.mkdir(parents=True, exist_ok=True)
+    existing_manifest = _reusable_panel_manifest(
+        output / "wp_v3_dataset_manifest.json",
+        partition_dir=partition_dir,
+        config=config,
+    )
+    if existing_manifest is not None:
+        print(
+            "reusing verified WP V4 causal panel "
+            f"{config.history.start_date}-{config.history.end_date}",
+            flush=True,
+        )
+        return existing_manifest
+
     start = _date(config.history.start_date)
     warmup_start = (start - timedelta(days=120)).strftime("%Y%m%d")
     end = config.history.end_date
@@ -356,7 +369,7 @@ def build_three_year_panel(
 def load_panel_partitions(path: str | Path) -> pd.DataFrame:
     files = sorted(Path(path).glob("wp_v3_panel_*.parquet"))
     if not files:
-        raise FileNotFoundError(f"no WP V3 panel partitions under {path}")
+        raise FileNotFoundError(f"no WP V4 panel partitions under {path}")
     return pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)
 
 
@@ -507,6 +520,7 @@ def _build_prior_day_features(daily: pd.DataFrame, basic: pd.DataFrame) -> pd.Da
     frame["trade_date"] = frame["trade_date"].astype(str)
     frame = frame.sort_values(["ts_code", "trade_date"], kind="stable")
     for column in (
+        "open",
         "close",
         "high",
         "low",
@@ -523,14 +537,66 @@ def _build_prior_day_features(daily: pd.DataFrame, basic: pd.DataFrame) -> pd.Da
     adjusted_grouped = adjusted_close.groupby(frame["ts_code"], sort=False)
     total_return = (adjusted_close / adjusted_grouped.shift(1) - 1.0) * 100.0
     frame["prev_1d_return_pct"] = total_return.groupby(frame["ts_code"]).shift(1)
-    for days in (2, 5, 10, 20):
+    for days in (2, 3, 5, 10, 20):
         previous_close = adjusted_grouped.shift(1)
         base_close = adjusted_grouped.shift(days + 1)
         frame[f"prev_{days}d_return_pct"] = (previous_close / base_close - 1.0) * 100.0
     shifted_return = total_return.groupby(frame["ts_code"]).shift(1)
+    for days, minimum in ((5, 3), (10, 7), (20, 15)):
+        frame[f"prev_{days}d_positive_share"] = (
+            shifted_return.gt(0)
+            .astype(float)
+            .groupby(frame["ts_code"])
+            .rolling(days, min_periods=minimum)
+            .mean()
+            .reset_index(level=0, drop=True)
+        )
     frame["prev_20d_volatility_pct"] = (
         shifted_return.groupby(frame["ts_code"]).rolling(20, min_periods=15).std().reset_index(level=0, drop=True)
     )
+    downside = shifted_return.where(shifted_return.lt(0), 0.0)
+    frame["prev_20d_downside_volatility_pct"] = (
+        downside.groupby(frame["ts_code"])
+        .rolling(20, min_periods=15)
+        .std()
+        .reset_index(level=0, drop=True)
+    )
+    prior_adjusted_close = adjusted_grouped.shift(1)
+    prior_20d_high = (
+        prior_adjusted_close.groupby(frame["ts_code"])
+        .rolling(20, min_periods=15)
+        .max()
+        .reset_index(level=0, drop=True)
+    )
+    frame["prev_20d_drawdown_pct"] = (
+        prior_adjusted_close / prior_20d_high.replace(0, np.nan) - 1.0
+    ) * 100.0
+    day_gap = (frame["open"] / frame["pre_close"].replace(0, np.nan) - 1.0) * 100.0
+    day_intraday = (frame["close"] / frame["open"].replace(0, np.nan) - 1.0) * 100.0
+    day_range = frame["high"] - frame["low"]
+    day_close_position = np.where(
+        day_range.gt(0),
+        (frame["close"] - frame["low"]) / day_range,
+        0.5,
+    )
+    day_upper_wick = (
+        (frame["high"] - frame[["open", "close"]].max(axis=1))
+        / frame["pre_close"].replace(0, np.nan)
+        * 100.0
+    )
+    day_lower_wick = (
+        (frame[["open", "close"]].min(axis=1) - frame["low"])
+        / frame["pre_close"].replace(0, np.nan)
+        * 100.0
+    )
+    for name, values in (
+        ("prev_day_gap_pct", day_gap),
+        ("prev_day_intraday_return_pct", day_intraday),
+        ("prev_day_close_position", pd.Series(day_close_position, index=frame.index)),
+        ("prev_day_upper_wick_pct", day_upper_wick),
+        ("prev_day_lower_wick_pct", day_lower_wick),
+    ):
+        frame[name] = values.groupby(frame["ts_code"]).shift(1)
     amplitude = (frame["high"] - frame["low"]) / frame["pre_close"].replace(0, np.nan) * 100.0
     shifted_amplitude = amplitude.groupby(frame["ts_code"]).shift(1)
     frame["prev_5d_amplitude_pct"] = (
@@ -540,8 +606,29 @@ def _build_prior_day_features(daily: pd.DataFrame, basic: pd.DataFrame) -> pd.Da
     frame["prev_20d_amount"] = (
         shifted_amount.groupby(frame["ts_code"]).rolling(20, min_periods=15).mean().reset_index(level=0, drop=True)
     )
+    previous_5d_amount = (
+        shifted_amount.groupby(frame["ts_code"])
+        .rolling(5, min_periods=3)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+    frame["prev_amount_ratio_20d"] = shifted_amount / frame[
+        "prev_20d_amount"
+    ].replace(0, np.nan)
+    frame["prev_5d_amount_ratio_20d"] = previous_5d_amount / frame[
+        "prev_20d_amount"
+    ].replace(0, np.nan)
 
-    basic_columns = ["ts_code", "trade_date", "turnover_rate", "pe_ttm", "pb", "total_mv", "circ_mv"]
+    basic_columns = [
+        "ts_code",
+        "trade_date",
+        "turnover_rate",
+        "volume_ratio",
+        "pe_ttm",
+        "pb",
+        "total_mv",
+        "circ_mv",
+    ]
     basics = basic.reindex(columns=basic_columns).copy()
     basics["trade_date"] = basics["trade_date"].astype(str)
     basics = basics.sort_values(["ts_code", "trade_date"], kind="stable")
@@ -550,22 +637,48 @@ def _build_prior_day_features(daily: pd.DataFrame, basic: pd.DataFrame) -> pd.Da
         if column in {"total_mv", "circ_mv"}:
             basics[column] = basics[column] * 10_000.0
         basics[column] = basics.groupby("ts_code", sort=False)[column].shift(1)
+    turnover_20d = (
+        basics["turnover_rate"]
+        .groupby(basics["ts_code"])
+        .rolling(20, min_periods=15)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+    basics["prev_turnover_ratio_20d"] = (
+        basics["turnover_rate"] / turnover_20d.replace(0, np.nan)
+    )
     basics = basics.rename(
         columns={
             "turnover_rate": "prev_turnover_rate",
+            "volume_ratio": "prev_volume_ratio",
+            "pe_ttm": "prev_pe_ttm",
+            "pb": "prev_pb",
             "circ_mv": "float_mv",
         }
     )
     keep = [
         "ts_code",
         "trade_date",
+        "prev_day_gap_pct",
+        "prev_day_intraday_return_pct",
+        "prev_day_close_position",
+        "prev_day_upper_wick_pct",
+        "prev_day_lower_wick_pct",
         "prev_1d_return_pct",
         "prev_2d_return_pct",
+        "prev_3d_return_pct",
         "prev_5d_return_pct",
         "prev_10d_return_pct",
         "prev_20d_return_pct",
+        "prev_5d_positive_share",
+        "prev_10d_positive_share",
+        "prev_20d_positive_share",
         "prev_20d_volatility_pct",
+        "prev_20d_downside_volatility_pct",
+        "prev_20d_drawdown_pct",
         "prev_5d_amplitude_pct",
+        "prev_amount_ratio_20d",
+        "prev_5d_amount_ratio_20d",
         "prev_20d_amount",
     ]
     return frame[keep].merge(basics, on=["ts_code", "trade_date"], how="left")
@@ -724,6 +837,9 @@ def _build_day_panel(
         ) * 100.0
         snapshots["ret_from_open_pct"] = (
             snapshots["signal_price"] / snapshots["day_open"] - 1.0
+        ) * 100.0
+        snapshots["gap_open_pct"] = (
+            snapshots["day_open"] / snapshots["pre_close"] - 1.0
         ) * 100.0
         snapshots["distance_to_up_limit_pct"] = (
             snapshots["up_limit"] / snapshots["signal_price"] - 1.0
@@ -1005,24 +1121,43 @@ def _slot_features_for_slots(
     bars: pd.DataFrame,
     slots: tuple[str, ...],
 ) -> pd.DataFrame:
+    output_columns = [
+        "ts_code",
+        "signal_slot",
+        "slot_close",
+        "slot_amount",
+        "slot_bar_time",
+        "slot_bar_lag_minutes",
+        "intraday_snapshot_count",
+        "ret_5m_pct",
+        "ret_10m_pct",
+        "ret_20m_pct",
+        "bar_body_pct",
+        "bar_range_pct",
+        "bar_upper_wick_pct",
+        "bar_lower_wick_pct",
+        "tail_range_10m_pct",
+        "tail_close_position_10m",
+        "tail_return_from_1400_pct",
+        "tail_range_since_1400_pct",
+        "tail_close_position_since_1400",
+        "tail_amount_weighted_price_gap_pct",
+        "tail_realized_volatility_pct",
+        "tail_mean_abs_return_pct",
+        "tail_up_bar_share",
+        "tail_down_bar_share",
+        "tail_directional_efficiency",
+        "tail_trend_slope_pct",
+        "tail_trend_r2",
+        "tail_max_drawdown_pct",
+        "tail_rebound_from_low_pct",
+        "tail_cumulative_amount",
+        "tail_latest_amount_share",
+        "tail_amount_concentration",
+        "tail_amount_acceleration",
+    ]
     if bars.empty:
-        return pd.DataFrame(
-            columns=[
-                "ts_code",
-                "signal_slot",
-                "slot_close",
-                "slot_amount",
-                "slot_bar_time",
-                "slot_bar_lag_minutes",
-                "intraday_snapshot_count",
-                "ret_5m_pct",
-                "ret_10m_pct",
-                "ret_20m_pct",
-                "tail_range_10m_pct",
-                "tail_close_position_10m",
-                "tail_amount_acceleration",
-            ]
-        )
+        return pd.DataFrame(columns=output_columns)
 
     frame = bars.sort_values(
         ["ts_code", "trade_time"],
@@ -1030,6 +1165,8 @@ def _slot_features_for_slots(
     ).reset_index(drop=True)
     frame["trade_time"] = pd.to_datetime(frame["trade_time"], errors="coerce")
     frame = frame.dropna(subset=["ts_code", "trade_time"])
+    for column in ("open", "high", "low", "close", "amount"):
+        frame[column] = pd.to_numeric(frame[column], errors="coerce")
     grouped = frame.groupby("ts_code", sort=False)
     frame["_snapshot_count"] = grouped.cumcount() + 1
     for periods, column in (
@@ -1067,6 +1204,126 @@ def _slot_features_for_slots(
         frame["amount"] / previous_three_mean,
         np.nan,
     )
+    previous_close = grouped["close"].shift(1)
+    frame["_bar_log_return"] = np.log(
+        frame["close"]
+        / previous_close.fillna(frame["open"]).replace(0, np.nan)
+    )
+    frame["_bar_abs_return"] = frame["_bar_log_return"].abs()
+    frame["_bar_up"] = frame["_bar_log_return"].gt(0).astype(float)
+    frame["_bar_down"] = frame["_bar_log_return"].lt(0).astype(float)
+    frame["_return_sum"] = frame.groupby("ts_code", sort=False)[
+        "_bar_log_return"
+    ].cumsum()
+    frame["_return_sq_sum"] = (
+        frame["_bar_log_return"].pow(2).groupby(frame["ts_code"], sort=False).cumsum()
+    )
+    frame["_abs_return_sum"] = frame.groupby("ts_code", sort=False)[
+        "_bar_abs_return"
+    ].cumsum()
+    frame["_up_count"] = frame.groupby("ts_code", sort=False)["_bar_up"].cumsum()
+    frame["_down_count"] = frame.groupby("ts_code", sort=False)["_bar_down"].cumsum()
+    count = frame["_snapshot_count"].astype(float)
+    variance = (
+        frame["_return_sq_sum"] - frame["_return_sum"].pow(2) / count
+    ) / (count - 1.0).replace(0, np.nan)
+    frame["tail_realized_volatility_pct"] = np.sqrt(
+        variance.clip(lower=0)
+    ) * 100.0
+    frame["tail_mean_abs_return_pct"] = (
+        frame["_abs_return_sum"] / count * 100.0
+    )
+    frame["tail_up_bar_share"] = frame["_up_count"] / count
+    frame["tail_down_bar_share"] = frame["_down_count"] / count
+
+    first_open = grouped["open"].transform("first")
+    cumulative_high = grouped["high"].cummax()
+    cumulative_low = grouped["low"].cummin()
+    cumulative_amount = grouped["amount"].cumsum()
+    cumulative_max_amount = grouped["amount"].cummax()
+    typical_price = (frame["high"] + frame["low"] + frame["close"]) / 3.0
+    cumulative_weighted_price = (
+        (typical_price * frame["amount"])
+        .groupby(frame["ts_code"], sort=False)
+        .cumsum()
+        / cumulative_amount.replace(0, np.nan)
+    )
+    frame["tail_return_from_1400_pct"] = (
+        frame["close"] / first_open.replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["tail_range_since_1400_pct"] = (
+        cumulative_high / cumulative_low.replace(0, np.nan) - 1.0
+    ) * 100.0
+    cumulative_width = cumulative_high - cumulative_low
+    frame["tail_close_position_since_1400"] = np.where(
+        cumulative_width.gt(0),
+        (frame["close"] - cumulative_low) / cumulative_width,
+        0.5,
+    )
+    frame["tail_amount_weighted_price_gap_pct"] = (
+        frame["close"] / cumulative_weighted_price.replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["tail_directional_efficiency"] = np.where(
+        frame["_abs_return_sum"].gt(0),
+        np.log(frame["close"] / first_open.replace(0, np.nan))
+        / frame["_abs_return_sum"],
+        0.0,
+    )
+    running_high_close = grouped["close"].cummax()
+    running_low_close = grouped["close"].cummin()
+    current_drawdown = (
+        frame["close"] / running_high_close.replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["tail_max_drawdown_pct"] = current_drawdown.groupby(
+        frame["ts_code"],
+        sort=False,
+    ).cummin()
+    frame["tail_rebound_from_low_pct"] = (
+        frame["close"] / running_low_close.replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["tail_cumulative_amount"] = cumulative_amount
+    frame["tail_latest_amount_share"] = (
+        frame["amount"] / cumulative_amount.replace(0, np.nan)
+    )
+    frame["tail_amount_concentration"] = (
+        cumulative_max_amount / cumulative_amount.replace(0, np.nan)
+    )
+
+    x = grouped.cumcount().astype(float)
+    sum_x = count * (count - 1.0) / 2.0
+    sum_x2 = count * (count - 1.0) * (2.0 * count - 1.0) / 6.0
+    log_close = np.log(frame["close"].replace(0, np.nan))
+    sum_y = log_close.groupby(frame["ts_code"], sort=False).cumsum()
+    sum_y2 = log_close.pow(2).groupby(frame["ts_code"], sort=False).cumsum()
+    sum_xy = (x * log_close).groupby(frame["ts_code"], sort=False).cumsum()
+    covariance_numerator = count * sum_xy - sum_x * sum_y
+    x_variance_numerator = count * sum_x2 - sum_x.pow(2)
+    y_variance_numerator = count * sum_y2 - sum_y.pow(2)
+    frame["tail_trend_slope_pct"] = (
+        covariance_numerator / x_variance_numerator.replace(0, np.nan) * 100.0
+    )
+    frame["tail_trend_r2"] = (
+        covariance_numerator.pow(2)
+        / (
+            x_variance_numerator.replace(0, np.nan)
+            * y_variance_numerator.replace(0, np.nan)
+        )
+    ).clip(lower=0.0, upper=1.0)
+
+    high_body = frame[["open", "close"]].max(axis=1)
+    low_body = frame[["open", "close"]].min(axis=1)
+    frame["bar_body_pct"] = (
+        frame["close"] / frame["open"].replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["bar_range_pct"] = (
+        frame["high"] / frame["low"].replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["bar_upper_wick_pct"] = (
+        frame["high"] / high_body.replace(0, np.nan) - 1.0
+    ) * 100.0
+    frame["bar_lower_wick_pct"] = (
+        low_body / frame["low"].replace(0, np.nan) - 1.0
+    ) * 100.0
 
     frame["slot_amount"] = pd.to_numeric(
         frame["slot_amount"] if "slot_amount" in frame else frame["amount"],
@@ -1117,6 +1374,26 @@ def _slot_features_for_slots(
             "ret_20m_pct",
             "tail_range_10m_pct",
             "tail_close_position_10m",
+            "bar_body_pct",
+            "bar_range_pct",
+            "bar_upper_wick_pct",
+            "bar_lower_wick_pct",
+            "tail_return_from_1400_pct",
+            "tail_range_since_1400_pct",
+            "tail_close_position_since_1400",
+            "tail_amount_weighted_price_gap_pct",
+            "tail_realized_volatility_pct",
+            "tail_mean_abs_return_pct",
+            "tail_up_bar_share",
+            "tail_down_bar_share",
+            "tail_directional_efficiency",
+            "tail_trend_slope_pct",
+            "tail_trend_r2",
+            "tail_max_drawdown_pct",
+            "tail_rebound_from_low_pct",
+            "tail_cumulative_amount",
+            "tail_latest_amount_share",
+            "tail_amount_concentration",
             "tail_amount_acceleration",
         ]
     ].copy()
@@ -1137,23 +1414,7 @@ def _slot_features_for_slots(
     matched["slot_bar_time"] = matched["trade_time"].dt.strftime(
         "%Y-%m-%d %H:%M:%S"
     )
-    return matched[
-        [
-            "ts_code",
-            "signal_slot",
-            "slot_close",
-            "slot_amount",
-            "slot_bar_time",
-            "slot_bar_lag_minutes",
-            "intraday_snapshot_count",
-            "ret_5m_pct",
-            "ret_10m_pct",
-            "ret_20m_pct",
-            "tail_range_10m_pct",
-            "tail_close_position_10m",
-            "tail_amount_acceleration",
-        ]
-    ].reset_index(drop=True)
+    return matched[output_columns].reset_index(drop=True)
 
 
 def _add_market_context(panel: pd.DataFrame) -> pd.DataFrame:
@@ -1163,7 +1424,27 @@ def _add_market_context(panel: pd.DataFrame) -> pd.DataFrame:
     result["market_breadth"] = grouped["ret_from_prev_close_pct"].transform(
         lambda values: values.gt(0).mean()
     )
+    result["market_breadth_above_2pct"] = grouped[
+        "ret_from_prev_close_pct"
+    ].transform(lambda values: values.gt(2.0).mean())
+    result["market_breadth_above_5pct"] = grouped[
+        "ret_from_prev_close_pct"
+    ].transform(lambda values: values.gt(5.0).mean())
+    result["market_return_dispersion_pct"] = grouped[
+        "ret_from_prev_close_pct"
+    ].transform("std")
+    result["market_gap_pct"] = grouped["gap_open_pct"].transform("median")
     result["market_tail_return_pct"] = grouped["ret_20m_pct"].transform("median")
+    result["market_tail_breadth"] = grouped["ret_20m_pct"].transform(
+        lambda values: values.gt(0).mean()
+    )
+    result["market_tail_dispersion_pct"] = grouped["ret_20m_pct"].transform("std")
+    result["market_prev_5d_return_pct"] = grouped["prev_5d_return_pct"].transform(
+        "median"
+    )
+    result["market_prev_20d_volatility_pct"] = grouped[
+        "prev_20d_volatility_pct"
+    ].transform("median")
     result["up_limit_count"] = grouped["distance_to_up_limit_pct"].transform(
         lambda values: values.le(0.10).sum()
     )
@@ -1178,6 +1459,8 @@ def _add_industry_context(panel: pd.DataFrame) -> pd.DataFrame:
     valid = result["industry"].fillna("").astype(str).ne("")
     result["industry_return_pct"] = np.nan
     result["industry_breadth"] = np.nan
+    result["industry_tail_return_pct"] = np.nan
+    result["industry_tail_breadth"] = np.nan
     if valid.any():
         grouped = result.loc[valid].groupby(
             ["trade_date", "signal_slot", "industry"], sort=False
@@ -1187,6 +1470,12 @@ def _add_industry_context(panel: pd.DataFrame) -> pd.DataFrame:
         ].transform("median")
         result.loc[valid, "industry_breadth"] = grouped[
             "ret_from_prev_close_pct"
+        ].transform(lambda values: values.gt(0).mean())
+        result.loc[valid, "industry_tail_return_pct"] = grouped[
+            "ret_20m_pct"
+        ].transform("median")
+        result.loc[valid, "industry_tail_breadth"] = grouped[
+            "ret_20m_pct"
         ].transform(lambda values: values.gt(0).mean())
     return result
 
@@ -1337,3 +1626,55 @@ def _read_json(path: Path) -> dict[str, Any]:
         return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):
         return {}
+
+
+def _reusable_panel_manifest(
+    manifest_path: Path,
+    *,
+    partition_dir: Path,
+    config: V3Config,
+) -> dict[str, Any] | None:
+    manifest = _read_json(manifest_path)
+    expected = {
+        "schema_version": "wp_v3_causal_panel_1",
+        "strategy_id": config.strategy.strategy_id,
+        "feature_version": config.model.feature_version,
+        "requested_start": config.history.start_date,
+        "requested_end": config.history.end_date,
+        "execution_contract": json.loads(json.dumps(asdict(config.execution))),
+        "signal_slots": list(config.strategy.signal_slots),
+        "exit_contract": config.strategy.exit_contract,
+    }
+    if any(manifest.get(key) != value for key, value in expected.items()):
+        return None
+    if float(manifest.get("coverage", 0.0) or 0.0) < 0.98:
+        return None
+    if manifest.get("failed_trade_days"):
+        return None
+
+    partitions = manifest.get("partitions")
+    if not isinstance(partitions, list) or not partitions:
+        return None
+    for item in partitions:
+        if not isinstance(item, dict):
+            return None
+        path_value = item.get("path")
+        expected_digest = str(item.get("sha256") or "")
+        if not path_value or not expected_digest:
+            return None
+        partition_path = partition_dir / Path(str(path_value)).name
+        if (
+            not partition_path.is_file()
+            or partition_path.stat().st_size <= 0
+            or _file_sha256(partition_path) != expected_digest
+        ):
+            return None
+    return manifest
+
+
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as source:
+        for block in iter(lambda: source.read(1024 * 1024), b""):
+            digest.update(block)
+    return digest.hexdigest()

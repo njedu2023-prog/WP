@@ -93,7 +93,7 @@ def capture_warmup_input(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build exact WP V3 live causal features.")
+    parser = argparse.ArgumentParser(description="Build exact WP V4 live causal features.")
     parser.add_argument("--signal-slot", choices=DEFAULT_SIGNAL_SLOTS)
     args = parser.parse_args()
     if args.signal_slot:

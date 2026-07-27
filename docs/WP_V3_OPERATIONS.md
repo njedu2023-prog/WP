@@ -1,8 +1,8 @@
-# WP V3 运行手册
+# WP V4 运行手册
 
 ## 工作流边界
 
-### Run WP V3 Tail Session
+### Run WP V4 Tail Session
 
 - 北京时间 13:56 启动；
 - 14:00、14:05、14:10、14:15 只采集暖机 5 分钟 K 线，不运行候选判定；
@@ -19,7 +19,7 @@
 - 日线、涨跌停和复权真值均超过 1,000 行才接受；
 - 真值未到时保留 pending，不伪造、不提前完成。
 
-### Research WP V3 Three-Year Model
+### Research WP V4 Three-Year Model
 
 - 手动或每月非交易时段运行；
 - 历史接口响应和因果面板使用 Actions cache；

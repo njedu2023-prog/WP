@@ -1,6 +1,6 @@
 strategy:
-  strategy_id: wp_t1_net_profit_v3
-  model_family: calibrated_temporal_ensemble_v3
+  strategy_id: wp_t1_net_profit_v4
+  model_family: calibrated_tail_rank_ensemble_v4
   timezone: Asia/Shanghai
   signal_slots: ["14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50"]
   candidate_freeze_time: "14:55"
@@ -27,22 +27,24 @@ execution:
   non_fill_penalty_pct: -10.00
 
 model:
-  policy_implementation_version: wp_v3_policy_20260727_9
-  feature_version: wp_v3_causal_features_5
+  policy_implementation_version: wp_v4_policy_20260727_11
+  feature_version: wp_v4_causal_features_6
   minimum_train_days: 252
-  calibration_days: 21
+  calibration_days: 84
   test_days: 42
   purge_days: 2
   ensemble_windows_days: [126, 252, 504]
-  probability_threshold: 0.60
-  probability_lower_threshold: 0.52
-  min_expected_net_return_pct: 0.30
-  min_downside_q10_pct: -4.50
-  min_calibration_bin_samples: 100
-  min_calibration_bin_days: 10
+  probability_threshold: 0.55
+  probability_lower_threshold: 0.50
+  min_expected_net_return_pct: 0.20
+  min_downside_q10_pct: -3.50
+  minimum_selection_rank_percentile: 0.997
+  min_calibration_bin_samples: 250
+  min_calibration_bin_days: 25
   min_calibration_bin_wilson_lower: 0.52
   min_calibration_bin_clustered_lower: 0.50
-  max_probability_model_spread: 0.10
+  max_probability_model_spread: 0.12
+  max_selection_rank_spread: 0.20
   min_train_rows: 20000
   max_training_rows_per_slot: 300
   random_seed: 20260727

@@ -271,6 +271,9 @@ def build_live_feature_frame(
     snapshots["ret_from_open_pct"] = (
         snapshots["signal_price"] / snapshots["day_open"] - 1.0
     ) * 100.0
+    snapshots["gap_open_pct"] = (
+        snapshots["day_open"] / snapshots["pre_close"] - 1.0
+    ) * 100.0
     snapshots["distance_to_up_limit_pct"] = (
         snapshots["up_limit"] / snapshots["signal_price"] - 1.0
     ) * 100.0
