@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "wp-limitup-probability"
 version = "0.1.0"
-description = "WP 次日涨停概率排序系统"
+description = "WP A股尾盘买入后T+1净盈利概率决策系统"
 requires-python = ">=3.10"
 dependencies = [
   "pandas>=2.0",

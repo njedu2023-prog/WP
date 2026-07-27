@@ -66,16 +66,21 @@ def render_markdown(
         "core_reason",
         "risk_reason",
     ]
-    content = ["# WP Top50", ""]
+    content = ["# WP T+1 净盈利决策", ""]
     content.extend(
         [
-            "## WP V2 人工决策辅助",
+            "## 当日唯一正式决策",
             "",
-            "仅辅助人工下单，不接入券商、不读取账户、不自动交易。",
+            "目标：最大化T日14:20–14:55可成交买入后，T+1收盘卖出的成本后盈利概率。",
             "",
             f"- 当前建议：{_escape(decision_support.get('action', '继续观察'))}",
             f"- 当前首选：{_escape(decision_support.get('candidate_name', ''))} {_escape(decision_support.get('candidate_code', ''))}",
             f"- 判断依据：{_escape(decision_support.get('reason', ''))}",
+            f"- 成本后盈利概率：{_escape(decision_support.get('forecast_profit_probability', '-'))}%",
+            f"- 95%单侧下界：{_escape(decision_support.get('forecast_profit_probability_lower', '-'))}%",
+            f"- 真实样本/独立交易日：{_escape(decision_support.get('forecast_live_sample_count', 0))} / {_escape(decision_support.get('forecast_live_day_count', 0))}",
+            f"- 买入截止：{_escape(decision_support.get('entry_deadline', '14:55'))}",
+            f"- 卖出合同：{_escape(decision_support.get('exit_contract', 'T+1收盘'))}",
             "",
         ]
     )
@@ -96,7 +101,7 @@ def render_markdown(
                 ["ts_code", "name", "open_return_pct", "current_return_pct", "guidance_action", "guidance_reason", "next_checkpoint"],
             )
         )
-    content.extend(["", "## Top50", ""])
+    content.extend(["", "## 研究候选（不等于正式交易）", ""])
     content.append(_table(top50, columns) if not top50.empty else "无符合条件股票。")
     content.append("")
     output.write_text("\n".join(content), encoding="utf-8")

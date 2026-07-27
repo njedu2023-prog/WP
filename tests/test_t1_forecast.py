@@ -26,6 +26,28 @@ def _proxy_rows(count: int = 30) -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def _live_rows(count: int = 30) -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "truth_status": "verified",
+                "plan_trade_date": f"202601{index + 1:02d}",
+                "ts_code": f"601{index:03d}.SH",
+                "sector_name": "电力",
+                "pct_chg_plan": 8.5 + index % 3 * 0.2,
+                "tail_profit_score": 78 + index % 5,
+                "risk_penalty_score": 20 + index % 4,
+                "amount_ratio_5d": 1.2,
+                "return_open_pct": -1 + index % 4,
+                "return_high_pct": 2 + index % 5,
+                "return_low_pct": -4 + index % 3,
+                "return_close_pct": -1.5 + index % 5,
+            }
+            for index in range(count)
+        ]
+    )
+
+
 def test_training_samples_exclude_future_and_non_ten_percent_boards(tmp_path: Path):
     proxy = _proxy_rows(10)
     proxy.loc[len(proxy)] = {
@@ -43,7 +65,7 @@ def test_training_samples_exclude_future_and_non_ten_percent_boards(tmp_path: Pa
     assert "300001.SZ" not in set(samples["ts_code"])
 
 
-def test_forecast_outputs_consistent_ohlc_quantiles(tmp_path: Path):
+def test_proxy_only_data_never_authorizes_live_forecast(tmp_path: Path):
     candidate = pd.DataFrame(
         [
             {
@@ -67,7 +89,41 @@ def test_forecast_outputs_consistent_ohlc_quantiles(tmp_path: Path):
         proxy_samples=_proxy_rows(),
     )
     row = result.table.iloc[0]
-    assert row["forecast_mode"] == "日线代理先验"
+    assert row["forecast_mode"] == "样本不足"
+    assert not bool(row["forecast_actionable"])
+    assert result.summary["proxy_samples_authorize_trades"] is False
+
+
+def test_forecast_outputs_consistent_ohlc_quantiles_from_live_samples(tmp_path: Path):
+    candidate = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "name": "样本",
+                "price": 10.0,
+                "pct_chg": 8.6,
+                "sector_name": "电力",
+                "tail_profit_score": 80,
+                "risk_penalty_score": 22,
+                "amount_ratio_5d": 1.2,
+            }
+        ]
+    )
+    result = build_t1_forecasts(
+        candidate,
+        _live_rows(),
+        tmp_path,
+        "20260228",
+        {
+            "forecast_min_total_samples": 10,
+            "forecast_min_live_samples": 10,
+            "forecast_min_live_days": 10,
+            "forecast_min_effective_samples": 8,
+        },
+        proxy_samples=_proxy_rows(),
+    )
+    row = result.table.iloc[0]
+    assert row["forecast_mode"] == "实时因果样本"
     for target in ("open", "high", "low", "close"):
         assert row[f"forecast_{target}_q10_pct"] <= row[f"forecast_{target}_q50_pct"]
         assert row[f"forecast_{target}_q50_pct"] <= row[f"forecast_{target}_q90_pct"]
@@ -77,6 +133,7 @@ def test_forecast_outputs_consistent_ohlc_quantiles(tmp_path: Path):
         assert row[f"forecast_high_q{suffix}_pct"] >= row[f"forecast_open_q{suffix}_pct"]
         assert row[f"forecast_high_q{suffix}_pct"] >= row[f"forecast_close_q{suffix}_pct"]
     assert row["forecast_open_q50_price"] == round(10 * (1 + row["forecast_open_q50_pct"] / 100), 4)
+    assert row["forecast_profit_probability_lower"] <= row["forecast_profit_probability"]
     assert result.summary["manual_decision_support_only"] is True
 
 
@@ -108,10 +165,15 @@ def test_live_calibration_stops_using_proxy_samples(tmp_path: Path):
         validation,
         tmp_path,
         "20260228",
-        {"forecast_min_total_samples": 10, "forecast_min_live_samples": 10},
+        {
+            "forecast_min_total_samples": 10,
+            "forecast_min_live_samples": 10,
+            "forecast_min_live_days": 10,
+        },
         proxy_samples=_proxy_rows(),
     )
     row = result.table.iloc[0]
-    assert row["forecast_mode"] == "实时样本校准"
+    assert row["forecast_mode"] == "实时因果样本"
     assert row["forecast_live_sample_count"] == 20
+    assert row["forecast_live_day_count"] == 20
     assert row["forecast_proxy_sample_count"] == 0

@@ -10,6 +10,7 @@ from .buy_validation import update_buy_plan_validation
 from .calendar import now_cn
 from .main import ROOT, load_backtest_summaries
 from .report_html import render_html
+from .strategy_ledger import strategy_validation_rows, update_strategy_ledger
 from .tail_sampling import update_tail_sampling
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
 from .tail_window import TAIL_PHASE_CLOSED, tail_window_phase
@@ -61,6 +62,18 @@ def run_close_validation(
     validation_result.summary["sampling_days"] = sampling_result.summary["days"]
     validation_result.summary["sampling_missing_days"] = sampling_result.summary["missing_day_count"]
     health["tail_sampling_missing_days"] = sampling_result.summary["missing_day_count"]
+    strategy_result = update_strategy_ledger(
+        pd.DataFrame(),
+        {},
+        validation_result.table,
+        health,
+        output_root,
+        current,
+    )
+    has_strategy_history = not strategy_result.table.empty
+    report_validation = strategy_result.table if has_strategy_history else validation_result.table
+    report_validation_summary = strategy_result.summary if has_strategy_history else validation_result.summary
+    health["strategy_summary"] = strategy_result.summary
     top50 = _read_csv(output_root / "csv" / "wp_top50.csv")
     full_rank = _read_csv(output_root / "csv" / "wp_full_rank.csv")
     buy_plan = _read_csv(output_root / "csv" / "wp_buy_plan.csv")
@@ -92,6 +105,7 @@ def run_close_validation(
         }
         decision_table = decision_table.iloc[0:0].copy()
     exit_guidance = _read_csv(output_root / "csv" / "wp_t1_exit_guidance.csv")
+    strategy_validation = strategy_validation_rows(strategy_result.table, validation_result.table)
 
     latest_path = output_root / "json" / "latest.json"
     latest_payload = _read_json(latest_path)
@@ -102,6 +116,8 @@ def run_close_validation(
             "validation_updated_at": update_time,
             "buy_plan_validation": validation_result.table.to_dict(orient="records"),
             "buy_plan_validation_summary": validation_result.summary,
+            "strategy_ledger": strategy_result.table.to_dict(orient="records"),
+            "strategy_summary": strategy_result.summary,
             "tail_sampling": sampling_result.table.to_dict(orient="records"),
         }
     )
@@ -129,6 +145,16 @@ def run_close_validation(
             "records": sampling_result.table.to_dict(orient="records"),
         },
     )
+    write_json(
+        output_root / "json" / "wp_strategy_ledger.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "summary": strategy_result.summary,
+            "records": strategy_result.table.to_dict(orient="records"),
+            "validated_research_records": strategy_validation.to_dict(orient="records"),
+        },
+    )
 
     manifest_path = output_root / "json" / "wp_manifest.json"
     manifest = _read_json(manifest_path)
@@ -139,6 +165,7 @@ def run_close_validation(
             "report_revision": update_time,
             "validation_updated_at": update_time,
             "validation_summary": validation_result.summary,
+            "strategy_summary": strategy_result.summary,
         }
     )
     write_json(manifest_path, manifest)
@@ -154,8 +181,8 @@ def run_close_validation(
         latest_html,
         buy_plan=buy_plan,
         observation_pool=tail_observation,
-        validation=validation_result.table,
-        validation_summary=validation_result.summary,
+        validation=report_validation,
+        validation_summary=report_validation_summary,
         backtests=backtests,
         decision_support=decision_support,
         market_regime=market_regime,
@@ -169,8 +196,8 @@ def run_close_validation(
         archive_html,
         buy_plan=buy_plan,
         observation_pool=tail_observation,
-        validation=validation_result.table,
-        validation_summary=validation_result.summary,
+        validation=report_validation,
+        validation_summary=report_validation_summary,
         backtests=backtests,
         decision_support=decision_support,
         market_regime=market_regime,

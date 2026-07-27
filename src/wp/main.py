@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from .backtest import run_backtest
-from .buy_decision import build_buy_decision
+from .buy_decision import BUY_COLUMNS, build_buy_decision
 from .buy_validation import update_buy_plan_validation
 from .calendar import now_cn
 from .candidate_filter import enrich_basic_fields, filter_candidates, flag_limitup
@@ -18,15 +18,25 @@ from .data_loader import read_rank_input
 from .feature_engineering import add_feature_scores
 from .decision_support import build_decision_support
 from .exit_guidance import build_exit_guidance
+from .legacy_history_audit import (
+    build_legacy_history_audit,
+    summarize_legacy_history_audit,
+)
 from .market_regime import MARKET_REGIME_MODEL_VERSION, assess_market_regime
 from .ranking import build_ranked_pool, rank_candidates
 from .report_html import render_html
 from .report_md import render_markdown
 from .scoring_model import MODEL_VERSION, add_scores
+from .strategy_ledger import (
+    STRATEGY_VERSION,
+    locked_decision_for_date,
+    strategy_validation_rows,
+    update_strategy_ledger,
+)
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION, add_tail_profit_scores
 from .tail_observation import update_tail_observation
 from .tail_sampling import update_tail_sampling
-from .tail_window import accepts_new_tail_primary, tail_window_phase
+from .tail_window import TAIL_PHASE_CLOSED, accepts_new_tail_primary, tail_window_phase
 from .t1_forecast import FORECAST_COLUMNS, T1_FORECAST_MODEL_VERSION, build_t1_forecasts
 from .utils import ensure_dir, load_yaml, write_json
 from .validation import assert_top50_rules, build_healthcheck, resolve_market_data_time
@@ -205,6 +215,95 @@ def _archive_decision_snapshots(
     return paths
 
 
+def _official_buy_plan(
+    decision_summary: dict,
+    research_plan: pd.DataFrame,
+    ranked_input: pd.DataFrame,
+    locked_decision: dict | None = None,
+) -> pd.DataFrame:
+    if str(decision_summary.get("action_code") or "") != "BUY":
+        return pd.DataFrame(columns=BUY_COLUMNS)
+    code = str(decision_summary.get("candidate_code") or "")
+    source = research_plan
+    selected = source[source.get("ts_code", pd.Series(dtype="object")).astype(str).eq(code)].copy()
+    if selected.empty:
+        selected = ranked_input[
+            ranked_input.get("ts_code", pd.Series(dtype="object")).astype(str).eq(code)
+        ].head(1).copy()
+    if selected.empty and locked_decision:
+        selected = pd.DataFrame(
+            [
+                {
+                    "ts_code": locked_decision.get("ts_code", ""),
+                    "name": locked_decision.get("name", ""),
+                    "sector_name": locked_decision.get("sector_name", ""),
+                    "price": locked_decision.get("plan_price", ""),
+                }
+            ]
+        )
+    if selected.empty:
+        return pd.DataFrame(columns=BUY_COLUMNS)
+    selected = selected.head(1).copy()
+    if locked_decision:
+        selected["price"] = locked_decision.get("plan_price", selected.iloc[0].get("price", ""))
+        for column in (
+            "forecast_profit_probability",
+            "forecast_profit_probability_lower",
+            "forecast_expected_net_return_pct",
+            "forecast_live_sample_count",
+            "forecast_live_day_count",
+            "forecast_effective_sample_count",
+        ):
+            selected[column] = locked_decision.get(column, selected.iloc[0].get(column, ""))
+    selected["buy_rank"] = 1
+    selected["portfolio_group"] = "正式策略"
+    probability_lower = (
+        selected["forecast_profit_probability_lower"]
+        if "forecast_profit_probability_lower" in selected.columns
+        else pd.Series(0.0, index=selected.index)
+    )
+    selected["decision_score"] = pd.to_numeric(probability_lower, errors="coerce").fillna(0.0)
+    selected["confirm_before_buy"] = "仅在14:55前人工确认可成交"
+    selected["reject_if"] = "数据过期/封板不可买/价格显著偏离参考价"
+    selected["buy_reason"] = str(decision_summary.get("reason") or "")
+    for column in BUY_COLUMNS:
+        if column not in selected.columns:
+            selected[column] = ""
+    return selected[BUY_COLUMNS].copy()
+
+
+def _apply_locked_decision(decision_support: object, locked: dict) -> None:
+    action = str(locked.get("action") or "")
+    published_at = str(locked.get("published_at") or "")
+    summary = decision_support.summary
+    summary.update(
+        {
+            "action": "买入（当日已锁定）" if action == "BUY" else "NO_TRADE（当日已锁定）",
+            "action_code": action,
+            "is_final": True,
+            "candidate_code": str(locked.get("ts_code") or ""),
+            "candidate_name": str(locked.get("name") or ""),
+            "reason": f"当日正式决策已于{published_at}锁定，后续行情刷新不得修改",
+            "next_checkpoint": "T+1收盘卖出" if action == "BUY" else "下一交易日14:20",
+        }
+    )
+    for column in (
+        "forecast_profit_probability",
+        "forecast_profit_probability_lower",
+        "forecast_expected_net_return_pct",
+        "forecast_live_sample_count",
+        "forecast_live_day_count",
+        "forecast_effective_sample_count",
+    ):
+        summary[column] = locked.get(column, "")
+    table = decision_support.table
+    if table is not None and not table.empty:
+        chosen = table["ts_code"].fillna("").astype(str).eq(str(locked.get("ts_code") or ""))
+        table["is_current_choice"] = chosen
+        table.loc[chosen, "support_action"] = summary["action"]
+        table.loc[chosen, "decision_reason"] = summary["reason"]
+
+
 def run() -> dict:
     current = now_cn()
     update_time = current.strftime("%Y-%m-%d %H:%M:%S")
@@ -298,9 +397,10 @@ def run() -> dict:
     top_n = int(config.get("top_n", 50))
     top50, full_rank = rank_candidates(ranked_input, update_time, top_n=top_n)
     buy_pool = build_ranked_pool(ranked_input, full_rank, top_n)
-    buy_decision = build_buy_decision(buy_pool, config)
-    buy_plan = buy_decision.buy_plan
-    buy_decision_table = buy_decision.decision_table
+    research_decision = build_buy_decision(buy_pool, config)
+    research_plan = research_decision.buy_plan
+    buy_decision_table = research_decision.decision_table
+    buy_plan = pd.DataFrame(columns=BUY_COLUMNS)
     market_regime = assess_market_regime(market_context, candidates, config)
     health = build_healthcheck(
         raw,
@@ -345,9 +445,9 @@ def run() -> dict:
         ranked_input = ranked_input.iloc[0:0].copy()
         health["candidate_count"] = 0
         health["top50_count"] = 0
-        buy_plan = buy_plan.iloc[0:0].copy()
+        research_plan = research_plan.iloc[0:0].copy()
         buy_decision_table = buy_decision_table.iloc[0:0].copy()
-        buy_decision.summary["buy_count"] = 0
+        research_decision.summary["buy_count"] = 0
     rule_errors = assert_top50_rules(top50)
     if rule_errors:
         health["status"] = "规则自检失败"
@@ -367,15 +467,15 @@ def run() -> dict:
     tail_phase = tail_window_phase(str(health.get("market_data_time") or ""))
     health["tail_window_state"] = tail_phase
     if not accepts_new_tail_primary(str(health.get("market_data_time") or "")):
-        buy_plan = buy_plan.iloc[0:0].copy()
+        research_plan = research_plan.iloc[0:0].copy()
         buy_decision_table = buy_decision_table.iloc[0:0].copy()
-        buy_decision.summary["buy_count"] = 0
-        buy_decision.summary["tail_window_state"] = tail_phase
+        research_decision.summary["buy_count"] = 0
+        research_decision.summary["tail_window_state"] = tail_phase
 
     market_universe = flag_limitup(enrich_basic_fields(market_context))
     tail_observation_result = update_tail_observation(
         ranked_input,
-        buy_plan,
+        research_plan,
         market_universe,
         health,
         output_root / "csv" / "wp_tail_observation.csv",
@@ -393,13 +493,21 @@ def run() -> dict:
         market_regime,
         str(health.get("market_data_time") or ""),
         config,
+        decision_time=update_time,
     )
-    health["decision_support_action"] = decision_support.summary.get("action", "")
+    buy_plan = _official_buy_plan(
+        decision_support.summary,
+        research_plan,
+        ranked_input,
+    )
     health["manual_execution_only"] = True
     health["order_routing_enabled"] = False
     archive_dir = output_root / "html_reports" / "archive" / current.strftime("%Y%m%d")
     ensure_dir(archive_dir)
-    validation_result = update_buy_plan_validation(buy_plan, health, output_root, current)
+    # The research ledger collects one latest causal sample per stock/day even
+    # while the production strategy correctly abstains. It never contributes
+    # to reported strategy PnL.
+    validation_result = update_buy_plan_validation(research_plan, health, output_root, current)
     sampling_result = update_tail_sampling(
         validation_result.table,
         health,
@@ -408,8 +516,34 @@ def run() -> dict:
     validation_result.summary["sampling_days"] = sampling_result.summary["days"]
     validation_result.summary["sampling_missing_days"] = sampling_result.summary["missing_day_count"]
     health["tail_sampling_missing_days"] = sampling_result.summary["missing_day_count"]
-    exit_guidance = build_exit_guidance(
+    strategy_result = update_strategy_ledger(
+        buy_plan,
+        decision_support.summary,
         validation_result.table,
+        health,
+        output_root,
+        current,
+        config,
+    )
+    locked_decision = locked_decision_for_date(
+        strategy_result.table,
+        str(health.get("data_trade_date") or forecast_trade_date),
+    )
+    if locked_decision is not None and tail_phase != TAIL_PHASE_CLOSED:
+        _apply_locked_decision(decision_support, locked_decision)
+        buy_plan = _official_buy_plan(
+            decision_support.summary,
+            research_plan,
+            ranked_input,
+            locked_decision,
+        )
+    health["decision_support_action"] = decision_support.summary.get("action", "")
+    strategy_validation = strategy_validation_rows(
+        strategy_result.table,
+        validation_result.table,
+    )
+    exit_guidance = build_exit_guidance(
+        strategy_validation,
         market_universe,
         str(health.get("data_trade_date") or forecast_trade_date),
         str(health.get("market_data_time") or ""),
@@ -424,6 +558,12 @@ def run() -> dict:
         health,
     )
     health["decision_snapshot_paths"] = snapshot_paths
+    health["strategy_version"] = STRATEGY_VERSION
+    health["strategy_summary"] = strategy_result.summary
+    legacy_audit = build_legacy_history_audit(output_root / "snapshots")
+    legacy_audit_summary = summarize_legacy_history_audit(legacy_audit)
+    health["legacy_history_audit"] = legacy_audit_summary
+    health["legacy_history_audit_records"] = legacy_audit.to_dict(orient="records")
     backtest_summaries = load_backtest_summaries(output_root)
     top50.to_csv(output_root / "csv" / "wp_top50.csv", index=False, encoding="utf-8-sig")
     full_rank.to_csv(output_root / "csv" / "wp_full_rank.csv", index=False, encoding="utf-8-sig")
@@ -437,6 +577,8 @@ def run() -> dict:
     buy_plan.to_csv(output_root / "csv" / "wp_buy_plan.csv", index=False, encoding="utf-8-sig")
     buy_decision_table.to_csv(output_root / "csv" / "wp_buy_decision.csv", index=False, encoding="utf-8-sig")
     decision_support.table.to_csv(output_root / "csv" / "wp_decision_support.csv", index=False, encoding="utf-8-sig")
+    strategy_result.table.to_csv(output_root / "csv" / "wp_strategy_ledger.csv", index=False, encoding="utf-8-sig")
+    legacy_audit.to_csv(output_root / "csv" / "wp_legacy_history_audit.csv", index=False, encoding="utf-8-sig")
     exit_guidance.table.to_csv(output_root / "csv" / "wp_t1_exit_guidance.csv", index=False, encoding="utf-8-sig")
     latest_html = output_root / "html_reports" / "latest.html"
     archive_html = archive_dir / f"{current.strftime('%H%M')}.html"
@@ -451,6 +593,10 @@ def run() -> dict:
         "health": health,
         "buy_plan_validation": validation_result.table.to_dict(orient="records"),
         "buy_plan_validation_summary": validation_result.summary,
+        "strategy_ledger": strategy_result.table.to_dict(orient="records"),
+        "strategy_summary": strategy_result.summary,
+        "legacy_history_audit": legacy_audit.to_dict(orient="records"),
+        "legacy_history_audit_summary": legacy_audit_summary,
         "tail_sampling": sampling_result.table.to_dict(orient="records"),
         "buy_plan": buy_plan.to_dict(orient="records"),
         "tail_observation": tail_observation.to_dict(orient="records"),
@@ -473,7 +619,11 @@ def run() -> dict:
             "market_data_time": health.get("market_data_time", ""),
             "source_data_hash": input_hash,
             "wp_run_time": update_time,
-            "summary": buy_decision.summary,
+            "summary": {
+                **research_decision.summary,
+                "formal_action": decision_support.summary.get("action", ""),
+                "formal_action_code": decision_support.summary.get("action_code", ""),
+            },
             "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
             "buy_plan": buy_plan.to_dict(orient="records"),
             "tail_observation": tail_observation.to_dict(orient="records"),
@@ -482,6 +632,7 @@ def run() -> dict:
             "t1_forecast_summary": forecast_result.summary,
             "decision_support": decision_support.summary,
             "decision_support_records": decision_support.table.to_dict(orient="records"),
+            "strategy_summary": strategy_result.summary,
         },
     )
     write_json(
@@ -513,6 +664,25 @@ def run() -> dict:
             "records": decision_support.table.to_dict(orient="records"),
             "manual_execution_only": True,
             "order_routing_enabled": False,
+        },
+    )
+    write_json(
+        output_root / "json" / "wp_strategy_ledger.json",
+        {
+            "generated_at": update_time,
+            "market_data_time": health.get("market_data_time", ""),
+            "summary": strategy_result.summary,
+            "records": strategy_result.table.to_dict(orient="records"),
+            "manual_execution_only": True,
+            "order_routing_enabled": False,
+        },
+    )
+    write_json(
+        output_root / "json" / "wp_legacy_history_audit.json",
+        {
+            "generated_at": update_time,
+            "summary": legacy_audit_summary,
+            "records": legacy_audit.to_dict(orient="records"),
         },
     )
     write_json(
@@ -569,6 +739,8 @@ def run() -> dict:
             "tail_observation_count": len(tail_observation),
             "tail_observation_summary": tail_observation_result.summary,
             "validation_summary": validation_result.summary,
+            "strategy_summary": strategy_result.summary,
+            "legacy_history_audit_summary": legacy_audit_summary,
             "forecast_summary": forecast_result.summary,
             "market_regime": market_regime,
             "decision_support": decision_support.summary,
@@ -577,6 +749,7 @@ def run() -> dict:
             "order_routing_enabled": False,
             "model_version": MODEL_VERSION,
             "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
+            "strategy_version": STRATEGY_VERSION,
             "backtest_window_count": len(backtest_summaries),
             "health_status": health["status"],
             "preserved_latest_html": bool(preserve_latest),
@@ -586,8 +759,8 @@ def run() -> dict:
     if preserve_latest:
         logging.error("Source failed; preserving existing latest.html. error=%s", load_result.error)
     else:
-        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=validation_result.table, validation_summary=validation_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
-    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=validation_result.table, validation_summary=validation_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
+        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=strategy_result.table, validation_summary=strategy_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
+    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=strategy_result.table, validation_summary=strategy_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
     render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan, observation_pool=tail_observation, decision_support=decision_support.summary, exit_guidance=exit_guidance.table)
     logging.info(
         "WP run completed: raw=%s candidates=%s top50=%s buy_plan=%s tail_observation=%s missing_fields=%s fallback=%s outputs=%s log=%s",

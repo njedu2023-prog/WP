@@ -6,7 +6,8 @@ import pandas as pd
 
 
 TAIL_WINDOW_START = time(14, 20)
-TAIL_WINDOW_END = time(14, 50)
+OFFICIAL_DECISION_START = time(14, 45)
+TAIL_WINDOW_END = time(14, 55)
 MARKET_CLOSE = time(15, 0)
 
 TAIL_PHASE_UNKNOWN = "unknown"

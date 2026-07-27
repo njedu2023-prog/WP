@@ -112,12 +112,15 @@ def update_tail_sampling(
             and str(existing_row.get("sample_status") or "") == "captured"
         )
 
-        if phase == TAIL_PHASE_ACTIVE or captured_before or not rows.empty:
+        if captured_before or not rows.empty:
             status = "captured"
-            note = "已取得14:20-14:50合法窗口样本"
+            note = "已取得14:20-14:55合法窗口样本"
+        elif phase == TAIL_PHASE_ACTIVE:
+            status = "pending"
+            note = "尾盘窗口进行中，尚无合格研究样本"
         else:
             status = "missing"
-            note = "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补"
+            note = "当日未取得14:20-14:55合法窗口快照；不使用15:00后数据回补"
 
         target_dates = (
             rows.get("target_trade_date", pd.Series(dtype="object"))

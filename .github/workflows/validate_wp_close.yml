@@ -9,10 +9,8 @@ on:
       - scripts/trigger_wp_close_validation.txt
       - .github/workflows/validate_wp_close.yml
   schedule:
-    # Offset retries at Beijing 15:17/15:32/15:47/16:07. The trigger file is
-    # the independent recovery path when GitHub drops a scheduled event.
-    - cron: "17,32,47 7 * * 1-5"
-    - cron: "7 8 * * 1-5"
+    # 07:08 UTC = 15:08 Asia/Shanghai. One warm job polls until truth arrives.
+    - cron: "8 7 * * 1-5"
 
 permissions:
   contents: write
@@ -24,7 +22,7 @@ concurrency:
 jobs:
   validate-close:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 65
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -32,9 +30,7 @@ jobs:
           python-version: "3.11"
           cache: pip
       - name: Install dependencies
-        run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
+        run: pip install -r requirements.txt
       - name: Validate pending plans with next-day close
         run: python scripts/run_wp_close_validation.py
         env:
@@ -44,3 +40,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF_NAME: main
+          GITHUB_EVENT_NAME: ${{ github.event_name }}
+          WP_CLOSE_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'once' }}
+          WP_CLOSE_INTERVAL_SECONDS: "300"

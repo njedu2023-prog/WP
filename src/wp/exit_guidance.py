@@ -6,13 +6,10 @@ from datetime import time
 import pandas as pd
 
 
-EXIT_GUIDANCE_VERSION = "manual_t1_exit_v1"
+EXIT_GUIDANCE_VERSION = "fixed_t1_close_exit_v2"
 
 DEFAULT_EXIT_CONFIG = {
-    "exit_open_stop_pct": -3.0,
-    "exit_time": "10:40",
-    "exit_profit_protect_pct": 3.0,
-    "exit_pullback_pct": 2.0,
+    "exit_time": "14:50",
 }
 
 EXIT_COLUMNS = [
@@ -86,7 +83,7 @@ def build_exit_guidance(
     market_data_time: str,
     config: dict | None = None,
 ) -> ExitGuidanceResult:
-    """Produce T+1 manual sell guidance without assuming or routing an order."""
+    """Apply the same fixed T+1 close contract used by training and validation."""
     cfg = DEFAULT_EXIT_CONFIG.copy()
     cfg.update({key: value for key, value in (config or {}).items() if key in cfg})
     history = validation_history.copy() if validation_history is not None else pd.DataFrame()
@@ -105,7 +102,7 @@ def build_exit_guidance(
     universe["ts_code"] = universe["ts_code"].fillna("").astype(str).str.strip()
     universe = universe.drop_duplicates("ts_code", keep="last").set_index("ts_code", drop=False)
     current_time = _clock(market_data_time)
-    exit_time = _clock(cfg["exit_time"]) or time(10, 40)
+    exit_time = _clock(cfg["exit_time"]) or time(14, 50)
 
     rows: list[dict] = []
     for _, plan in history.iterrows():
@@ -118,11 +115,6 @@ def build_exit_guidance(
         low_return = _return(market.get("low"), entry)
         current_return = _return(current_price, entry)
         sealed = _is_sealed(market)
-        open_board_count = _num(market.get("open_board_count"))
-        stop = float(cfg["exit_open_stop_pct"])
-        profit_protect = float(cfg["exit_profit_protect_pct"])
-        pullback_limit = float(cfg["exit_pullback_pct"])
-        pullback = (high_return - current_return) if high_return is not None and current_return is not None else 0.0
 
         has_market_price = any(
             _num(market.get(column)) is not None
@@ -132,38 +124,22 @@ def build_exit_guidance(
             action = "行情数据不足"
             reason = "当前全市场行情中没有该股票，禁止据此生成卖出结论"
             checkpoint = "人工核对实时行情与实际持仓"
-        elif current_time is None or current_time < time(9, 31):
-            action = "等待开盘确认"
-            reason = "9:31前不生成卖出结论"
-            checkpoint = "09:31复核"
-        elif (open_return is not None and open_return <= stop) or (low_return is not None and low_return <= stop):
-            action = "建议风险退出"
-            reason = f"开盘/盘中已触及{stop:.1f}%风险线"
-            checkpoint = "由人工立即确认盘口并处理"
-        elif sealed and open_board_count is not None and open_board_count > 0:
-            action = "涨停已炸板，建议保护利润"
-            reason = f"当前虽回封，但已记录炸板{int(open_board_count)}次，不满足未炸板持有条件"
-            checkpoint = "人工核对封单与流动性后处理"
-        elif sealed and current_time >= time(15, 0) and open_board_count == 0:
-            action = "确认未炸板，建议继续持有"
-            reason = "收盘封板且炸板次数为0，满足T+2例外条件"
-            checkpoint = "T+2 09:31人工卖出评估"
-        elif sealed:
-            action = "当前涨停，继续观察"
-            reason = "尚未到收盘或缺少明确炸板次数，不能提前确认T+2持有"
-            checkpoint = "收盘人工确认封板和炸板记录"
+        elif current_time is None:
+            action = "等待T+1收盘"
+            reason = "无法解析行情时间，禁止临时改变固定卖出合同"
+            checkpoint = "14:50复核"
+        elif current_time >= time(15, 0):
+            action = "T+1收盘合同已结束"
+            reason = "正式验证使用T+1收盘价并扣除统一往返成本"
+            checkpoint = "等待收盘真值入库"
         elif current_time >= exit_time:
-            action = "建议人工择机卖出"
-            reason = "10:40后仍未封住涨停，按基准退出规则处理"
-            checkpoint = "人工核对流动性后执行"
-        elif high_return is not None and high_return >= profit_protect and pullback >= pullback_limit:
-            action = "建议保护利润"
-            reason = f"最高收益后回撤{pullback:.2f}%，达到保护阈值"
-            checkpoint = "10:40前持续复核"
+            action = "执行T+1收盘卖出"
+            reason = "固定卖出合同进入14:50-15:00执行窗口"
+            checkpoint = "15:00前人工完成卖出"
         else:
-            action = "继续观察"
-            reason = "尚未触发风险退出、利润保护或10:40退出条件"
-            checkpoint = "10:40复核"
+            action = "按合同持有"
+            reason = "训练、决策和验证统一使用T+1收盘退出，盘中不临时改规则"
+            checkpoint = "14:50开始卖出"
 
         row = {column: plan.get(column, "") for column in EXIT_COLUMNS}
         row.update(
@@ -200,7 +176,8 @@ def _summary(count: int, table: pd.DataFrame | None = None) -> dict:
         "version": EXIT_GUIDANCE_VERSION,
         "record_count": int(count),
         "action_counts": actions,
-        "position_basis": "系统历史观察记录，实际持仓须人工确认",
+        "position_basis": "仅正式BUY策略记录；实际持仓与成交价须人工确认",
+        "exit_contract": "T+1_close",
         "manual_execution_only": True,
         "order_routing_enabled": False,
         "broker_connection": "disabled",

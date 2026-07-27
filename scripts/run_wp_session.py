@@ -17,17 +17,11 @@ except ModuleNotFoundError:  # pragma: no cover - package import in tests
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
-INTERVAL_SECONDS = int(os.environ.get("WP_SESSION_INTERVAL_SECONDS", "600"))
-SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "600"))
-PREP_START = time(9, 0)
-RUN_START = time(9, 28)
-LUNCH_START = time(11, 38)
-LUNCH_END = time(12, 58)
-RUN_END = time(15, 12)
-MORNING_START = time(9, 25)
-MORNING_END = time(11, 35)
-AFTERNOON_START = time(12, 55)
-AFTERNOON_END = time(15, 10)
+INTERVAL_SECONDS = int(os.environ.get("WP_SESSION_INTERVAL_SECONDS", "300"))
+SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
+PREP_START = time(14, 15)
+RUN_START = time(14, 20)
+RUN_END = time(15, 0)
 LIVE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
     "outputs/html_reports/latest.md",
@@ -41,6 +35,8 @@ LIVE_COMMIT_PATHS = [
     "outputs/csv/wp_tail_sampling.csv",
     "outputs/csv/wp_t1_forecast.csv",
     "outputs/csv/wp_decision_support.csv",
+    "outputs/csv/wp_strategy_ledger.csv",
+    "outputs/csv/wp_legacy_history_audit.csv",
     "outputs/csv/wp_t1_exit_guidance.csv",
     "outputs/json/latest.json",
     "outputs/json/wp_buy_plan.json",
@@ -49,6 +45,8 @@ LIVE_COMMIT_PATHS = [
     "outputs/json/wp_tail_observation.json",
     "outputs/json/wp_t1_forecast.json",
     "outputs/json/wp_decision_support.json",
+    "outputs/json/wp_strategy_ledger.json",
+    "outputs/json/wp_legacy_history_audit.json",
     "outputs/json/wp_t1_exit_guidance.json",
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
@@ -63,25 +61,21 @@ def now_cn() -> datetime:
     return datetime.now(CN_TZ)
 
 
-def today_window(now: datetime) -> tuple[datetime, datetime, datetime, datetime] | None:
+def today_window(now: datetime) -> tuple[datetime, datetime] | None:
     today = now.date()
     prep_dt = datetime.combine(today, PREP_START, CN_TZ)
     start_dt = datetime.combine(today, RUN_START, CN_TZ)
-    lunch_start_dt = datetime.combine(today, LUNCH_START, CN_TZ)
-    lunch_end_dt = datetime.combine(today, LUNCH_END, CN_TZ)
     end_dt = datetime.combine(today, RUN_END, CN_TZ)
     if prep_dt <= now <= end_dt:
-        return start_dt, lunch_start_dt, lunch_end_dt, end_dt
+        return start_dt, end_dt
     return None
 
 
 def in_run_window(now: datetime) -> bool:
     today = now.date()
-    morning_start = datetime.combine(today, MORNING_START, CN_TZ)
-    morning_end = datetime.combine(today, MORNING_END, CN_TZ) + timedelta(seconds=SCHEDULE_GRACE_SECONDS)
-    afternoon_start = datetime.combine(today, AFTERNOON_START, CN_TZ)
-    afternoon_end = datetime.combine(today, AFTERNOON_END, CN_TZ) + timedelta(seconds=SCHEDULE_GRACE_SECONDS)
-    return morning_start <= now <= morning_end or afternoon_start <= now <= afternoon_end
+    start = datetime.combine(today, RUN_START, CN_TZ)
+    end = datetime.combine(today, RUN_END, CN_TZ) + timedelta(seconds=SCHEDULE_GRACE_SECONDS)
+    return start <= now <= end
 
 
 def is_trade_day(token: str, day: str) -> bool:
@@ -205,7 +199,7 @@ def run_session() -> None:
         print(f"Skip WP session outside trading session prep/window: {current:%Y-%m-%d %H:%M:%S}")
         return
 
-    start_dt, lunch_start_dt, lunch_end_dt, end_dt = window
+    start_dt, end_dt = window
     if current < start_dt:
         wait_seconds = max(0.0, (start_dt - current).total_seconds())
         print(f"Wait until WP session start: {start_dt:%Y-%m-%d %H:%M:%S}, wait={wait_seconds:.0f}s")
@@ -213,17 +207,11 @@ def run_session() -> None:
 
     while now_cn() <= end_dt:
         iteration_start = now_cn()
-        if lunch_start_dt <= iteration_start < lunch_end_dt:
-            sleep_seconds = max(0.0, (lunch_end_dt - iteration_start).total_seconds())
-            print(f"Pause during A-share lunch break until {lunch_end_dt:%Y-%m-%d %H:%M:%S}, sleep={sleep_seconds:.0f}s")
-            time_module.sleep(sleep_seconds)
-            continue
         print(f"WP iteration started: {iteration_start:%Y-%m-%d %H:%M:%S}")
         run_once()
         next_at = iteration_start + timedelta(seconds=INTERVAL_SECONDS)
         current = now_cn()
-        next_boundary = lunch_start_dt if current < lunch_start_dt < next_at else end_dt
-        sleep_seconds = min((next_at - current).total_seconds(), (next_boundary - current).total_seconds())
+        sleep_seconds = min((next_at - current).total_seconds(), (end_dt - current).total_seconds())
         if sleep_seconds <= 0:
             continue
         print(f"Next WP iteration at {next_at:%Y-%m-%d %H:%M:%S}, sleep={sleep_seconds:.0f}s")

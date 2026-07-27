@@ -64,10 +64,19 @@ def test_schedule_skips_outside_market_window():
 
 
 def test_schedule_grace_reaches_session_tail_slots():
-    assert latest_due_slot(datetime(2026, 7, 16, 11, 36, tzinfo=CN_TZ)).strftime("%H:%M") == "11:35"
-    assert latest_due_slot(datetime(2026, 7, 16, 15, 11, tzinfo=CN_TZ)).strftime("%H:%M") == "15:10"
+    assert latest_due_slot(datetime(2026, 7, 16, 14, 46, tzinfo=CN_TZ)).strftime("%H:%M") == "14:45"
+    assert latest_due_slot(datetime(2026, 7, 16, 15, 1, tzinfo=CN_TZ)).strftime("%H:%M") == "15:00"
 
 
 def test_schedule_grace_does_not_extend_indefinitely():
     assert latest_due_slot(datetime(2026, 7, 16, 11, 46, tzinfo=CN_TZ)) is None
-    assert latest_due_slot(datetime(2026, 7, 16, 15, 21, tzinfo=CN_TZ)) is None
+    assert latest_due_slot(datetime(2026, 7, 16, 15, 3, tzinfo=CN_TZ)) is None
+
+
+def test_schedule_starts_one_warm_session_before_first_tail_slot():
+    should_run, reason = resolve_decision(
+        "schedule", {}, {}, datetime(2026, 7, 16, 14, 16, tzinfo=CN_TZ)
+    )
+
+    assert should_run is True
+    assert "continuous tail session" in reason

@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 
-T1_FORECAST_MODEL_VERSION = "t1_ohlc_quantile_v1"
+T1_FORECAST_MODEL_VERSION = "t1_net_profit_probability_v2"
 QUANTILES = (0.10, 0.50, 0.90)
 TARGETS = ("open", "high", "low", "close")
 
@@ -17,6 +17,7 @@ FORECAST_COLUMNS = [
     "forecast_warning",
     "forecast_sample_count",
     "forecast_live_sample_count",
+    "forecast_live_day_count",
     "forecast_proxy_sample_count",
     "forecast_effective_sample_count",
     "forecast_confidence",
@@ -45,6 +46,7 @@ FORECAST_COLUMNS = [
     "forecast_close_q50_price",
     "forecast_close_q90_price",
     "forecast_profit_probability",
+    "forecast_profit_probability_lower",
     "forecast_touch_plus3_probability",
     "forecast_touch_minus3_probability",
     "forecast_open_below_minus3_probability",
@@ -52,15 +54,18 @@ FORECAST_COLUMNS = [
     "forecast_expected_net_return_pct",
     "forecast_downside_q10_pct",
     "forecast_risk_adjusted_utility",
+    "forecast_actionable",
     "forecast_path_status",
 ]
 
 DEFAULT_FORECAST_CONFIG = {
-    "forecast_min_total_samples": 24,
-    "forecast_min_live_samples": 20,
-    "forecast_proxy_weight": 0.30,
-    "forecast_round_trip_cost_pct": 0.20,
-    "forecast_downside_penalty": 0.20,
+    "forecast_min_total_samples": 30,
+    "forecast_min_live_samples": 30,
+    "forecast_min_live_days": 30,
+    "forecast_min_effective_samples": 15,
+    "forecast_proxy_weight": 0.0,
+    "forecast_round_trip_cost_pct": 0.25,
+    "forecast_downside_penalty": 0.25,
 }
 
 FEATURE_SCALES = {
@@ -125,6 +130,18 @@ def _weighted_probability(mask: pd.Series, weights: pd.Series) -> float:
     if not valid.any():
         return float("nan")
     return float(np.average(mask[valid].astype(float), weights=weight_num[valid]) * 100)
+
+
+def _wilson_lower_bound(probability_pct: float, effective_count: float, z: float = 1.644854) -> float:
+    """One-sided 95% lower confidence bound for a weighted Bernoulli rate."""
+    if not np.isfinite(probability_pct) or effective_count <= 0:
+        return float("nan")
+    probability = min(max(float(probability_pct) / 100.0, 0.0), 1.0)
+    count = float(effective_count)
+    denominator = 1.0 + z * z / count
+    center = probability + z * z / (2.0 * count)
+    margin = z * np.sqrt((probability * (1.0 - probability) + z * z / (4.0 * count)) / count)
+    return max(0.0, (center - margin) / denominator) * 100.0
 
 
 def _sample_frame(
@@ -260,8 +277,11 @@ def _similarity_weights(samples: pd.DataFrame, row: pd.Series, cfg: dict) -> pd.
 
 
 def _confidence(mode: str, effective_count: float, live_count: int) -> float:
-    base = {"\u5b9e\u65f6\u6837\u672c\u6821\u51c6": 62.0, "\u6df7\u5408\u5148\u9a8c": 42.0, "\u65e5\u7ebf\u4ee3\u7406\u5148\u9a8c": 28.0}.get(mode, 0.0)
-    return round(min(90.0, base + min(np.sqrt(max(effective_count, 0.0)) * 3.0, 18.0) + min(live_count, 30) * 0.3), 2)
+    if mode != "实时因果样本":
+        return 0.0
+    readiness = min(float(effective_count) / 30.0, 1.0)
+    coverage = min(float(live_count) / 60.0, 1.0)
+    return round(100.0 * (0.65 * readiness + 0.35 * coverage), 2)
 
 
 def _blank_forecast() -> dict:
@@ -270,8 +290,9 @@ def _blank_forecast() -> dict:
         {
             "forecast_model_version": T1_FORECAST_MODEL_VERSION,
             "forecast_mode": "\u6837\u672c\u4e0d\u8db3",
-            "forecast_warning": "\u53ef\u7528\u5386\u53f2\u6837\u672c\u4e0d\u8db3\uff0c\u4e0d\u8f93\u51fa\u6570\u503c\u5efa\u8bae",
-            "forecast_path_status": "\u5f85\u79ef\u7d2fT+1\u5206\u65f6\u8def\u5f84",
+            "forecast_warning": "真实14:20-14:55因果样本不足，正式策略强制NO_TRADE",
+            "forecast_actionable": False,
+            "forecast_path_status": "固定验证口径：信号参考价买入，T+1收盘卖出，扣除成本",
         }
     )
     return row
@@ -280,11 +301,15 @@ def _blank_forecast() -> dict:
 def _forecast_row(row: pd.Series, samples: pd.DataFrame, cfg: dict) -> dict:
     result = _blank_forecast()
     weights = _similarity_weights(samples, row, cfg)
-    if int(samples["sample_source"].eq("live_validation").sum()) >= int(cfg["forecast_min_live_samples"]):
-        weights.loc[samples["sample_source"].eq("eod_proxy")] = 0.0
+    # End-of-day backtests are not causal 14:20-14:55 samples. They remain
+    # available for research diagnostics but can never authorize a live trade.
+    weights.loc[~samples["sample_source"].eq("live_validation")] = 0.0
     usable = weights.gt(0)
     sample_count = int(usable.sum())
     live_count = int((samples.loc[usable, "sample_source"] == "live_validation").sum())
+    live_days = int(
+        samples.loc[usable & samples["sample_source"].eq("live_validation"), "sample_trade_date"].nunique()
+    )
     proxy_count = int((samples.loc[usable, "sample_source"] == "eod_proxy").sum())
     sum_weights = float(weights[usable].sum())
     sum_square = float((weights[usable] ** 2).sum())
@@ -293,26 +318,29 @@ def _forecast_row(row: pd.Series, samples: pd.DataFrame, cfg: dict) -> dict:
         {
             "forecast_sample_count": sample_count,
             "forecast_live_sample_count": live_count,
+            "forecast_live_day_count": live_days,
             "forecast_proxy_sample_count": proxy_count,
             "forecast_effective_sample_count": round(effective_count, 2),
         }
     )
-    if sample_count < int(cfg["forecast_min_total_samples"]) or effective_count < 8:
+    min_total = int(cfg["forecast_min_total_samples"])
+    min_live = int(cfg["forecast_min_live_samples"])
+    min_live_days = int(cfg["forecast_min_live_days"])
+    min_effective = float(cfg["forecast_min_effective_samples"])
+    if (
+        sample_count < min_total
+        or live_count < min_live
+        or live_days < min_live_days
+        or effective_count < min_effective
+    ):
         return result
 
-    min_live = int(cfg["forecast_min_live_samples"])
-    if live_count >= min_live:
-        mode = "\u5b9e\u65f6\u6837\u672c\u6821\u51c6"
-        warning = ""
-    elif live_count:
-        mode = "\u6df7\u5408\u5148\u9a8c"
-        warning = "\u771f\u5b9e\u5c3e\u76d8\u6837\u672c\u5c1a\u5c11\uff0c\u4ecd\u542b\u6536\u76d8\u65e5\u7ebf\u4ee3\u7406\u5148\u9a8c"
-    else:
-        mode = "\u65e5\u7ebf\u4ee3\u7406\u5148\u9a8c"
-        warning = "\u4ec5\u7528\u4e8e\u65b9\u5411\u53c2\u8003\uff0c\u4e0d\u662f14:20\u540e\u771f\u5b9e\u5feb\u7167\u6821\u51c6"
+    mode = "实时因果样本"
+    warning = ""
     result["forecast_mode"] = mode
     result["forecast_warning"] = warning
     result["forecast_confidence"] = _confidence(mode, effective_count, live_count)
+    result["forecast_actionable"] = True
 
     quantile_values: dict[tuple[str, int], float] = {}
     for target in TARGETS:
@@ -340,10 +368,15 @@ def _forecast_row(row: pd.Series, samples: pd.DataFrame, cfg: dict) -> dict:
     low_values = pd.to_numeric(samples["low_return"], errors="coerce")
     open_values = pd.to_numeric(samples["open_return"], errors="coerce")
     expected_net = _weighted_mean(close_values, weights) - cost
+    profit_probability = _weighted_probability(close_values.gt(cost), weights)
+    # Multiple stocks from the same market day are correlated. Cap the
+    # confidence sample size by independent trading days.
+    probability_lower = _wilson_lower_bound(profit_probability, min(effective_count, float(live_days)))
     downside = float(quantile_values[("low", 10)])
     result.update(
         {
-            "forecast_profit_probability": round(_weighted_probability(close_values.gt(cost), weights), 2),
+            "forecast_profit_probability": round(profit_probability, 2),
+            "forecast_profit_probability_lower": round(probability_lower, 2),
             "forecast_touch_plus3_probability": round(_weighted_probability(high_values.ge(3.0), weights), 2),
             "forecast_touch_minus3_probability": round(_weighted_probability(low_values.le(-3.0), weights), 2),
             "forecast_open_below_minus3_probability": round(_weighted_probability(open_values.le(-3.0), weights), 2),
@@ -354,7 +387,7 @@ def _forecast_row(row: pd.Series, samples: pd.DataFrame, cfg: dict) -> dict:
                 expected_net - float(cfg["forecast_downside_penalty"]) * max(0.0, -downside),
                 4,
             ),
-            "forecast_path_status": "\u5df2\u9884\u6d4b\u89e6\u53ca\u6982\u7387\uff1b\u5148\u6da8\u540e\u8dcc\u987a\u5e8f\u5f85T+1\u5206\u65f6\u6837\u672c",
+            "forecast_path_status": "固定验证口径：信号参考价买入，T+1收盘卖出，扣除成本",
         }
     )
     return result
@@ -392,9 +425,22 @@ def build_t1_forecasts(
         "model_version": T1_FORECAST_MODEL_VERSION,
         "forecast_count": int(len(out)),
         "numeric_forecast_count": int((~modes.eq("\u6837\u672c\u4e0d\u8db3")).sum()),
+        "actionable_forecast_count": int(
+            out.get("forecast_actionable", pd.Series(False, index=out.index)).astype(str).str.lower().isin({"true", "1"}).sum()
+        ),
         "training_sample_count": int(len(samples)),
         "live_sample_count": int(samples.get("sample_source", pd.Series(dtype="object")).eq("live_validation").sum()),
+        "live_day_count": int(
+            samples.loc[
+                samples.get("sample_source", pd.Series(dtype="object")).eq("live_validation"),
+                "sample_trade_date",
+            ].nunique()
+        )
+        if "sample_trade_date" in samples.columns
+        else 0,
         "proxy_sample_count": int(samples.get("sample_source", pd.Series(dtype="object")).eq("eod_proxy").sum()),
+        "objective": "P(T+1_close_net_return>0)",
+        "proxy_samples_authorize_trades": False,
         "manual_decision_support_only": True,
     }
     return T1ForecastResult(out, summary)

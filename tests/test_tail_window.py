@@ -15,7 +15,8 @@ def test_tail_window_has_one_shared_generation_boundary():
     assert tail_window_phase("2026-07-24 14:19:59") == TAIL_PHASE_BEFORE
     assert tail_window_phase("2026-07-24 14:20:00") == TAIL_PHASE_ACTIVE
     assert tail_window_phase("2026-07-24 14:50:00") == TAIL_PHASE_ACTIVE
-    assert tail_window_phase("2026-07-24 14:50:01") == TAIL_PHASE_FROZEN
+    assert tail_window_phase("2026-07-24 14:55:00") == TAIL_PHASE_ACTIVE
+    assert tail_window_phase("2026-07-24 14:55:01") == TAIL_PHASE_FROZEN
     assert tail_window_phase("2026-07-24 14:59:59") == TAIL_PHASE_FROZEN
     assert tail_window_phase("2026-07-24 15:00:00") == TAIL_PHASE_CLOSED
     assert not accepts_new_tail_primary("2026-07-24 15:31:00")

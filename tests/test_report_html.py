@@ -9,7 +9,7 @@ from wp.tail_profit_model import TAIL_PROFIT_MODEL_VERSION
 def test_report_html_contains_title(tmp_path):
     path = tmp_path / "latest.html"
     render_html(pd.DataFrame(), pd.DataFrame(), {"status": "无符合条件股票", "data_time": "now"}, path)
-    assert "WP Top50" in path.read_text(encoding="utf-8")
+    assert "WP T+1 净盈利决策" in path.read_text(encoding="utf-8")
 
 
 def test_report_html_polls_manifest_and_keeps_stale_buy_plan_visible(tmp_path):
@@ -162,11 +162,11 @@ def test_report_html_groups_validation_by_plan_day(tmp_path):
         validation_summary=summary,
     )
     page = path.read_text(encoding="utf-8")
-    assert "14:20–14:50 主票累计验证" in page
+    assert "尾盘研究样本验证" in page
     assert "累计收盘收益" in page
     assert page.count('class="validation-day-details"') == 2
     assert "2026-07-16" in page
-    assert "自 2026-07-15 起；保留窗口内每次实际出现的主票" in page
+    assert "研究样本不等于正式交易" in page
     assert ">观察记录<" in page
     assert "次日收益（开 / 高 / 收）" in page
     assert "次日最低" in page
@@ -197,6 +197,61 @@ def test_report_html_shows_missing_sampling_days_and_closed_message(tmp_path):
     assert "采样缺失" in page
     assert "采样缺失1日" in page
     assert "当日未取得14:20-14:50合法窗口快照" in page
+
+
+def test_report_html_reports_only_formal_strategy_net_returns(tmp_path):
+    path = tmp_path / "latest.html"
+    ledger = pd.DataFrame(
+        [
+            {
+                "plan_trade_date": "20260720",
+                "plan_time": "2026-07-20 14:46:00",
+                "published_at": "2026-07-20 14:47:00",
+                "target_trade_date": "20260721",
+                "action": "BUY",
+                "ts_code": "600001.SH",
+                "name": "甲",
+                "gross_return_pct": 1.0,
+                "assumed_cost_pct": 0.25,
+                "net_return_pct": 0.75,
+                "truth_status": "verified",
+            },
+            {
+                "plan_trade_date": "20260721",
+                "plan_time": "2026-07-21 14:55:00",
+                "published_at": "2026-07-21 14:56:00",
+                "target_trade_date": "",
+                "action": "NO_TRADE",
+                "truth_status": "not_applicable",
+            },
+        ]
+    )
+    summary = {
+        "metric_scope": "strategy",
+        "decision_days": 2,
+        "trade_days": 1,
+        "no_trade_days": 1,
+        "verified_trades": 1,
+        "net_profit_trades": 1,
+        "net_win_rate": 100.0,
+        "average_net_return_pct": 0.75,
+        "cumulative_net_return_pct": 0.75,
+        "max_drawdown_pct": 0.0,
+    }
+    render_html(
+        pd.DataFrame(),
+        pd.DataFrame(),
+        {"status": "ok", "data_time": "now"},
+        path,
+        validation=ledger,
+        validation_summary=summary,
+    )
+    page = path.read_text(encoding="utf-8")
+    assert "正式策略 T+1 净收益验证" in page
+    assert "实际交易日" in page
+    assert "NO_TRADE" in page
+    assert "毛 <span class=\"pct-up\">+1.00%</span>" in page
+    assert "净 <span class=\"pct-up\">+0.75%</span>" in page
 
 
 def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
@@ -237,14 +292,14 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
         ],
     )
     page = path.read_text(encoding="utf-8")
-    assert "模型回测验证" in page
+    assert "研究回测（不授权交易）" in page
     assert "2026-04-27 至 2026-05-22" in page
     assert "0.6209" in page
     assert "观察日" in page
     assert "+4.34%" in page
     assert "../backtests/20260427_20260522/buy_trades.csv" in page
     assert "主票明细" in page
-    assert "收盘日线代理；不替代 14:35 真实快照" in page
+    assert "收盘日线代理不具备14:20–14:55因果性" in page
     assert "../backtests/20260427_20260522/monthly_summary.csv" in page
 
 
@@ -268,7 +323,7 @@ def test_backtest_summary_list_hides_contained_windows(tmp_path):
     assert [(item["start_date"], item["end_date"]) for item in summaries] == [("20260313", "20260709")]
 
 
-def test_report_html_renders_v2_manual_boundary_and_ohlc_intervals(tmp_path):
+def test_report_html_renders_single_objective_and_probability_gate(tmp_path):
     path = tmp_path / "latest.html"
     render_html(
         pd.DataFrame(),
@@ -276,10 +331,11 @@ def test_report_html_renders_v2_manual_boundary_and_ohlc_intervals(tmp_path):
         {"status": "ok", "data_time": "2026-07-20 14:35:00"},
         path,
         decision_support={
-            "action": "建议关注买入",
+            "action": "买入",
+            "action_code": "BUY",
             "candidate_name": "甲",
             "candidate_code": "600001.SH",
-            "forecast_mode": "混合先验",
+            "forecast_mode": "实时因果样本",
             "forecast_confidence": 60,
             "forecast_open_q10_pct": -2,
             "forecast_open_q50_pct": 0,
@@ -294,15 +350,18 @@ def test_report_html_renders_v2_manual_boundary_and_ohlc_intervals(tmp_path):
             "forecast_close_q50_pct": 1,
             "forecast_close_q90_pct": 5,
             "forecast_profit_probability": 55,
-            "forecast_touch_plus3_probability": 65,
-            "forecast_touch_minus3_probability": 30,
+            "forecast_profit_probability_lower": 51,
+            "forecast_expected_net_return_pct": 0.8,
+            "forecast_live_sample_count": 40,
+            "entry_deadline": "14:55",
+            "exit_contract": "T+1收盘卖出",
             "reason": "检查通过",
         },
         market_regime={"state": "允许寻找机会", "score": 62, "reason": "市场较强"},
     )
     page = path.read_text(encoding="utf-8")
-    assert "WP V2 人工决策辅助" in page
+    assert "当日唯一正式决策" in page
     assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" not in page
-    assert "次日开盘 Q10 / Q50 / Q90" in page
-    assert "-2.00% / +0.00% / +2.00%" in page
-    assert "T+1 人工卖出建议" in page
+    assert "成本后盈利概率" in page
+    assert "95%单侧下界" in page
+    assert "T+1 固定卖出合同" in page

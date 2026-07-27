@@ -83,7 +83,44 @@ def _backtest_rows(backtests: list[dict]) -> str:
     return "".join(rows) or "<tr><td colspan=\"12\" class=\"empty\">暂无回测数据</td></tr>"
 
 
+def _legacy_audit_rows(records: list[dict]) -> str:
+    rows = []
+    for record in records:
+        status = str(record.get("audit_status") or "")
+        status_text = "旧版盘中记录可审计" if status == "valid_legacy_snapshot" else "缺少有效盘中快照"
+        status_class = "verified" if status == "valid_legacy_snapshot" else "missing"
+        rows.append(
+            "<tr>"
+            + f"<td>{_date_text(record.get('plan_trade_date'))}</td>"
+            + f"<td>{_summary_int(record, 'snapshot_count')}</td>"
+            + f"<td>{_summary_int(record, 'valid_preclose_snapshot_count')}</td>"
+            + f"<td>{html.escape(str(record.get('legacy_action') or 'NO_TRADE'))}</td>"
+            + f"<td>{_clock_text(record.get('earliest_snapshot_time'))} - {_clock_text(record.get('latest_snapshot_time'))}</td>"
+            + f"<td class=\"validation-status {status_class}\">{status_text}</td>"
+            + f"<td>{html.escape(str(record.get('audit_reason') or ''))}</td>"
+            + "</tr>"
+        )
+    return "".join(rows) or "<tr><td colspan=\"7\" class=\"empty\">暂无历史审计记录</td></tr>"
+
+
 def _validation_overview(summary: dict) -> str:
+    if str(summary.get("metric_scope") or "") == "strategy":
+        verified = _summary_int(summary, "verified_trades")
+        winners = _summary_int(summary, "net_profit_trades")
+        metrics = [
+            ("决策日", str(_summary_int(summary, "decision_days"))),
+            ("实际交易日", str(_summary_int(summary, "trade_days"))),
+            ("NO_TRADE", str(_summary_int(summary, "no_trade_days"))),
+            ("已验证交易", str(verified)),
+            ("净盈利", f"{winners} / {verified}<small>{float(summary.get('net_win_rate', 0) or 0):.2f}%</small>"),
+            ("平均净收益", _pct_cell(summary.get("average_net_return_pct")) if verified else "<span class=\"pct-pending\">待验证</span>"),
+            ("累计净收益", _pct_cell(summary.get("cumulative_net_return_pct")) if verified else "<span class=\"pct-pending\">待验证</span>"),
+            ("最大回撤", _pct_cell(summary.get("max_drawdown_pct")) if verified else "<span class=\"pct-pending\">待验证</span>"),
+        ]
+        return "".join(
+            f"<div class=\"validation-kpi\"><span>{label}</span><strong>{value}</strong></div>"
+            for label, value in metrics
+        )
     total_days = _summary_int(summary, "total_plan_days")
     verified_days = _summary_int(summary, "verified_plan_days")
     total_records = _summary_int(summary, "total_records")
@@ -123,7 +160,53 @@ def _validation_days(
 ) -> str:
     sampling_days = sampling_days or []
     if validation.empty and not sampling_days:
-        return "<div class=\"empty\">暂无主票验证记录</div>"
+        return "<div class=\"empty\">暂无正式策略决策记录</div>"
+    if "action" in validation.columns:
+        rows = []
+        view = validation.sort_values(["plan_trade_date", "published_at"], ascending=[False, False])
+        for _, row in view.iterrows():
+            action = str(row.get("action") or "")
+            is_buy = action == "BUY"
+            truth_status = str(row.get("truth_status") or "")
+            if action == "NO_TRADE":
+                status_label = "未交易"
+                status_class = "pending"
+                result_cell = "<span>当日主动空仓</span>"
+            elif truth_status == "verified":
+                status_label = "已验证"
+                status_class = "verified"
+                cost_value = pd.to_numeric(
+                    pd.Series([row.get("assumed_cost_pct")]),
+                    errors="coerce",
+                ).iloc[0]
+                cost_value = 0.0 if pd.isna(cost_value) else float(cost_value)
+                result_cell = (
+                    f"<span class=\"validation-return\">毛 {_pct_cell(row.get('gross_return_pct'))}"
+                    f" · 成本 {_pct_cell(-abs(cost_value))}"
+                    f" · 净 {_pct_cell(row.get('net_return_pct'))}</span>"
+                )
+            else:
+                status_label = "待验证"
+                status_class = "pending"
+                result_cell = "<span class=\"pct-pending\">待T+1收盘真值</span>"
+            target = row.get("target_trade_date", "") if is_buy else ""
+            candidate = (
+                f"{html.escape(str(row.get('name') or ''))} {html.escape(str(row.get('ts_code') or ''))}".strip()
+                if is_buy
+                else "-"
+            )
+            rows.append(
+                "<div class=\"validation-day-summary validation-grid\">"
+                + f"<span>{_date_text(row.get('plan_trade_date'))}</span>"
+                + f"<span>{_date_text(target)}</span>"
+                + f"<span>{html.escape(action)}</span>"
+                + f"<span>{result_cell}</span>"
+                + f"<span>{candidate}</span>"
+                + f"<span>{_clock_text(row.get('plan_time'))}</span>"
+                + f"<span class=\"validation-status {status_class}\">{status_label}</span>"
+                + "<span></span></div>"
+            )
+        return "".join(rows)
 
     groups: list[tuple[str, str]] = []
     represented_dates: set[str] = set()
@@ -253,7 +336,8 @@ def _probability(summary: dict, key: str) -> str:
 
 def _decision_support_panel(decision: dict, regime: dict) -> str:
     action = str(decision.get("action") or "继续观察")
-    action_class = "buy" if action == "建议关注买入" else "avoid" if action == "建议空仓" else "wait"
+    action_code = str(decision.get("action_code") or "WATCH")
+    action_class = "buy" if action_code == "BUY" else "avoid" if action_code == "NO_TRADE" else "wait"
     candidate_name = str(decision.get("candidate_name") or "")
     candidate_code = str(decision.get("candidate_code") or "")
     candidate = f"{candidate_name} {candidate_code}".strip() or "暂无首选"
@@ -265,33 +349,26 @@ def _decision_support_panel(decision: dict, regime: dict) -> str:
     regime_score = _fmt(regime.get("score", 0))
     regime_reason = str(regime.get("reason") or "")
     next_checkpoint = str(decision.get("next_checkpoint") or "下一次数据刷新后复核")
-    intervals = [
-        ("次日开盘", _forecast_range(decision, "open")),
-        ("次日最高", _forecast_range(decision, "high")),
-        ("次日最低", _forecast_range(decision, "low")),
-        ("次日收盘", _forecast_range(decision, "close")),
-    ]
-    interval_html = "".join(
-        f"<div class=\"forecast-metric\"><span>{label} Q10 / Q50 / Q90</span><strong>{html.escape(value)}</strong></div>"
-        for label, value in intervals
-    )
     warning_html = f"<p class=\"model-warning\">{html.escape(warning)}</p>" if warning else ""
     return (
         "<section class=\"v2-section\">"
-        "<div class=\"v2-heading\"><strong>WP V2 人工决策辅助</strong>"
-        "<span>目标：提高T+1盈利质量，允许等待与空仓</span></div>"
+        "<div class=\"v2-heading\"><strong>当日唯一正式决策</strong>"
+        "<span>目标：最大化T日14:20–14:55可成交买入后，T+1收盘卖出的净盈利概率</span></div>"
         "<div class=\"decision-line\">"
         f"<span class=\"decision-action {action_class}\">{html.escape(action)}</span>"
         f"<strong>{html.escape(candidate)}</strong>"
         f"<span>市场：{html.escape(regime_state)} · {regime_score}分</span>"
-        f"<span>预测：{html.escape(mode)} · 置信{confidence}</span>"
+        f"<span>模型：{html.escape(mode)} · 样本就绪度{confidence}</span>"
         "</div>"
         f"<p class=\"decision-reason\">{html.escape(reason or regime_reason)}</p>"
-        f"<div class=\"forecast-grid\">{interval_html}</div>"
         "<div class=\"probability-line\">"
-        f"<span>收盘盈利概率 <strong>{_probability(decision, 'forecast_profit_probability')}</strong></span>"
-        f"<span>触及+3% <strong>{_probability(decision, 'forecast_touch_plus3_probability')}</strong></span>"
-        f"<span>触及-3% <strong>{_probability(decision, 'forecast_touch_minus3_probability')}</strong></span>"
+        f"<span>成本后盈利概率 <strong>{_probability(decision, 'forecast_profit_probability')}</strong></span>"
+        f"<span>95%单侧下界 <strong>{_probability(decision, 'forecast_profit_probability_lower')}</strong></span>"
+        f"<span>期望净收益 <strong>{_pct_cell(decision.get('forecast_expected_net_return_pct'))}</strong></span>"
+        f"<span>真实样本 <strong>{html.escape(str(decision.get('forecast_live_sample_count') or 0))}</strong></span>"
+        f"<span>独立交易日 <strong>{html.escape(str(decision.get('forecast_live_day_count') or 0))}</strong></span>"
+        f"<span>买入截止 <strong>{html.escape(str(decision.get('entry_deadline') or '14:55'))}</strong></span>"
+        f"<span>卖出合同 <strong>{html.escape(str(decision.get('exit_contract') or 'T+1收盘'))}</strong></span>"
         f"<span>下一检查 <strong>{html.escape(next_checkpoint)}</strong></span>"
         "</div>"
         f"{warning_html}"
@@ -320,7 +397,7 @@ def _exit_guidance_panel(frame: pd.DataFrame) -> str:
         rows.append("<tr><td colspan=\"9\" class=\"empty\">今天没有需要复核的T+1系统观察记录；实际持仓始终以人工确认为准。</td></tr>")
     return (
         "<section class=\"exit-section\"><div class=\"v2-heading\">"
-        "<strong>T+1 人工卖出建议</strong><span>系统记录不等于实际持仓</span></div>"
+        "<strong>T+1 固定卖出合同</strong><span>14:50–15:00人工卖出；验证统一使用T+1收盘价</span></div>"
         "<div class=\"backtest-scroll\"><table class=\"exit-table\">"
         "<thead><tr><th>代码</th><th>名称</th><th>开盘收益</th><th>最高收益</th><th>最低收益</th><th>当前收益</th><th>建议</th><th>依据</th><th>下一检查</th></tr></thead>"
         f"<tbody>{''.join(rows)}</tbody></table></div></section>"
@@ -348,17 +425,20 @@ def render_html(
     observation_pool = observation_pool if observation_pool is not None else buy_plan
     validation = validation if validation is not None else pd.DataFrame()
     validation_summary = validation_summary or {}
-    sampling_days = list(validation_summary.get("sampling_days") or [])
-    validation_model = str(validation_summary.get("buy_model_version") or "")
-    validation = scope_validation_table(validation, validation_model, VALIDATION_TRACKING_START_DATE)
-    validation_summary = _summary(validation, validation_model, VALIDATION_TRACKING_START_DATE)
-    validation_summary["sampling_days"] = sampling_days
+    is_strategy_validation = str(validation_summary.get("metric_scope") or "") == "strategy"
+    sampling_days = [] if is_strategy_validation else list(validation_summary.get("sampling_days") or [])
+    if not is_strategy_validation:
+        validation_model = str(validation_summary.get("buy_model_version") or "")
+        validation = scope_validation_table(validation, validation_model, VALIDATION_TRACKING_START_DATE)
+        validation_summary = _summary(validation, validation_model, VALIDATION_TRACKING_START_DATE)
+        validation_summary["sampling_days"] = sampling_days
     backtests = sorted(backtests or [], key=lambda item: str(item.get("start_date", "")))
     decision_support = decision_support or {}
     market_regime = market_regime or {}
     t1_forecasts = t1_forecasts if t1_forecasts is not None else pd.DataFrame()
     exit_guidance = exit_guidance if exit_guidance is not None else pd.DataFrame()
     backtest_rows = _backtest_rows(backtests)
+    legacy_audit_rows = _legacy_audit_rows(list(health.get("legacy_history_audit_records") or []))
     decision_support_html = _decision_support_panel(decision_support, market_regime)
     exit_guidance_html = _exit_guidance_panel(exit_guidance)
     sector_top = []
@@ -418,6 +498,21 @@ def render_html(
         buy_rows.append(f"<tr><td colspan=\"16\" class=\"empty\">{empty_message}</td></tr>")
     validation_overview = _validation_overview(validation_summary)
     validation_days = _validation_days(validation, sampling_days)
+    if is_strategy_validation:
+        validation_title = "正式策略 T+1 净收益验证"
+        validation_subtitle = "每个交易日最多一笔；NO_TRADE计入决策日，收益只统计扣除成本后的正式BUY"
+        validation_header = (
+            "<span>决策日</span><span>T+1日</span><span>动作</span>"
+            "<span>净收益</span><span>标的</span><span>决策时间</span><span>状态</span><span></span>"
+        )
+    else:
+        validation_title = "尾盘研究样本验证"
+        validation_subtitle = "研究样本不等于正式交易"
+        validation_header = (
+            "<span>计划日</span><span>验证日</span><span>观察记录</span>"
+            "<span>次日收益（开 / 高 / 收）</span><span>上涨</span>"
+            "<span>触及涨停</span><span>状态</span><span></span>"
+        )
     status_cls = "bad" if health.get("status") not in {"ok", "无符合条件股票"} else "ok"
     data_trade_date = html.escape(str(health.get("data_trade_date") or "-"))
     expected_trade_date = html.escape(str(health.get("expected_trade_date") or "-"))
@@ -705,7 +800,7 @@ def render_html(
 </head>
 <body>
   <header>
-    <h1>WP Top50</h1>
+    <h1>WP T+1 净盈利决策</h1>
   </header>
   <main>
     <details class="summary-section summary-details" aria-label="运行状态与板块热度">
@@ -740,7 +835,7 @@ def render_html(
       </div>
       <div id="buy-plan-table-wrap" class="backtest-scroll">
         <table class="buy-table">
-          <thead><tr><th>质量排名</th><th>状态</th><th>排名变化</th><th>首次出现</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>质量分</th><th>风险分</th><th>5日量能比</th><th>涨跌停规则</th><th>最近确认</th><th>14:50确认</th><th>放弃</th><th>理由</th></tr></thead>
+          <thead><tr><th>质量排名</th><th>状态</th><th>排名变化</th><th>首次出现</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>研究分</th><th>风险分</th><th>5日量能比</th><th>涨跌停规则</th><th>最近确认</th><th>14:55前确认</th><th>放弃</th><th>理由</th></tr></thead>
           <tbody>{''.join(buy_rows)}</tbody>
         </table>
       </div>
@@ -756,21 +851,33 @@ def render_html(
     </section>
     <section class="validation-section">
       <div class="validation-heading">
-        <strong>14:20–14:50 主票累计验证</strong>
-        <span>自 2026-07-15 起；保留窗口内每次实际出现的主票</span>
+        <strong>{validation_title}</strong>
+        <span>{validation_subtitle}</span>
       </div>
       <div class="validation-kpis">{validation_overview}</div>
       <div class="validation-days">
         <div class="validation-day-list">
-          <div class="validation-day-header validation-grid"><span>计划日</span><span>验证日</span><span>观察记录</span><span>次日收益（开 / 高 / 收）</span><span>上涨</span><span>触及涨停</span><span>状态</span><span></span></div>
+          <div class="validation-day-header validation-grid">{validation_header}</div>
           {validation_days}
         </div>
       </div>
     </section>
     <section class="backtest-section">
       <div class="validation-heading">
-        <strong>模型回测验证</strong>
-        <span>收盘日线代理；不替代 14:35 真实快照</span>
+        <strong>2026-07-21 至 2026-07-24 历史完整性审计</strong>
+        <span>盘后生成的名单不回填为盘中交易；新策略绩效从不可变正式账本重新开始</span>
+      </div>
+      <div class="backtest-scroll">
+        <table class="backtest-table">
+          <thead><tr><th>计划日</th><th>快照</th><th>有效盘中快照</th><th>审计动作</th><th>快照时间范围</th><th>状态</th><th>原因</th></tr></thead>
+          <tbody>{legacy_audit_rows}</tbody>
+        </table>
+      </div>
+    </section>
+    <section class="backtest-section">
+      <div class="validation-heading">
+        <strong>研究回测（不授权交易）</strong>
+        <span>收盘日线代理不具备14:20–14:55因果性，只用于诊断数据与特征</span>
       </div>
       <div class="table-wrap">
         <table class="backtest-table">

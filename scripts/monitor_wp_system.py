@@ -36,14 +36,11 @@ def now_cn() -> datetime:
 
 
 def in_trade_window(current: datetime) -> bool:
-    return (
-        time(9, 25) <= current.time() <= time(11, 45)
-        or time(12, 55) <= current.time() <= time(15, 10)
-    )
+    return time(14, 20) <= current.time() <= time(15, 2)
 
 
 def in_close_finalize_window(current: datetime) -> bool:
-    return time(15, 10) < current.time() <= time(15, 35)
+    return time(15, 2) < current.time() <= time(15, 10)
 
 
 def in_monitor_window(current: datetime) -> bool:
@@ -62,7 +59,7 @@ def parse_dt(value: Any) -> datetime | None:
 
 def target_slot(current: datetime) -> datetime | None:
     if in_close_finalize_window(current):
-        return datetime.combine(current.date(), time(15, 10), CN_TZ)
+        return datetime.combine(current.date(), time(15, 0), CN_TZ)
     return latest_due_slot(current)
 
 

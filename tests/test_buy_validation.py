@@ -61,7 +61,8 @@ def test_tail_snapshot_window_accepts_pre_window_fallback():
     assert _in_tail_window("2026-07-14 14:20:00")
     assert _in_tail_window("2026-07-14 14:35:00")
     assert _in_tail_window("2026-07-14 14:50:00")
-    assert not _in_tail_window("2026-07-14 14:50:01")
+    assert _in_tail_window("2026-07-14 14:55:00")
+    assert not _in_tail_window("2026-07-14 14:55:01")
 
 
 def test_truth_becomes_due_only_after_target_day_close():

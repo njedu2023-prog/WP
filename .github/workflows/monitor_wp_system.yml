@@ -3,10 +3,10 @@ name: Monitor WP System
 on:
   workflow_dispatch:
   schedule:
-    # A second, offset cron registration provides a self-repair path when the
-    # primary direct-Tushare WP workflow is delayed or dropped by GitHub.
-    - cron: "3-58/5 1-3,5-7 * * 1-5"
-    - cron: "58 4 * * 1-5"
+    # Sparse checkpoints repair a missing tail session without recreating the
+    # old all-day five-minute workflow churn.
+    - cron: "23,38,53 6 * * 1-5"
+    - cron: "3 7 * * 1-5"
 
 permissions:
   actions: write

@@ -221,7 +221,7 @@ def test_tail_observation_recovers_today_primaries_from_validation_history(tmp_p
     assert recovered["observation_status"] == "观察票"
 
 
-def test_tail_observation_freezes_after_1450_without_adding_a_new_primary(tmp_path):
+def test_tail_observation_freezes_after_1455_without_adding_a_new_primary(tmp_path):
     state_path = tmp_path / "wp_tail_observation.csv"
     first = pd.DataFrame([_candidate("000001.SZ", 82.0)])
     initial = update_tail_observation(
@@ -237,7 +237,7 @@ def test_tail_observation_freezes_after_1450_without_adding_a_new_primary(tmp_pa
         later,
         _plan("000002.SZ"),
         later,
-        _health("2026-07-17 14:55:00"),
+        _health("2026-07-17 14:55:01"),
         state_path,
     )
 

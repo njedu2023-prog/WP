@@ -3,17 +3,26 @@ from __future__ import annotations
 import os
 import subprocess
 import sys
+import time as time_module
+from datetime import datetime, time
 from pathlib import Path
 
-from run_wp_session import is_trade_day, now_cn
+import pandas as pd
+
+try:
+    from run_wp_session import is_trade_day, now_cn
+except ModuleNotFoundError:  # pragma: no cover - package import in tests
+    from scripts.run_wp_session import is_trade_day, now_cn
 
 
 CLOSE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
     "outputs/csv/wp_buy_plan_validation.csv",
+    "outputs/csv/wp_strategy_ledger.csv",
     "outputs/csv/wp_tail_sampling.csv",
     "outputs/json/latest.json",
     "outputs/json/wp_buy_plan_validation.json",
+    "outputs/json/wp_strategy_ledger.json",
     "outputs/json/wp_tail_sampling.json",
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_data_healthcheck.json",
@@ -23,6 +32,69 @@ CLOSE_COMMIT_PATHS = [
 def _latest_close_archive() -> str | None:
     matches = [path for path in Path.cwd().glob("outputs/html_reports/archive/*/*_close.html") if path.is_file()]
     return max(matches, key=lambda path: path.stat().st_mtime).as_posix() if matches else None
+
+
+def _truth_state(path: Path) -> tuple[tuple[str, str, str, str], ...]:
+    if not path.exists():
+        return ()
+    try:
+        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        return ()
+    rows = []
+    for _, row in frame.iterrows():
+        rows.append(
+            (
+                str(row.get("plan_trade_date") or ""),
+                str(row.get("ts_code") or ""),
+                str(row.get("truth_status") or ""),
+                str(row.get("net_return_pct") or row.get("return_close_pct") or ""),
+            )
+        )
+    return tuple(sorted(rows))
+
+
+def _pending_due_count(path: Path, today: str) -> int:
+    if not path.exists():
+        return 0
+    try:
+        frame = pd.read_csv(path, dtype=str, keep_default_na=False)
+    except (OSError, pd.errors.ParserError, pd.errors.EmptyDataError):
+        return 0
+    if frame.empty or "target_trade_date" not in frame.columns:
+        return 0
+    target = frame["target_trade_date"].fillna("").astype(str).str.replace("-", "", regex=False)
+    status = frame.get("truth_status", pd.Series("", index=frame.index)).fillna("").astype(str)
+    return int((target.le(today) & target.str.len().eq(8) & status.ne("verified")).sum())
+
+
+def run_once() -> int:
+    tracked = [
+        Path("outputs/csv/wp_buy_plan_validation.csv"),
+        Path("outputs/csv/wp_strategy_ledger.csv"),
+    ]
+    before = tuple(_truth_state(path) for path in tracked)
+
+    env = os.environ.copy()
+    subprocess.run([sys.executable, "-m", "wp.close_validation"], check=True, env=env)
+    after = tuple(_truth_state(path) for path in tracked)
+    today = now_cn().strftime("%Y%m%d")
+    pending = _pending_due_count(tracked[0], today)
+    if before == after:
+        print(f"No close-truth state change; pending_due={pending}.")
+        return pending
+
+    commit_paths = list(CLOSE_COMMIT_PATHS)
+    archive = _latest_close_archive()
+    if archive:
+        commit_paths.append(archive)
+    subprocess.run(
+        [sys.executable, "scripts/github_commit_paths.py", "Validate WP next-day close", *commit_paths],
+        check=True,
+        env=env,
+    )
+    print(f"Close-truth state committed; pending_due={pending}.")
+    return pending
 
 
 def main() -> None:
@@ -40,17 +112,23 @@ def main() -> None:
         print("WP close validation calendar fallback: TUSHARE_TOKEN is not configured.")
 
     print(f"WP close validation started: {current:%Y-%m-%d %H:%M:%S}")
-    env = os.environ.copy()
-    subprocess.run([sys.executable, "-m", "wp.close_validation"], check=True, env=env)
-    commit_paths = list(CLOSE_COMMIT_PATHS)
-    archive = _latest_close_archive()
-    if archive:
-        commit_paths.append(archive)
-    subprocess.run(
-        [sys.executable, "scripts/github_commit_paths.py", "Validate WP next-day close", *commit_paths],
-        check=True,
-        env=env,
-    )
+    if os.environ.get("WP_CLOSE_RUN_MODE", "once").strip().lower() != "session":
+        run_once()
+        return
+
+    interval = int(os.environ.get("WP_CLOSE_INTERVAL_SECONDS", "300"))
+    end = datetime.combine(current.date(), time(16, 5), current.tzinfo)
+    while now_cn() <= end:
+        pending = run_once()
+        if pending == 0:
+            print("WP close validation completed: no due records remain.")
+            return
+        wait = min(interval, max(0, int((end - now_cn()).total_seconds())))
+        if wait <= 0:
+            break
+        print(f"Close truth not ready; retry in {wait}s.")
+        time_module.sleep(wait)
+    raise SystemExit("WP close validation timed out with due records still pending.")
 
 
 if __name__ == "__main__":

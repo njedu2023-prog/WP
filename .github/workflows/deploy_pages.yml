@@ -9,11 +9,6 @@ on:
       - index.html
       - outputs/**
       - .github/workflows/deploy_pages.yml
-  workflow_run:
-    workflows:
-      - Run WP 10min
-    types:
-      - completed
 
 permissions:
   contents: read
@@ -22,11 +17,10 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   deploy:
-    if: ${{ github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success' }}
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

@@ -22,7 +22,7 @@ UPSTREAM_API = os.environ.get(
     "https://api.github.com/repos/njedu2023-prog/a-share-top3-data/contents/data/wp/latest/wp_manifest.json?ref=main",
 )
 CN_TZ = ZoneInfo("Asia/Shanghai")
-SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "600"))
+SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
 
 
 def read_json(path: Path) -> dict[str, Any]:
@@ -59,11 +59,8 @@ def scheduled_slots(day: date) -> list[datetime]:
     return sorted(
         set(
             [
-                *_slots(at(9, 25), at(11, 35), 10),
-                *_slots(at(12, 55), at(14, 15), 10),
                 *_slots(at(14, 20), at(14, 55), 5),
-                at(15, 5),
-                at(15, 10),
+                at(15, 0),
             ]
         )
     )
@@ -71,15 +68,10 @@ def scheduled_slots(day: date) -> list[datetime]:
 
 def latest_due_slot(current: datetime) -> datetime | None:
     local = current.astimezone(CN_TZ)
-    morning_start = datetime.combine(local.date(), time(9, 25), CN_TZ)
-    morning_end = datetime.combine(local.date(), time(11, 35), CN_TZ)
-    afternoon_start = datetime.combine(local.date(), time(12, 55), CN_TZ)
-    afternoon_end = datetime.combine(local.date(), time(15, 10), CN_TZ)
+    window_start = datetime.combine(local.date(), time(14, 20), CN_TZ)
+    window_end = datetime.combine(local.date(), time(15, 0), CN_TZ)
     grace = timedelta(seconds=SCHEDULE_GRACE_SECONDS)
-    in_window = (
-        morning_start <= local <= morning_end + grace
-        or afternoon_start <= local <= afternoon_end + grace
-    )
+    in_window = window_start <= local <= window_end + grace
     if not in_window:
         return None
     due = [slot for slot in scheduled_slots(local.date()) if slot <= local]
@@ -125,6 +117,9 @@ def resolve_decision(
         return True, f"repository dispatch has upstream revision {upstream_revision}"
 
     now = current or datetime.now(CN_TZ)
+    local_now = now.astimezone(CN_TZ)
+    if event_name == "schedule" and time(14, 15) <= local_now.time() < time(14, 20):
+        return True, "start continuous tail session before 14:20"
     target = latest_due_slot(now)
     if target is None:
         return False, "outside A-share data window"

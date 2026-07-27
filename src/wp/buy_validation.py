@@ -496,25 +496,25 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
             zip(
                 snapshot["buy_model_version"].fillna("").astype(str),
                 snapshot["plan_trade_date"].astype(str),
-                snapshot["plan_time"].astype(str),
+                snapshot["ts_code"].fillna("").astype(str),
             )
         )
         existing_keys = list(
             zip(
                 existing["buy_model_version"].fillna("").astype(str),
                 existing["plan_trade_date"].astype(str),
-                existing["plan_time"].astype(str),
+                existing["ts_code"].fillna("").astype(str),
             )
         )
-        # Preserve every dynamic primary-list snapshot in the 14:20-14:50
-        # window. Re-running the exact same market timestamp replaces only that
-        # timestamp, leaving earlier and later observations intact.
+        # Keep one causal research sample per stock and trade date. Intraday
+        # refreshes replace the earlier sample until truth is locked, avoiding
+        # repeated appearances being counted as independent trades.
         existing = existing[[key not in snapshot_keys for key in existing_keys]].copy()
         table = snapshot.copy() if existing.empty else pd.concat([existing, snapshot], ignore_index=True)
     else:
         table = existing
     if not table.empty:
-        key_cols = ["buy_model_version", "plan_trade_date", "plan_time", "ts_code"]
+        key_cols = ["buy_model_version", "plan_trade_date", "ts_code"]
         table = table.drop_duplicates(key_cols, keep="last")
         table["_buy_rank_sort"] = pd.to_numeric(table["buy_rank"], errors="coerce").fillna(999)
         table = table.sort_values(["plan_trade_date", "plan_time", "_buy_rank_sort"]).drop(columns=["_buy_rank_sort"])
