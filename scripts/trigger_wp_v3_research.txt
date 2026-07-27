@@ -1,4 +1,4 @@
-requested_at: 2026-07-27T20:52:03+08:00
+requested_at: 2026-07-27T16:45:00+08:00
 start_date: 20230727
 end_date: 20260724
-reason: vectorized_causal_panel_wp_v3_three_year_research
+reason: oos_diagnostics_and_shadow_observation
