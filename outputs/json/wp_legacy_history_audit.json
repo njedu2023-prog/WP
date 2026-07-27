@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27 15:45:43",
+  "generated_at": "2026-07-27 15:59:10",
   "summary": {
     "version": "legacy_tail_history_audit_v1",
     "days": 4,
@@ -35,7 +35,7 @@
       "legacy_candidate_code": "",
       "legacy_candidate_name": "",
       "audit_status": "missing_valid_preclose_snapshot",
-      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "audit_reason": "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账",
       "formal_strategy_eligible": false
     },
     {
@@ -50,7 +50,7 @@
       "legacy_candidate_code": "",
       "legacy_candidate_name": "",
       "audit_status": "missing_valid_preclose_snapshot",
-      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "audit_reason": "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账",
       "formal_strategy_eligible": false
     },
     {
@@ -65,7 +65,7 @@
       "legacy_candidate_code": "",
       "legacy_candidate_name": "",
       "audit_status": "missing_valid_preclose_snapshot",
-      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "audit_reason": "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账",
       "formal_strategy_eligible": false
     }
   ]

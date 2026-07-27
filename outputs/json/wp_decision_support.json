@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27 15:45:43",
+  "generated_at": "2026-07-27 15:59:10",
   "market_data_time": "2026-07-27 15:35:45",
   "market_regime": {
     "model_version": "market_regime_v1",
@@ -18,7 +18,7 @@
     "manual_decision_support_only": true
   },
   "summary": {
-    "version": "t1_qualified_cohort_v4",
+    "version": "t1_qualified_cohort_v5",
     "objective": "最大化14:20-14:50合格候选在T+1收盘扣费后取得正收益的概率",
     "action": "已收盘",
     "action_code": "CLOSED",
@@ -30,7 +30,8 @@
     "market_state": "允许寻找机会",
     "market_score": 100.0,
     "reason": "15:00已收盘，不再生成可买候选；历史信号继续等待T+1真值",
-    "entry_deadline": "14:50",
+    "candidate_deadline": "14:50",
+    "entry_deadline": "15:00",
     "exit_contract": "T+1收盘卖出",
     "next_checkpoint": "下一交易日14:20",
     "selection_contract": "发布全部合格票，由人工决定买哪一支",

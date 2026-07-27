@@ -4,7 +4,7 @@
   "is_trading_time": false,
   "data_time": "2026-07-27 15:35:45",
   "market_data_time": "2026-07-27 15:35:45",
-  "wp_run_time": "2026-07-27 15:45:43",
+  "wp_run_time": "2026-07-27 15:59:10",
   "data_trade_date": "20260727",
   "expected_trade_date": "20260727",
   "raw_count": 129,
@@ -21,12 +21,12 @@
   "load_error": "",
   "source_status": "ok",
   "source_trade_date": "20260727",
-  "source_generated_at": "2026-07-27 15:45:43",
+  "source_generated_at": "2026-07-27 15:59:10",
   "source_scheduled_slot": "",
   "source_mode": "direct_tushare",
   "source_repository": "njedu2023-prog/a-share-top3-data",
   "source_processor_revision": "97bfaea699643bbd30820a64ef0db5f018323528",
-  "generated_at": "2026-07-27T07:45:44",
+  "generated_at": "2026-07-27T07:59:11",
   "model_version": "wp_rule_v2_1",
   "buy_model_version": "tail_profit_v1",
   "forecast_model_version": "t1_net_profit_probability_v2",
@@ -62,8 +62,8 @@
   },
   "market_context_count": 6000,
   "market_context_source": "/home/runner/work/WP/WP/data/direct/latest/wp_market_regime_input.csv",
-  "source_data_hash": "d8d6d89ea05c8a5a3188d4b9a3969e836e4eec36f3782ab7114641ffbda45abf",
-  "report_revision": "2026-07-27 15:45:43",
+  "source_data_hash": "212ed182d6913308538e90f14d7c853926cd7684961894972626fefd23432e6d",
+  "report_revision": "2026-07-27 15:59:10",
   "direct_attempted": true,
   "direct_error": "",
   "direct_fallback_used": false,
@@ -143,7 +143,7 @@
       "legacy_candidate_code": "",
       "legacy_candidate_name": "",
       "audit_status": "missing_valid_preclose_snapshot",
-      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "audit_reason": "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账",
       "formal_strategy_eligible": false
     },
     {
@@ -158,7 +158,7 @@
       "legacy_candidate_code": "",
       "legacy_candidate_name": "",
       "audit_status": "missing_valid_preclose_snapshot",
-      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "audit_reason": "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账",
       "formal_strategy_eligible": false
     },
     {
@@ -173,7 +173,7 @@
       "legacy_candidate_code": "",
       "legacy_candidate_name": "",
       "audit_status": "missing_valid_preclose_snapshot",
-      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "audit_reason": "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账",
       "formal_strategy_eligible": false
     }
   ],

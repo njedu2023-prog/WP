@@ -1,5 +1,5 @@
 ﻿audit_version,plan_trade_date,snapshot_count,valid_preclose_snapshot_count,invalid_late_snapshot_count,earliest_snapshot_time,latest_snapshot_time,legacy_action,legacy_candidate_code,legacy_candidate_name,audit_status,audit_reason,formal_strategy_eligible
 legacy_tail_history_audit_v1,20260721,4,2,2,2026-07-21 14:30:05,2026-07-21 15:16:24,NO_TRADE,,,valid_legacy_snapshot,旧版盘中正式意见为空仓；只保留为研究历史,False
-legacy_tail_history_audit_v1,20260722,2,0,2,2026-07-22 15:34:27,2026-07-22 15:36:00,NO_TRADE,,,missing_valid_preclose_snapshot,没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账,False
-legacy_tail_history_audit_v1,20260723,1,0,1,2026-07-23 15:31:44,2026-07-23 15:31:44,NO_TRADE,,,missing_valid_preclose_snapshot,没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账,False
-legacy_tail_history_audit_v1,20260724,1,0,1,2026-07-24 15:30:54,2026-07-24 15:30:54,NO_TRADE,,,missing_valid_preclose_snapshot,没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账,False
+legacy_tail_history_audit_v1,20260722,2,0,2,2026-07-22 15:34:27,2026-07-22 15:36:00,NO_TRADE,,,missing_valid_preclose_snapshot,没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账,False
+legacy_tail_history_audit_v1,20260723,1,0,1,2026-07-23 15:31:44,2026-07-23 15:31:44,NO_TRADE,,,missing_valid_preclose_snapshot,没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账,False
+legacy_tail_history_audit_v1,20260724,1,0,1,2026-07-24 15:30:54,2026-07-24 15:30:54,NO_TRADE,,,missing_valid_preclose_snapshot,没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账,False
