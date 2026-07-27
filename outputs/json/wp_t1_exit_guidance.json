@@ -1,11 +1,12 @@
 {
-  "generated_at": "2026-07-27 11:06:14",
-  "market_data_time": "2026-07-27 11:05:13",
+  "generated_at": "2026-07-27 12:17:21",
+  "market_data_time": "2026-07-27 11:34:59",
   "summary": {
-    "version": "manual_t1_exit_v1",
+    "version": "fixed_t1_close_exit_v2",
     "record_count": 0,
     "action_counts": {},
-    "position_basis": "系统历史观察记录，实际持仓须人工确认",
+    "position_basis": "仅正式BUY策略记录；实际持仓与成交价须人工确认",
+    "exit_contract": "T+1_close",
     "manual_execution_only": true,
     "order_routing_enabled": false,
     "broker_connection": "disabled"

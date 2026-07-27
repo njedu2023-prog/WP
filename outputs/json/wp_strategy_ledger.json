@@ -1,0 +1,25 @@
+{
+  "generated_at": "2026-07-27 12:17:21",
+  "market_data_time": "2026-07-27 11:34:59",
+  "summary": {
+    "metric_scope": "strategy",
+    "strategy_version": "t1_net_profit_strategy_v1",
+    "objective": "maximize_probability_of_positive_T1_net_return",
+    "entry_contract": "signal_last_price",
+    "exit_contract": "T+1_close",
+    "decision_days": 0,
+    "trade_days": 0,
+    "no_trade_days": 0,
+    "verified_trades": 0,
+    "pending_trades": 0,
+    "net_profit_trades": 0,
+    "net_win_rate": 0.0,
+    "average_net_return_pct": 0.0,
+    "median_net_return_pct": 0.0,
+    "cumulative_net_return_pct": 0.0,
+    "max_drawdown_pct": 0.0
+  },
+  "records": [],
+  "manual_execution_only": true,
+  "order_routing_enabled": false
+}

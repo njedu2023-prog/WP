@@ -1,0 +1,72 @@
+{
+  "generated_at": "2026-07-27 12:17:21",
+  "summary": {
+    "version": "legacy_tail_history_audit_v1",
+    "days": 4,
+    "valid_legacy_days": 1,
+    "missing_valid_preclose_days": 3,
+    "formal_strategy_eligible_days": 0
+  },
+  "records": [
+    {
+      "audit_version": "legacy_tail_history_audit_v1",
+      "plan_trade_date": "20260721",
+      "snapshot_count": 4,
+      "valid_preclose_snapshot_count": 2,
+      "invalid_late_snapshot_count": 2,
+      "earliest_snapshot_time": "2026-07-21 14:30:05",
+      "latest_snapshot_time": "2026-07-21 15:16:24",
+      "legacy_action": "NO_TRADE",
+      "legacy_candidate_code": "",
+      "legacy_candidate_name": "",
+      "audit_status": "valid_legacy_snapshot",
+      "audit_reason": "旧版盘中正式意见为空仓；只保留为研究历史",
+      "formal_strategy_eligible": false
+    },
+    {
+      "audit_version": "legacy_tail_history_audit_v1",
+      "plan_trade_date": "20260722",
+      "snapshot_count": 2,
+      "valid_preclose_snapshot_count": 0,
+      "invalid_late_snapshot_count": 2,
+      "earliest_snapshot_time": "2026-07-22 15:34:27",
+      "latest_snapshot_time": "2026-07-22 15:36:00",
+      "legacy_action": "NO_TRADE",
+      "legacy_candidate_code": "",
+      "legacy_candidate_name": "",
+      "audit_status": "missing_valid_preclose_snapshot",
+      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "formal_strategy_eligible": false
+    },
+    {
+      "audit_version": "legacy_tail_history_audit_v1",
+      "plan_trade_date": "20260723",
+      "snapshot_count": 1,
+      "valid_preclose_snapshot_count": 0,
+      "invalid_late_snapshot_count": 1,
+      "earliest_snapshot_time": "2026-07-23 15:31:44",
+      "latest_snapshot_time": "2026-07-23 15:31:44",
+      "legacy_action": "NO_TRADE",
+      "legacy_candidate_code": "",
+      "legacy_candidate_name": "",
+      "audit_status": "missing_valid_preclose_snapshot",
+      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "formal_strategy_eligible": false
+    },
+    {
+      "audit_version": "legacy_tail_history_audit_v1",
+      "plan_trade_date": "20260724",
+      "snapshot_count": 1,
+      "valid_preclose_snapshot_count": 0,
+      "invalid_late_snapshot_count": 1,
+      "earliest_snapshot_time": "2026-07-24 15:30:54",
+      "latest_snapshot_time": "2026-07-24 15:30:54",
+      "legacy_action": "NO_TRADE",
+      "legacy_candidate_code": "",
+      "legacy_candidate_name": "",
+      "audit_status": "missing_valid_preclose_snapshot",
+      "audit_reason": "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账",
+      "formal_strategy_eligible": false
+    }
+  ]
+}
