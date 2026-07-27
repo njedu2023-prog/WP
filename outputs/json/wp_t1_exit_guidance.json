@@ -1,11 +1,11 @@
 {
-  "generated_at": "2026-07-27 12:33:18",
-  "market_data_time": "2026-07-27 11:34:59",
+  "generated_at": "2026-07-27 15:45:43",
+  "market_data_time": "2026-07-27 15:35:45",
   "summary": {
     "version": "fixed_t1_close_exit_v2",
     "record_count": 0,
     "action_counts": {},
-    "position_basis": "仅正式BUY策略记录；实际持仓与成交价须人工确认",
+    "position_basis": "全部合格候选的假设退出路径；实际持仓与成交价须人工确认",
     "exit_contract": "T+1_close",
     "manual_execution_only": true,
     "order_routing_enabled": false,

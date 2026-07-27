@@ -1,13 +1,13 @@
 {
-  "generated_at": "2026-07-27 12:33:18",
-  "market_data_time": "2026-07-27 11:34:59",
-  "source_data_hash": "9a3973ba3aa146c44efd6e1d868d1c97c0493391b2c9befee81ead141c4878b3",
+  "generated_at": "2026-07-27 15:45:43",
+  "market_data_time": "2026-07-27 15:35:45",
+  "source_data_hash": "d8d6d89ea05c8a5a3188d4b9a3969e836e4eec36f3782ab7114641ffbda45abf",
   "summary": {
     "count": 0,
     "active_count": 0,
     "sealed_count": 0,
     "review_count": 0,
-    "status": "before_tail_window"
+    "status": "market_closed"
   },
   "records": []
 }

@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-27 12:33:18",
-  "market_data_time": "2026-07-27 11:34:59",
-  "source_data_hash": "9a3973ba3aa146c44efd6e1d868d1c97c0493391b2c9befee81ead141c4878b3",
-  "wp_run_time": "2026-07-27 12:33:18",
+  "generated_at": "2026-07-27 15:45:43",
+  "market_data_time": "2026-07-27 15:35:45",
+  "source_data_hash": "d8d6d89ea05c8a5a3188d4b9a3969e836e4eec36f3782ab7114641ffbda45abf",
+  "wp_run_time": "2026-07-27 15:45:43",
   "summary": {
     "buy_model_version": "tail_profit_v1",
     "total_plan_days": 5,
@@ -66,9 +66,19 @@
         "last_sample_time": "",
         "note": "当日未取得14:20-14:50合法窗口快照；不使用15:00后数据回补",
         "updated_at": "2026-07-24 15:00:00"
+      },
+      {
+        "plan_trade_date": "20260727",
+        "target_trade_date": "20260728",
+        "sample_status": "missing",
+        "record_count": 0,
+        "first_sample_time": "",
+        "last_sample_time": "",
+        "note": "当日未取得14:20-14:50合法窗口快照；不使用14:50后数据回补",
+        "updated_at": "2026-07-27 15:35:45"
       }
     ],
-    "sampling_missing_days": 3
+    "sampling_missing_days": 4
   },
   "records": [
     {
