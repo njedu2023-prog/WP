@@ -148,7 +148,7 @@ def test_material_policy_change_does_not_inherit_shadow_evidence():
     assert registry["shadow_policy_fingerprint"] == "policy-a"
 
 
-def test_backtest_failed_policy_cannot_start_shadow_clock():
+def test_backtest_failed_policy_starts_observation_but_cannot_promote():
     registry = empty_registry()
     register_research_model(
         registry,
@@ -156,6 +156,26 @@ def test_backtest_failed_policy_cannot_start_shadow_clock():
         backtest={"backtest_gate": {"passed": False}},
         artifact_path="a.joblib",
     )
-    assert registry["models"][0]["status"] == "RESEARCH"
-    assert registry["shadow_model_fingerprint"] is None
-    assert registry["shadow_policy_fingerprint"] is None
+    assert registry["models"][0]["status"] == "SHADOW_OBSERVATION"
+    assert registry["shadow_model_fingerprint"] == "model-a"
+    assert registry["shadow_policy_fingerprint"] == "policy-a"
+    assert evaluate_promotion(registry["models"][0], V3Config()).eligible is False
+
+
+def test_failed_challenger_does_not_replace_backtest_passed_shadow():
+    registry = empty_registry()
+    register_research_model(
+        registry,
+        metadata=_metadata("model-a", "policy-a", "2026-06-01T00:00:00Z"),
+        backtest={"backtest_gate": {"passed": True}},
+        artifact_path="a.joblib",
+    )
+    register_research_model(
+        registry,
+        metadata=_metadata("model-b", "policy-b", "2026-07-01T00:00:00Z"),
+        backtest={"backtest_gate": {"passed": False}},
+        artifact_path="b.joblib",
+    )
+
+    assert registry["shadow_model_fingerprint"] == "model-a"
+    assert registry["models"][1]["status"] == "RESEARCH"

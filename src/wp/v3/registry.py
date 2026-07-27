@@ -49,7 +49,7 @@ def load_registry(path: str | Path) -> dict[str, Any]:
             (
                 model.get("fingerprint")
                 for model in reversed(raw["models"])
-                if model.get("status") == "SHADOW"
+                if model.get("status") in {"SHADOW", "SHADOW_OBSERVATION"}
             ),
             None,
         )
@@ -91,6 +91,16 @@ def register_research_model(
     backtest_passed = bool(
         backtest.get("backtest_gate", {}).get("passed", False)
     )
+    current_shadow = model_record(
+        registry,
+        str(registry.get("shadow_model_fingerprint") or ""),
+    )
+    current_shadow_passed = bool(
+        current_shadow
+        and current_shadow.get("backtest", {})
+        .get("backtest_gate", {})
+        .get("passed", False)
+    )
 
     if registry.get("active_policy_fingerprint") == policy and backtest_passed:
         status = "PROMOTED"
@@ -99,19 +109,24 @@ def register_research_model(
         registry["active_model_fingerprint"] = fingerprint
     elif registry.get("active_policy_fingerprint") == policy:
         status = "RESEARCH"
-    elif registry.get("shadow_policy_fingerprint") == policy and backtest_passed:
-        status = "SHADOW"
-        previous = registry.get("shadow_model_fingerprint")
-        _supersede(registry, previous, "SUPERSEDED_SHADOW")
-        registry["shadow_model_fingerprint"] = fingerprint
     elif backtest_passed:
         status = "SHADOW"
         previous = registry.get("shadow_model_fingerprint")
         _supersede(registry, previous, "SUPERSEDED_SHADOW")
         registry["shadow_policy_fingerprint"] = policy
         registry["shadow_model_fingerprint"] = fingerprint
-    else:
+    elif current_shadow_passed:
+        # A rejected challenger may be retained for research, but it must not
+        # displace a shadow policy that already passed the historical gate.
         status = "RESEARCH"
+    else:
+        # Observation is not approval. It lets the latest frozen policy collect
+        # genuinely future sessions while every promotion gate remains closed.
+        status = "SHADOW_OBSERVATION"
+        previous = registry.get("shadow_model_fingerprint")
+        _supersede(registry, previous, "SUPERSEDED_OBSERVATION")
+        registry["shadow_policy_fingerprint"] = policy
+        registry["shadow_model_fingerprint"] = fingerprint
 
     record = {
         "model_version": metadata["model_version"],

@@ -66,7 +66,9 @@ def render_v3_dashboard(
     title_state = {
         "PRODUCTION": "生产模型",
         "SHADOW": "影子模型",
+        "SHADOW_OBSERVATION": "影子观察（回测未通过）",
         "MODEL_NOT_READY": "模型尚未就绪",
+        "MODEL_NOT_DESIGNATED": "研究模型未指定",
     }.get(state, state)
     status_class = "good" if state == "PRODUCTION" else "warn"
     live_message = (
@@ -152,7 +154,7 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
 </section>
 <section class="band">
   <div class="section-head"><h2>{'当前合格候选' if live_visible else '当日冻结候选台账'}</h2>
-  <span class="tag {'good' if state == 'PRODUCTION' else 'warn'}">{_e('正式资格' if state == 'PRODUCTION' else '影子资格，不授权实盘')}</span></div>
+	  <span class="tag {'good' if state == 'PRODUCTION' else 'warn'}">{_e('正式资格' if state == 'PRODUCTION' else ('影子资格，不授权实盘' if state == 'SHADOW' else '研究观察，不授权实盘'))}</span></div>
   {_candidate_table(passed if live_visible else session_candidates, live=live_visible)}
 </section>
 {_session_history_section(session_candidates) if live_visible else ''}
@@ -174,6 +176,7 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
     {_promotion_checks(model.get('promotion', {}).get('checks', {}))}
   </div>
 </section>
+{_diagnostic_section(backtest)}
 <section class="band"><div class="section-head"><h2>接近门槛但未通过</h2>
 <span class="tag">用于解释，不是候选名单</span></div>{_near_table(near)}</section>
 <section class="band"><h2>候选真值账本</h2>{_validation_table(historical)}</section>
@@ -356,6 +359,70 @@ def _promotion_checks(checks: dict[str, Any]) -> str:
         f"<div class='gate'><span>{_e(name)}</span><strong class='{'yes' if passed else 'no'}'>{'通过' if passed else '未通过'}</strong></div>"
         for name, passed in checks.items()
     ) + "</div>"
+
+
+def _diagnostic_section(backtest: dict[str, Any]) -> str:
+    diagnostics = backtest.get("diagnostics", {})
+    if not diagnostics:
+        return ""
+    quality = diagnostics.get("score_quality", {})
+    probability = quality.get("probability", {})
+    composite = quality.get("composite_rank", {})
+    funnel = diagnostics.get("policy_funnel", [])
+    top_rows = [
+        row
+        for row in diagnostics.get("top_n_per_slot", [])
+        if row.get("score") in {"probability", "composite_rank"}
+        and int(row.get("top_n") or 0) in {1, 3, 5}
+    ]
+    funnel_rows = "".join(
+        "<tr>"
+        f"<td>{_e(row.get('gate', ''))}</td>"
+        f"<td class='num'>{int(row.get('independent_pass_count') or 0):,}</td>"
+        f"<td class='num'>{_pct(row.get('independent_pass_rate'))}</td>"
+        f"<td class='num'>{int(row.get('cumulative_pass_count') or 0):,}</td>"
+        f"<td class='num'>{_pct(row.get('cumulative_pass_rate'))}</td>"
+        "</tr>"
+        for row in funnel
+    )
+    top_table_rows = "".join(
+        "<tr>"
+        f"<td>{_e(row.get('score', ''))}</td>"
+        f"<td class='num'>{int(row.get('top_n') or 0)}</td>"
+        f"<td class='num'>{int(row.get('events') or 0):,}</td>"
+        f"<td class='num'>{_pct(row.get('win_rate'))}</td>"
+        f"<td class='num'>{_pct(row.get('win_rate_wilson_lower'))}</td>"
+        f"<td class='num'>{_pct(row.get('mean_net_return_pct'), already_percent=True)}</td>"
+        "</tr>"
+        for row in top_rows
+    )
+    return (
+        '<section class="band"><details><summary>样本外模型诊断（不改变交易门槛）</summary>'
+        '<div class="metrics" style="grid-template-columns:repeat(4,1fr)">'
+        + _metric("概率 ROC AUC", _number(probability.get("roc_auc"), 3))
+        + _metric(
+            "概率-收益秩相关",
+            _number(probability.get("rank_correlation_to_net_return"), 3),
+        )
+        + _metric("组合 ROC AUC", _number(composite.get("roc_auc"), 3))
+        + _metric(
+            "组合-收益秩相关",
+            _number(composite.get("rank_correlation_to_net_return"), 3),
+        )
+        + "</div>"
+        '<h3 style="margin-top:16px">逐层淘汰漏斗</h3><div class="table-wrap"><table>'
+        "<thead><tr><th>门槛</th><th>单项通过</th><th>单项比例</th>"
+        "<th>累计通过</th><th>累计比例</th></tr></thead><tbody>"
+        + funnel_rows
+        + "</tbody></table></div>"
+        '<h3 style="margin-top:16px">每时点 Top-N 诊断</h3>'
+        '<p class="foot">仅检验排序能力；这些组合没有被用来回填或改写固定策略。</p>'
+        '<div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th>'
+        "<th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th>"
+        "</tr></thead><tbody>"
+        + top_table_rows
+        + "</tbody></table></div></details></section>"
+    )
 
 
 def _metric(label: str, value: str, css: str = "") -> str:

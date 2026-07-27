@@ -13,6 +13,7 @@ from wp.v3.backtest import walk_forward_backtest
 from wp.v3.contracts import load_v3_config
 from wp.v3.dashboard import render_v3_dashboard
 from wp.v3.dataset import audit_panel
+from wp.v3.diagnostics import diagnostics_tables
 from wp.v3.history import load_panel_partitions
 from wp.v3.ledger import empty_shadow_ledger
 from wp.v3.model import bundle_metadata, save_bundle, train_bundle
@@ -84,6 +85,17 @@ def main() -> int:
     )
     candidate_path = output / "wp_v3_oos_candidates.csv"
     backtest.candidates.to_csv(candidate_path, index=False, encoding="utf-8-sig")
+    diagnostics = backtest.metrics.get("diagnostics", {})
+    (output / "wp_v3_prediction_diagnostics.json").write_text(
+        json.dumps(diagnostics, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+    for name, table in diagnostics_tables(diagnostics).items():
+        table.to_csv(
+            output / f"wp_v3_diagnostic_{name}.csv",
+            index=False,
+            encoding="utf-8-sig",
+        )
     replay = _historical_replay(backtest.predictions, backtest.candidates)
     replay_json_path = ROOT / "outputs" / "json" / "wp_v3_historical_replay.json"
     replay_csv_path = ROOT / "outputs" / "csv" / "wp_v3_historical_replay.csv"
@@ -209,7 +221,11 @@ def _render_research_audit_dashboard(
     current = datetime.now(CN_TZ)
     revision = current.strftime("%Y-%m-%d %H:%M:%S")
     model = model_record(registry, model_fingerprint) or {}
-    state = "SHADOW" if deployment_state == "SHADOW" else "MODEL_NOT_READY"
+    state = (
+        deployment_state
+        if deployment_state in {"SHADOW", "SHADOW_OBSERVATION"}
+        else "MODEL_NOT_READY"
+    )
     manifest = {
         "schema_version": "wp_manifest_v3",
         "latest_update": revision,
@@ -236,7 +252,12 @@ def _render_research_audit_dashboard(
             "Three-year research is registered. The policy is in the mandatory "
             "150-trading-day shadow period."
             if state == "SHADOW"
-            else "Three-year research is registered but no model is shadow-designated."
+            else (
+                "Three-year research failed its promotion gate. The frozen model "
+                "is designated for forward observation only."
+                if state == "SHADOW_OBSERVATION"
+                else "Three-year research is registered but no model is shadow-designated."
+            )
         ),
         "research_start": research_start,
         "research_end": research_end,

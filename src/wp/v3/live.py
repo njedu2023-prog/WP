@@ -10,7 +10,7 @@ from .contracts import V3Config, policy_fingerprint
 from .dataset import execution_eligibility
 from .features import enrich_feature_frame
 from .model import ModelBundle, load_bundle, predict_bundle
-from .registry import is_model_promoted, load_registry
+from .registry import is_model_promoted, load_registry, model_record
 
 
 @dataclass(frozen=True)
@@ -72,6 +72,27 @@ def run_live_inference(
         )
     registry = load_registry(registry_path)
     promoted = is_model_promoted(registry, bundle.fingerprint)
+    record = model_record(registry, bundle.fingerprint) or {}
+    observed = (
+        registry.get("shadow_model_fingerprint") == bundle.fingerprint
+        and registry.get("shadow_policy_fingerprint") == bundle.policy_fingerprint
+    )
+    if not promoted and not observed:
+        rejected = frame.copy()
+        rejected["passes_policy"] = False
+        rejected["candidate_state"] = "MODEL_NOT_DESIGNATED"
+        rejected["model_version"] = bundle.model_version
+        rejected["model_fingerprint"] = bundle.fingerprint
+        rejected["policy_fingerprint"] = bundle.policy_fingerprint
+        return LiveInference(
+            state="MODEL_NOT_DESIGNATED",
+            model_version=bundle.model_version,
+            model_fingerprint=bundle.fingerprint,
+            policy_fingerprint=bundle.policy_fingerprint,
+            formal_authorization=False,
+            predictions=rejected,
+            message="Model is registered for research but is not the designated live observer.",
+        )
     features = enrich_feature_frame(frame)
     features["execution_eligible"] = execution_eligibility(features, config)
     predictions = predict_bundle(bundle, features)
@@ -79,7 +100,14 @@ def run_live_inference(
     predictions.loc[predictions["passes_policy"], "candidate_state"] = (
         "QUALIFIED" if promoted else "SHADOW_QUALIFIED"
     )
-    state = "PRODUCTION" if promoted else "SHADOW"
+    backtest_passed = bool(
+        record.get("backtest", {}).get("backtest_gate", {}).get("passed", False)
+    )
+    state = (
+        "PRODUCTION"
+        if promoted
+        else ("SHADOW" if backtest_passed else "SHADOW_OBSERVATION")
+    )
     return LiveInference(
         state=state,
         model_version=bundle.model_version,
@@ -90,7 +118,13 @@ def run_live_inference(
         message=(
             "Model is production-authorized."
             if promoted
-            else "Model remains in the mandatory 150-trading-day shadow period."
+            else (
+                "Model passed the historical gate and remains in the mandatory "
+                "150-trading-day shadow period."
+                if backtest_passed
+                else "Research model is collecting forward observation only; "
+                "its historical gate failed and it is not authorized for trading."
+            )
         ),
     )
 

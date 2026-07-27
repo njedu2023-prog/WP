@@ -9,6 +9,7 @@ from sklearn.metrics import brier_score_loss, log_loss
 
 from .contracts import V3Config
 from .dataset import first_crossing_candidates
+from .diagnostics import build_prediction_diagnostics
 from .model import ModelBundle, predict_bundle, train_bundle
 from .statistics import day_clustered_intervals, wilson_interval
 
@@ -186,6 +187,7 @@ def evaluate_predictions(
         "stress": stress,
         "pbo_estimate": _finite_or_none(estimate_policy_pbo(predictions, config)),
         "benchmarks": _benchmark_metrics(predictions, config),
+        "diagnostics": build_prediction_diagnostics(predictions, config),
     }
     metrics["backtest_gate"] = evaluate_backtest_gate(metrics, config)
     return metrics
