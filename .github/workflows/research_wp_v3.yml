@@ -1,4 +1,4 @@
-name: Research WP V4 Three-Year Model
+name: Research WP V5 Three-Year Nested OOS Model
 
 on:
   workflow_dispatch:
@@ -21,7 +21,7 @@ on:
   push:
     branches: [main]
     paths:
-      - scripts/trigger_wp_v3_research.txt
+      - scripts/trigger_wp_v5_research.txt
   schedule:
     # Monthly challenger research outside trading hours.
     - cron: "20 18 1 * *"
@@ -30,7 +30,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wp-v3-research-${{ github.ref }}
+  group: wp-v5-research-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -49,8 +49,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .cache/wp_v3_tushare
-          key: wp-v4-raw-${{ github.run_id }}
+          key: wp-v5-raw-${{ github.run_id }}
           restore-keys: |
+            wp-v5-raw-
             wp-v4-raw-
             wp-v3-raw-
       - name: Restore causal panel cache
@@ -58,8 +59,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
           restore-keys: |
+            wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-
             wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
             wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
       - name: Build three-year point-in-time panel
@@ -75,13 +77,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .cache/wp_v3_tushare
-          key: wp-v4-raw-${{ github.run_id }}
+          key: wp-v5-raw-${{ github.run_id }}
       - name: Save rebuilt causal panel cache
         if: success()
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
 
   folds:
     needs: prepare
@@ -90,7 +92,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4]
+        shard: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -103,13 +105,13 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Run deterministic walk-forward shard
         run: >-
           python -u scripts/run_wp_v3_fold_shard.py
           --shard-index "${{ matrix.shard }}"
-          --shard-count "5"
+          --shard-count "11"
           --output-dir "artifacts/wp_v3_fold_shards/shard-${{ matrix.shard }}"
         env:
           PYTHONPATH: src
@@ -118,7 +120,7 @@ jobs:
       - name: Upload immutable fold evidence
         uses: actions/upload-artifact@v5
         with:
-          name: wp-v4-fold-${{ matrix.shard }}
+          name: wp-v5-fold-${{ matrix.shard }}
           path: artifacts/wp_v3_fold_shards/shard-${{ matrix.shard }}
           compression-level: 0
           retention-days: 1
@@ -139,12 +141,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Download all walk-forward shards
         uses: actions/download-artifact@v5
         with:
-          pattern: wp-v4-fold-*
+          pattern: wp-v5-fold-*
           path: artifacts/wp_v3_shards
           merge-multiple: false
       - name: Aggregate OOS evidence and train frozen model
@@ -155,7 +157,7 @@ jobs:
             --shard-dir artifacts/wp_v3_shards &
           research_pid=$!
           while kill -0 "$research_pid" 2>/dev/null; do
-            echo "[wp-v4] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "[wp-v5] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             sleep 120
           done
           wait "$research_pid"
@@ -163,15 +165,15 @@ jobs:
           PYTHONPATH: src
           PYTHONUNBUFFERED: "1"
           LOKY_MAX_CPU_COUNT: "2"
-      - name: Verify V4 contracts and tests
-        run: pytest tests/test_v3_*.py -q
+      - name: Verify V5 contracts and tests
+        run: pytest tests/test_v3_*.py tests/test_v5_*.py -q
         env:
           PYTHONPATH: src
           LOKY_MAX_CPU_COUNT: "2"
       - name: Publish model, registry, and audit evidence through GitHub API
         run: >-
           python scripts/github_commit_paths.py
-          "Publish WP V4 three-year research"
+          "Publish WP V5 three-year nested OOS research"
           artifacts/wp_v3_history/wp_v3_dataset_manifest.json
           artifacts/wp_v3_research
           outputs/json/wp_model_registry_v3.json
@@ -187,7 +189,7 @@ jobs:
           name: wp-v3-research-${{ github.run_id }}
           path: |
             artifacts/wp_v3_history/wp_v3_dataset_manifest.json
-            artifacts/wp_v3_shards/**/wp_v4_fold_shard_manifest.json
+            artifacts/wp_v3_shards/**/wp_v5_fold_shard_manifest.json
             artifacts/wp_v3_research/wp_v3_backtest.json
             artifacts/wp_v3_research/wp_v3_model_metadata.json
             artifacts/wp_v3_research/wp_v3_research_summary.json

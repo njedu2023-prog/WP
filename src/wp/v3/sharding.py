@@ -16,11 +16,12 @@ from .backtest import (
 )
 from .contracts import V3Config, policy_fingerprint
 from .dataset import IDENTITY_COLUMNS, first_crossing_candidates
+from .policy import apply_nested_oos_policies
 
 
-SHARD_SCHEMA_VERSION = "wp_v4_walk_forward_shard_1"
-SHARD_MANIFEST_NAME = "wp_v4_fold_shard_manifest.json"
-SHARD_PREDICTIONS_NAME = "wp_v4_fold_predictions.parquet"
+SHARD_SCHEMA_VERSION = "wp_v5_walk_forward_shard_1"
+SHARD_MANIFEST_NAME = "wp_v5_fold_shard_manifest.json"
+SHARD_PREDICTIONS_NAME = "wp_v5_fold_predictions.parquet"
 
 
 def shard_fold_numbers(
@@ -235,13 +236,23 @@ def load_walk_forward_shards(
         ["fold", "trade_date", "signal_slot", "ts_code"],
         kind="stable",
     ).reset_index(drop=True)
+    combined, policy_audit, final_selection = apply_nested_oos_policies(
+        combined,
+        config,
+    )
     candidates = first_crossing_candidates(combined, config)
     metrics = evaluate_predictions(combined, candidates, config)
+    metrics["nested_policy"] = {
+        "folds": policy_audit,
+        "final": final_selection.as_dict(),
+    }
     return BacktestResult(
         folds=[fold_records[number] for number in sorted(fold_records)],
         metrics=metrics,
         predictions=combined,
         candidates=candidates,
+        policy_audit=policy_audit,
+        final_policy=final_selection.as_dict(),
     )
 
 

@@ -1,6 +1,6 @@
 strategy:
-  strategy_id: wp_t1_net_profit_v4
-  model_family: calibrated_tail_rank_ensemble_v4
+  strategy_id: wp_t1_net_profit_v5
+  model_family: causal_multitask_lambdarank_v5
   timezone: Asia/Shanghai
   signal_slots: ["14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50"]
   candidate_freeze_time: "14:55"
@@ -27,41 +27,53 @@ execution:
   non_fill_penalty_pct: -10.00
 
 model:
-  policy_implementation_version: wp_v4_policy_20260727_11
-  feature_version: wp_v4_causal_features_6
+  policy_implementation_version: wp_v5_nested_oos_policy_1
+  feature_version: wp_v5_causal_features_1
   minimum_train_days: 252
-  calibration_days: 84
+  calibration_days: 42
+  policy_design_days: 84
+  policy_confirmation_days: 42
   test_days: 42
   purge_days: 2
-  ensemble_windows_days: [126, 252, 504]
-  probability_threshold: 0.55
-  probability_lower_threshold: 0.50
-  min_expected_net_return_pct: 0.20
-  min_downside_q10_pct: -3.50
-  minimum_selection_rank_percentile: 0.997
-  min_calibration_bin_samples: 250
-  min_calibration_bin_days: 25
-  min_calibration_bin_wilson_lower: 0.52
-  min_calibration_bin_clustered_lower: 0.50
-  max_probability_model_spread: 0.12
-  max_selection_rank_spread: 0.20
+  ensemble_windows_days: [252, 504]
+  temporal_half_life_days: 252
+  cross_section_top_fraction: 0.20
+  severe_loss_threshold_pct: -2.00
+  probability_grid: [0.48, 0.52, 0.56]
+  market_probability_grid: [0.45, 0.50]
+  cross_section_probability_grid: [0.45, 0.50]
+  severe_loss_probability_grid: [0.35, 0.45]
+  selection_rank_grid: [0.98, 0.99, 0.995]
+  expected_return_grid_pct: [-0.25, 0.00]
+  downside_grid_pct: [-5.00, -3.50]
+  policy_min_design_events: 150
+  policy_min_design_days: 30
+  policy_min_confirmation_events: 60
+  policy_min_confirmation_days: 15
+  policy_min_win_rate: 0.50
+  policy_min_wilson_lower: 0.45
+  policy_min_clustered_lower: 0.40
+  policy_min_mean_net_return_pct: 0.10
+  policy_min_profit_factor: 1.05
+  max_probability_model_spread: 0.15
+  max_selection_rank_spread: 0.25
   min_train_rows: 20000
-  max_training_rows_per_slot: 300
+  max_training_rows_per_slot: 500
   random_seed: 20260727
 
 promotion:
   mode: shadow
   minimum_shadow_trading_days: 150
-  minimum_shadow_candidate_days: 80
+  minimum_shadow_candidate_days: 50
   minimum_shadow_candidates: 250
   minimum_oos_candidates: 250
-  minimum_oos_win_rate: 0.60
+  minimum_oos_win_rate: 0.55
   minimum_oos_win_rate_lower: 0.52
   minimum_clustered_win_rate_lower: 0.52
-  minimum_mean_net_return_pct: 0.30
+  minimum_mean_net_return_pct: 0.20
   minimum_clustered_mean_return_lower_pct: 0.00
   minimum_median_net_return_pct: 0.00
-  minimum_profit_factor: 1.30
+  minimum_profit_factor: 1.20
   maximum_ece: 0.05
   require_50bps_stress_nonnegative: true
   auto_promote_when_all_gates_pass: true

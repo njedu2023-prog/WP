@@ -17,6 +17,7 @@ from wp.v3.diagnostics import diagnostics_tables
 from wp.v3.history import load_panel_partitions
 from wp.v3.ledger import empty_shadow_ledger
 from wp.v3.model import bundle_metadata, save_bundle, train_bundle
+from wp.v3.policy import policy_selection_from_dict
 from wp.v3.registry import (
     apply_promotion_decision,
     load_registry,
@@ -43,7 +44,7 @@ def _strict_json(value: object) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run full walk-forward research and register a WP V4 shadow model."
+        description="Run full nested walk-forward research and register a WP V5 shadow model."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument(
@@ -95,7 +96,7 @@ def main() -> int:
         if args.max_folds is not None:
             raise ValueError("--max-folds cannot be used with --shard-dir")
         print(
-            f"[wp-v4] validating and aggregating walk-forward shards "
+            f"[wp-v5] validating and aggregating walk-forward shards "
             f"from {args.shard_dir}",
             flush=True,
         )
@@ -112,12 +113,16 @@ def main() -> int:
             max_folds=args.max_folds,
         )
     print(
-        f"[wp-v4] OOS aggregation complete folds={len(backtest.folds)} "
+        f"[wp-v5] OOS aggregation complete folds={len(backtest.folds)} "
         f"rows={len(backtest.predictions):,} "
         f"candidates={len(backtest.candidates):,}",
         flush=True,
     )
-    bundle = train_bundle(panel, config)
+    bundle = train_bundle(
+        panel,
+        config,
+        policy_selection=policy_selection_from_dict(backtest.final_policy),
+    )
     model_path = output / "models" / f"{bundle.fingerprint}.joblib"
     save_bundle(bundle, model_path)
     metadata = bundle_metadata(bundle)
@@ -177,7 +182,7 @@ def main() -> int:
     save_registry(registry, args.registry)
 
     summary = {
-        "schema_version": "wp_v4_research_summary_1",
+        "schema_version": "wp_v5_research_summary_1",
         "dataset": asdict(audit),
         "date_start": str(panel["trade_date"].min()),
         "date_end": str(panel["trade_date"].max()),

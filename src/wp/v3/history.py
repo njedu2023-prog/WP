@@ -308,7 +308,7 @@ def build_three_year_panel(
             f"failed dates: {failures[:8]}"
         )
     manifest = {
-        "schema_version": "wp_v3_causal_panel_1",
+        "schema_version": "wp_point_in_time_panel_2",
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "strategy_id": config.strategy.strategy_id,
         "feature_version": config.model.feature_version,
@@ -1635,10 +1635,12 @@ def _reusable_panel_manifest(
     config: V3Config,
 ) -> dict[str, Any] | None:
     manifest = _read_json(manifest_path)
+    if manifest.get("schema_version") not in {
+        "wp_v3_causal_panel_1",
+        "wp_point_in_time_panel_2",
+    }:
+        return None
     expected = {
-        "schema_version": "wp_v3_causal_panel_1",
-        "strategy_id": config.strategy.strategy_id,
-        "feature_version": config.model.feature_version,
         "requested_start": config.history.start_date,
         "requested_end": config.history.end_date,
         "execution_contract": json.loads(json.dumps(asdict(config.execution))),

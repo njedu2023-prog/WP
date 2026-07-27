@@ -43,13 +43,14 @@ def run_live_inference(
             policy_fingerprint=None,
             formal_authorization=False,
             predictions=empty,
-            message="V4 has no trained artifact; no candidate can be authorized.",
+            message="V5 has no trained artifact; no candidate can be authorized.",
         )
 
     bundle: ModelBundle = load_bundle(artifact)
     expected_policy = policy_fingerprint(config)
     if (
-        bundle.policy_fingerprint != expected_policy
+        getattr(bundle, "contract_fingerprint", bundle.policy_fingerprint)
+        != expected_policy
         or bundle.feature_version != config.model.feature_version
     ):
         rejected = frame.copy()
@@ -95,7 +96,7 @@ def run_live_inference(
         )
     features = enrich_feature_frame(frame)
     features["execution_eligible"] = execution_eligibility(features, config)
-    predictions = predict_bundle(bundle, features)
+    predictions = predict_bundle(bundle, features, config=config)
     predictions["candidate_state"] = "REJECTED"
     predictions.loc[predictions["passes_policy"], "candidate_state"] = (
         "QUALIFIED" if promoted else "SHADOW_QUALIFIED"

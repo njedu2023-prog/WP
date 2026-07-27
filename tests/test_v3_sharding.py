@@ -120,9 +120,11 @@ def test_shard_aggregation_rejects_missing_or_tampered_evidence(
         dataset_manifest_path=dataset_manifest,
     )
     assert [fold.fold for fold in combined.folds] == [1, 2, 3]
-    assert combined.metrics == {"rows": 7, "candidates": 7}
+    assert combined.metrics["rows"] == 7
+    assert combined.metrics["candidates"] == 0
+    assert combined.metrics["nested_policy"]["final"]["policy"]["authorized"] is False
 
-    (shard_root / "shard-1" / "wp_v4_fold_shard_manifest.json").unlink()
+    (shard_root / "shard-1" / "wp_v5_fold_shard_manifest.json").unlink()
     with pytest.raises(RuntimeError, match="incomplete walk-forward shards"):
         load_walk_forward_shards(
             shard_root,

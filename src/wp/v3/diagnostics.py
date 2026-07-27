@@ -13,21 +13,17 @@ from .statistics import day_clustered_intervals, wilson_interval
 
 GATE_ORDER = (
     ("execution_eligible", "execution"),
-    ("passes_probability", "probability"),
-    ("passes_probability_lower", "probability_lower"),
-    ("passes_expected_return", "expected_return"),
-    ("passes_downside", "downside"),
-    ("passes_selection_rank", "selection_rank"),
-    ("passes_sample", "calibration_sample"),
-    ("passes_empirical_lower", "empirical_lower"),
-    ("passes_stability", "model_stability"),
-    ("passes_freshness", "freshness"),
+    ("candidate_policy_authorized", "prior_oos_policy_authorized"),
+    ("passes_policy", "all_candidate_gates"),
 )
 
 SCORE_COLUMNS = {
     "probability": "p_net_positive",
     "expected_return": "expected_net_return_pct",
     "conservative_probability": "p_net_positive_lower",
+    "market_probability": "p_market_positive",
+    "cross_section_probability": "p_cross_section_top",
+    "severe_loss_safety": "_severe_loss_safety",
     "learned_rank": "ranking_score",
     "selection_score": "selection_score",
 }
@@ -40,7 +36,7 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v4_prediction_diagnostics_2",
+            "schema_version": "wp_v5_prediction_diagnostics_1",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
@@ -63,14 +59,26 @@ def build_prediction_diagnostics(
     for column in {
         *SCORE_COLUMNS.values(),
         "downside_q10_pct",
+        "p_market_positive",
+        "p_cross_section_top",
+        "p_severe_loss",
+        "ranking_score",
         "probability_model_spread",
         "selection_rank_spread",
         "selection_rank_pct",
     }:
-        frame[column] = pd.to_numeric(frame.get(column), errors="coerce")
+        default = pd.Series(np.nan, index=frame.index, dtype=float)
+        frame[column] = pd.to_numeric(
+            frame.get(column, default),
+            errors="coerce",
+        )
     frame = frame.loc[frame["target_net_positive"].notna()].copy()
     frame["target_net_positive"] = frame["target_net_positive"].astype(int)
     frame["_composite_rank"] = _composite_rank(frame)
+    frame["_severe_loss_safety"] = 1.0 - pd.to_numeric(
+        frame.get("p_severe_loss"),
+        errors="coerce",
+    )
 
     score_columns = {
         **SCORE_COLUMNS,
@@ -105,7 +113,7 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v4_prediction_diagnostics_2",
+        "schema_version": "wp_v5_prediction_diagnostics_1",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),
@@ -196,11 +204,22 @@ def _composite_rank(frame: pd.DataFrame) -> pd.Series:
     stability_rank = (
         -frame["probability_model_spread"]
     ).groupby(groups, sort=False).rank(method="average", pct=True)
+    cross_rank = frame["p_cross_section_top"].groupby(
+        groups,
+        sort=False,
+    ).rank(method="average", pct=True)
+    severe_safe_rank = (-frame["p_severe_loss"]).groupby(
+        groups,
+        sort=False,
+    ).rank(method="average", pct=True)
     return (
-        0.45 * probability_rank
-        + 0.30 * expected_rank
-        + 0.15 * downside_rank
-        + 0.10 * stability_rank
+        0.25 * probability_rank
+        + 0.20 * cross_rank
+        + 0.20 * frame["ranking_score"]
+        + 0.15 * expected_rank
+        + 0.10 * downside_rank
+        + 0.05 * severe_safe_rank
+        + 0.05 * stability_rank
     )
 
 

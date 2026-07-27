@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run one deterministic shard of the WP V4 walk-forward backtest."
+        description="Run one deterministic shard of the WP V5 nested walk-forward backtest."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument(
@@ -55,7 +55,7 @@ def main() -> int:
             f"shard {args.shard_index}/{args.shard_count} has no assigned folds"
         )
     print(
-        f"[wp-v4] shard={args.shard_index}/{args.shard_count} "
+        f"[wp-v5] shard={args.shard_index}/{args.shard_count} "
         f"folds={list(fold_numbers)} total_folds={total_folds}",
         flush=True,
     )
@@ -75,7 +75,7 @@ def main() -> int:
         total_folds=total_folds,
     )
     print(
-        f"[wp-v4] shard complete index={args.shard_index} "
+        f"[wp-v5] shard complete index={args.shard_index} "
         f"rows={manifest['prediction_rows']:,} "
         f"sha256={manifest['prediction_sha256']}",
         flush=True,

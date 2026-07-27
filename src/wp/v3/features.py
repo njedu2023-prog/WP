@@ -91,6 +91,21 @@ FEATURE_COLUMNS = (
     "relative_industry_return_pct",
     "tail_relative_market_pct",
     "tail_relative_industry_pct",
+    "momentum_reversal_5_20",
+    "volatility_adjusted_momentum_5d",
+    "liquidity_acceleration",
+    "tail_volume_price_confirmation",
+    "distance_to_limit_asymmetry",
+    "market_regime_strength",
+    "industry_regime_strength",
+    "relative_strength_alignment",
+    "tail_trend_quality",
+    "tail_reversal_pressure",
+    "tail_breakout_pressure",
+    "overnight_intraday_alignment",
+    "risk_adjusted_tail_return",
+    "market_dispersion_adjusted_return",
+    "industry_dispersion_proxy",
     "return_cs_rank",
     "open_return_cs_rank",
     "tail_return_cs_rank",
@@ -104,6 +119,24 @@ FEATURE_COLUMNS = (
     "volatility_cs_rank",
     "float_mv_cs_rank",
     "up_limit_distance_cs_rank",
+)
+
+MARKET_FEATURE_COLUMNS = (
+    "slot_minute",
+    "market_return_pct",
+    "market_breadth",
+    "market_breadth_above_2pct",
+    "market_breadth_above_5pct",
+    "market_return_dispersion_pct",
+    "market_gap_pct",
+    "market_tail_return_pct",
+    "market_tail_breadth",
+    "market_tail_dispersion_pct",
+    "market_prev_5d_return_pct",
+    "market_prev_20d_volatility_pct",
+    "up_limit_count_log",
+    "down_limit_count_log",
+    "market_regime_strength",
 )
 
 FORBIDDEN_FEATURE_TOKENS = (
@@ -137,6 +170,13 @@ def feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     assert_feature_contract(FEATURE_COLUMNS)
     values = frame.reindex(columns=FEATURE_COLUMNS).copy()
     for column in FEATURE_COLUMNS:
+        values[column] = pd.to_numeric(values[column], errors="coerce")
+    return values.replace([np.inf, -np.inf], np.nan)
+
+
+def market_feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
+    values = frame.reindex(columns=MARKET_FEATURE_COLUMNS).copy()
+    for column in MARKET_FEATURE_COLUMNS:
         values[column] = pd.to_numeric(values[column], errors="coerce")
     return values.replace([np.inf, -np.inf], np.nan)
 
@@ -209,6 +249,79 @@ def enrich_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
                 pd.to_numeric(result.get(left), errors="coerce")
                 - pd.to_numeric(result.get(right), errors="coerce")
             )
+
+    def numeric(column: str) -> pd.Series:
+        if column not in result:
+            return pd.Series(np.nan, index=result.index, dtype=float)
+        return pd.to_numeric(result[column], errors="coerce")
+
+    result["momentum_reversal_5_20"] = (
+        numeric("prev_5d_return_pct") - numeric("prev_20d_return_pct")
+    )
+    result["volatility_adjusted_momentum_5d"] = (
+        numeric("prev_5d_return_pct")
+        / numeric("prev_20d_volatility_pct").abs().clip(lower=0.25)
+    )
+    result["liquidity_acceleration"] = (
+        numeric("tail_cumulative_amount_ratio_20d")
+        - numeric("prev_5d_amount_ratio_20d")
+    )
+    result["tail_volume_price_confirmation"] = (
+        numeric("ret_20m_pct")
+        * np.log1p(numeric("tail_amount_acceleration").clip(lower=0.0))
+    )
+    result["distance_to_limit_asymmetry"] = (
+        numeric("distance_to_down_limit_pct")
+        - numeric("distance_to_up_limit_pct")
+    )
+    result["market_regime_strength"] = (
+        0.45 * numeric("market_return_pct")
+        + 2.0 * (numeric("market_breadth") - 0.5)
+        + 0.35 * numeric("market_tail_return_pct")
+        + 1.0 * (numeric("market_tail_breadth") - 0.5)
+    )
+    result["industry_regime_strength"] = (
+        0.55 * numeric("industry_return_pct")
+        + 1.5 * (numeric("industry_breadth") - 0.5)
+        + 0.45 * numeric("industry_tail_return_pct")
+        + 0.75 * (numeric("industry_tail_breadth") - 0.5)
+    )
+    result["relative_strength_alignment"] = (
+        np.sign(numeric("relative_market_return_pct"))
+        * np.sign(numeric("relative_industry_return_pct"))
+        * np.sqrt(
+            numeric("relative_market_return_pct").abs()
+            * numeric("relative_industry_return_pct").abs()
+        )
+    )
+    result["tail_trend_quality"] = (
+        numeric("tail_directional_efficiency")
+        * numeric("tail_trend_r2").clip(lower=0.0, upper=1.0)
+        * numeric("tail_trend_slope_pct")
+    )
+    result["tail_reversal_pressure"] = (
+        numeric("tail_rebound_from_low_pct")
+        + numeric("bar_lower_wick_pct")
+        - numeric("bar_upper_wick_pct")
+    )
+    result["tail_breakout_pressure"] = (
+        numeric("tail_close_position_since_1400") - 0.5
+    ) * numeric("tail_range_since_1400_pct")
+    result["overnight_intraday_alignment"] = (
+        numeric("gap_open_pct") * numeric("ret_from_open_pct")
+    )
+    result["risk_adjusted_tail_return"] = (
+        numeric("ret_20m_pct")
+        / numeric("tail_realized_volatility_pct").abs().clip(lower=0.05)
+    )
+    result["market_dispersion_adjusted_return"] = (
+        numeric("relative_market_return_pct")
+        / numeric("market_return_dispersion_pct").abs().clip(lower=0.10)
+    )
+    result["industry_dispersion_proxy"] = (
+        numeric("relative_industry_return_pct")
+        - numeric("relative_market_return_pct")
+    )
 
     rank_sources = {
         "return_cs_rank": "ret_from_prev_close_pct",

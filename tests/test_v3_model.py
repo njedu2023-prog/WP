@@ -69,10 +69,14 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
     prediction = predict_bundle(bundle, panel.tail(32))
     assert prediction["p_net_positive"].between(0, 1).all()
     assert prediction["p_net_positive_lower"].between(0, 1).all()
+    assert prediction["p_market_positive"].between(0, 1).all()
+    assert prediction["p_cross_section_top"].between(0, 1).all()
+    assert prediction["p_severe_loss"].between(0, 1).all()
     assert prediction["expected_net_return_pct"].notna().all()
     assert prediction["selection_rank_pct"].between(0, 1).all()
-    assert bundle.calibration_fit_end < bundle.evidence_start
-    assert bundle.selection_evidence["period_start"] == bundle.evidence_start
+    assert bundle.calibration_start <= bundle.calibration_fit_end
+    assert bundle.train_end == bundle.calibration_fit_end
+    assert bundle.candidate_policy.authorized is False
     assert prediction["passes_policy"].dtype == bool
 
 

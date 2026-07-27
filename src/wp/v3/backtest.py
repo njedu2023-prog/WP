@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from collections.abc import Collection
 from typing import Any
 
@@ -12,6 +12,7 @@ from .contracts import V3Config
 from .dataset import first_crossing_candidates
 from .diagnostics import build_prediction_diagnostics
 from .model import ModelBundle, predict_bundle, train_bundle
+from .policy import apply_nested_oos_policies
 from .statistics import day_clustered_intervals, wilson_interval
 
 
@@ -32,11 +33,15 @@ class BacktestResult:
     metrics: dict[str, Any]
     predictions: pd.DataFrame
     candidates: pd.DataFrame
+    policy_audit: list[dict[str, Any]] = field(default_factory=list)
+    final_policy: dict[str, Any] = field(default_factory=dict)
 
     def summary(self) -> dict[str, Any]:
         return {
             "folds": [asdict(fold) for fold in self.folds],
             "metrics": self.metrics,
+            "policy_audit": self.policy_audit,
+            "final_policy": self.final_policy,
         }
 
 
@@ -112,7 +117,7 @@ def walk_forward_backtest(
             WalkForwardFold(
                 fold=fold_number,
                 train_start=bundle.train_start,
-                train_end=bundle.calibration_end,
+                train_end=bundle.train_end,
                 test_start=str(test_dates[0]),
                 test_end=str(test_dates[-1]),
                 train_days=int(len(train_dates)),
@@ -121,21 +126,30 @@ def walk_forward_backtest(
         )
 
     predictions = pd.concat(fold_rows, ignore_index=True) if fold_rows else pd.DataFrame()
-    candidates = (
-        first_crossing_candidates(predictions, config)
-        if evaluate
-        else pd.DataFrame()
-    )
-    metrics = (
-        evaluate_predictions(predictions, candidates, config)
-        if evaluate
-        else {}
-    )
+    policy_audit: list[dict[str, Any]] = []
+    final_policy: dict[str, Any] = {}
+    if evaluate:
+        predictions, policy_audit, final_selection = apply_nested_oos_policies(
+            predictions,
+            config,
+        )
+        final_policy = final_selection.as_dict()
+        candidates = first_crossing_candidates(predictions, config)
+        metrics = evaluate_predictions(predictions, candidates, config)
+        metrics["nested_policy"] = {
+            "folds": policy_audit,
+            "final": final_policy,
+        }
+    else:
+        candidates = pd.DataFrame()
+        metrics = {}
     return BacktestResult(
         folds=folds,
         metrics=metrics,
         predictions=predictions,
         candidates=candidates,
+        policy_audit=policy_audit,
+        final_policy=final_policy,
     )
 
 
@@ -320,7 +334,7 @@ def estimate_policy_pbo(predictions: pd.DataFrame, config: V3Config) -> float:
     """Approximate policy-selection overfit across chronological fold pairs."""
     if "fold" not in predictions or predictions["fold"].nunique() < 4:
         return float("nan")
-    thresholds = np.array([0.56, 0.58, 0.60, 0.62, 0.65, 0.68])
+    thresholds = np.array(config.model.probability_grid, dtype=float)
     fold_ids = sorted(predictions["fold"].dropna().unique())
     overfit = 0
     trials = 0
@@ -342,14 +356,14 @@ def _policy_score(frame: pd.DataFrame, threshold: float, config: V3Config) -> fl
     candidate = frame.copy()
     candidate["variant_pass"] = (
         pd.to_numeric(candidate["p_net_positive"], errors="coerce").ge(threshold)
-        & pd.to_numeric(candidate["p_net_positive_lower"], errors="coerce").ge(
-            config.model.probability_lower_threshold
-        )
+        & pd.to_numeric(candidate["p_market_positive"], errors="coerce").ge(0.45)
+        & pd.to_numeric(candidate["p_cross_section_top"], errors="coerce").ge(0.45)
+        & pd.to_numeric(candidate["p_severe_loss"], errors="coerce").le(0.45)
         & pd.to_numeric(candidate["expected_net_return_pct"], errors="coerce").ge(
-            config.model.min_expected_net_return_pct
+            -0.25
         )
         & pd.to_numeric(candidate["selection_rank_pct"], errors="coerce").ge(
-            config.model.minimum_selection_rank_percentile
+            0.99
         )
         & candidate["execution_eligible"].fillna(False)
     )
