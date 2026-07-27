@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from collections.abc import Collection
 from typing import Any
 
 import numpy as np
@@ -44,29 +45,41 @@ def walk_forward_backtest(
     config: V3Config,
     *,
     max_folds: int | None = None,
+    fold_numbers: Collection[int] | None = None,
+    evaluate: bool = True,
 ) -> BacktestResult:
     ordered = panel.copy()
     ordered["trade_date"] = ordered["trade_date"].astype(str)
     ordered = ordered.sort_values(["trade_date", "signal_slot", "ts_code"], kind="stable")
     dates = np.array(sorted(ordered["trade_date"].unique()))
-    start = (
-        config.model.minimum_train_days
-        + config.model.calibration_days
-        + 2 * config.model.purge_days
-    )
-    if len(dates) < start + config.model.test_days:
-        raise ValueError(
-            f"walk-forward requires at least {start + config.model.test_days} trade days; "
-            f"received {len(dates)}"
-        )
-
-    test_starts = list(range(start, len(dates), config.model.test_days))
+    test_starts = _walk_forward_test_starts(dates, config)
+    schedule = list(enumerate(test_starts, start=1))
+    total_folds = len(schedule)
+    if max_folds is not None and fold_numbers is not None:
+        raise ValueError("max_folds and fold_numbers are mutually exclusive")
     if max_folds is not None:
-        test_starts = test_starts[-max_folds:]
+        if max_folds < 1:
+            raise ValueError("max_folds must be positive")
+        schedule = schedule[-max_folds:]
+    if fold_numbers is not None:
+        selected = {int(number) for number in fold_numbers}
+        invalid = sorted(number for number in selected if not 1 <= number <= total_folds)
+        if invalid:
+            raise ValueError(
+                f"fold_numbers contains invalid folds {invalid}; "
+                f"valid range is 1..{total_folds}"
+            )
+        schedule = [
+            (fold_number, test_start_index)
+            for fold_number, test_start_index in schedule
+            if fold_number in selected
+        ]
+        if not schedule:
+            raise ValueError("fold_numbers selected no walk-forward folds")
 
     fold_rows: list[pd.DataFrame] = []
     folds: list[WalkForwardFold] = []
-    for fold_number, test_start_index in enumerate(test_starts, start=1):
+    for fold_number, test_start_index in schedule:
         test_dates = dates[test_start_index : test_start_index + config.model.test_days]
         if len(test_dates) == 0:
             continue
@@ -74,7 +87,7 @@ def walk_forward_backtest(
         training = ordered.loc[ordered["trade_date"].isin(train_dates)]
         testing = ordered.loc[ordered["trade_date"].isin(test_dates)]
         print(
-            f"[wp-v4] walk-forward fold {fold_number}/{len(test_starts)} "
+            f"[wp-v4] walk-forward fold {fold_number}/{total_folds} "
             f"train={train_dates[0]}..{train_dates[-1]} "
             f"test={test_dates[0]}..{test_dates[-1]}",
             flush=True,
@@ -91,7 +104,7 @@ def walk_forward_backtest(
         prediction["test_end"] = str(test_dates[-1])
         fold_rows.append(prediction)
         print(
-            f"[wp-v4] completed fold {fold_number}/{len(test_starts)} "
+            f"[wp-v4] completed fold {fold_number}/{total_folds} "
             f"prediction_rows={len(prediction):,}",
             flush=True,
         )
@@ -108,14 +121,44 @@ def walk_forward_backtest(
         )
 
     predictions = pd.concat(fold_rows, ignore_index=True) if fold_rows else pd.DataFrame()
-    candidates = first_crossing_candidates(predictions, config)
-    metrics = evaluate_predictions(predictions, candidates, config)
+    candidates = (
+        first_crossing_candidates(predictions, config)
+        if evaluate
+        else pd.DataFrame()
+    )
+    metrics = (
+        evaluate_predictions(predictions, candidates, config)
+        if evaluate
+        else {}
+    )
     return BacktestResult(
         folds=folds,
         metrics=metrics,
         predictions=predictions,
         candidates=candidates,
     )
+
+
+def walk_forward_fold_count(panel: pd.DataFrame, config: V3Config) -> int:
+    dates = np.array(sorted(panel["trade_date"].astype(str).unique()))
+    return len(_walk_forward_test_starts(dates, config))
+
+
+def _walk_forward_test_starts(
+    dates: np.ndarray,
+    config: V3Config,
+) -> list[int]:
+    start = (
+        config.model.minimum_train_days
+        + config.model.calibration_days
+        + 2 * config.model.purge_days
+    )
+    if len(dates) < start + config.model.test_days:
+        raise ValueError(
+            f"walk-forward requires at least {start + config.model.test_days} trade days; "
+            f"received {len(dates)}"
+        )
+    return list(range(start, len(dates), config.model.test_days))
 
 
 def evaluate_predictions(

@@ -34,9 +34,9 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  research:
+  prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 360
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -49,16 +49,18 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .cache/wp_v3_tushare
-          key: wp-v3-raw-${{ github.run_id }}
+          key: wp-v4-raw-${{ github.run_id }}
           restore-keys: |
+            wp-v4-raw-
             wp-v3-raw-
       - name: Restore causal panel cache
         if: github.event.inputs.rebuild_history != 'true'
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
           restore-keys: |
+            wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
             wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
       - name: Build three-year point-in-time panel
         run: >-
@@ -73,18 +75,84 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .cache/wp_v3_tushare
-          key: wp-v3-raw-${{ github.run_id }}
+          key: wp-v4-raw-${{ github.run_id }}
       - name: Save rebuilt causal panel cache
         if: success()
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
-      - name: Run chronological walk-forward research
+          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+
+  folds:
+    needs: prepare
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3, 4]
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore prepared causal panel
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Run deterministic walk-forward shard
+        run: >-
+          python -u scripts/run_wp_v3_fold_shard.py
+          --shard-index "${{ matrix.shard }}"
+          --shard-count "5"
+          --output-dir "artifacts/wp_v3_fold_shards/shard-${{ matrix.shard }}"
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          LOKY_MAX_CPU_COUNT: "2"
+      - name: Upload immutable fold evidence
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v4-fold-${{ matrix.shard }}
+          path: artifacts/wp_v3_fold_shards/shard-${{ matrix.shard }}
+          compression-level: 0
+          retention-days: 1
+
+  aggregate:
+    needs: folds
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Restore prepared causal panel
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
+          fail-on-cache-miss: true
+      - name: Download all walk-forward shards
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v4-fold-*
+          path: artifacts/wp_v3_shards
+          merge-multiple: false
+      - name: Aggregate OOS evidence and train frozen model
         shell: bash
         run: |
           set -euo pipefail
-          python -u scripts/run_wp_v3_research.py &
+          python -u scripts/run_wp_v3_research.py \
+            --shard-dir artifacts/wp_v3_shards &
           research_pid=$!
           while kill -0 "$research_pid" 2>/dev/null; do
             echo "[wp-v4] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -119,6 +187,7 @@ jobs:
           name: wp-v3-research-${{ github.run_id }}
           path: |
             artifacts/wp_v3_history/wp_v3_dataset_manifest.json
+            artifacts/wp_v3_shards/**/wp_v4_fold_shard_manifest.json
             artifacts/wp_v3_research/wp_v3_backtest.json
             artifacts/wp_v3_research/wp_v3_model_metadata.json
             artifacts/wp_v3_research/wp_v3_research_summary.json

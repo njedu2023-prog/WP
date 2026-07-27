@@ -24,6 +24,7 @@ from wp.v3.registry import (
     register_research_model,
     save_registry,
 )
+from wp.v3.sharding import load_walk_forward_shards
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -54,6 +55,19 @@ def parse_args() -> argparse.Namespace:
         "--registry",
         default=str(ROOT / "outputs" / "json" / "wp_model_registry_v3.json"),
     )
+    parser.add_argument(
+        "--shard-dir",
+        help="Directory containing complete deterministic walk-forward shards.",
+    )
+    parser.add_argument(
+        "--dataset-manifest",
+        default=str(
+            ROOT
+            / "artifacts"
+            / "wp_v3_history"
+            / "wp_v3_dataset_manifest.json"
+        ),
+    )
     parser.add_argument("--max-folds", type=int)
     return parser.parse_args()
 
@@ -77,7 +91,32 @@ def main() -> int:
 
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
-    backtest = walk_forward_backtest(panel, config, max_folds=args.max_folds)
+    if args.shard_dir:
+        if args.max_folds is not None:
+            raise ValueError("--max-folds cannot be used with --shard-dir")
+        print(
+            f"[wp-v4] validating and aggregating walk-forward shards "
+            f"from {args.shard_dir}",
+            flush=True,
+        )
+        backtest = load_walk_forward_shards(
+            args.shard_dir,
+            panel=panel,
+            config=config,
+            dataset_manifest_path=args.dataset_manifest,
+        )
+    else:
+        backtest = walk_forward_backtest(
+            panel,
+            config,
+            max_folds=args.max_folds,
+        )
+    print(
+        f"[wp-v4] OOS aggregation complete folds={len(backtest.folds)} "
+        f"rows={len(backtest.predictions):,} "
+        f"candidates={len(backtest.candidates):,}",
+        flush=True,
+    )
     bundle = train_bundle(panel, config)
     model_path = output / "models" / f"{bundle.fingerprint}.joblib"
     save_bundle(bundle, model_path)
