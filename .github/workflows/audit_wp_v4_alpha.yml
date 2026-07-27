@@ -1,0 +1,60 @@
+name: Audit WP V4 OOS Alpha
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Successful sharded V4 research run ID"
+        required: true
+        default: "30307773137"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v4_alpha_audit.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v4-alpha-audit
+  cancel-in-progress: true
+
+jobs:
+  audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+      - name: Download immutable OOS fold evidence
+        uses: actions/download-artifact@v5
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          repository: ${{ github.repository }}
+          run-id: ${{ github.event.inputs.source_run_id || '30307773137' }}
+          pattern: wp-v4-fold-*
+          path: artifacts/wp_v4_alpha_audit/source
+      - name: Audit development OOS and fixed historical lockbox
+        run: >-
+          python -u scripts/audit_wp_v4_oos_alpha.py
+          --shard-dir artifacts/wp_v4_alpha_audit/source
+          --lockbox-days 150
+        env:
+          PYTHONPATH: src
+      - name: Verify alpha-audit contracts
+        run: pytest tests/test_v4_alpha_audit.py -q
+        env:
+          PYTHONPATH: src
+      - name: Upload diagnostic evidence
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v4-alpha-audit-${{ github.run_id }}
+          path: artifacts/wp_v4_alpha_audit/wp_v4_oos_alpha_audit.json
+          retention-days: 30
