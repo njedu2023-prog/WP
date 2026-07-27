@@ -1,9 +1,9 @@
 {
-  "latest_update": "2026-07-27 12:17:21",
+  "latest_update": "2026-07-27 12:33:18",
   "market_data_time": "2026-07-27 11:34:59",
   "data_revision": "2026-07-27 11:34:59",
   "source_trade_date": "20260727",
-  "source_generated_at": "2026-07-27 12:17:20",
+  "source_generated_at": "2026-07-27 12:33:17",
   "source_scheduled_slot": "",
   "source_mode": "direct_tushare",
   "source_repository": "njedu2023-prog/a-share-top3-data",
@@ -12,8 +12,8 @@
   "direct_fallback_used": false,
   "direct_error": "",
   "source_data_hash": "9a3973ba3aa146c44efd6e1d868d1c97c0493391b2c9befee81ead141c4878b3",
-  "wp_run_time": "2026-07-27 12:17:21",
-  "report_revision": "2026-07-27 12:17:21",
+  "wp_run_time": "2026-07-27 12:33:18",
+  "report_revision": "2026-07-27 12:33:18",
   "top50_count": 4,
   "buy_plan_count": 0,
   "tail_observation_count": 0,
@@ -161,7 +161,9 @@
     "next_checkpoint": "14:20",
     "manual_execution_only": true,
     "order_routing_enabled": false,
-    "broker_connection": "disabled"
+    "broker_connection": "disabled",
+    "forecast_live_sample_count": 8,
+    "forecast_live_day_count": 6
   },
   "exit_guidance_summary": {
     "version": "fixed_t1_close_exit_v2",

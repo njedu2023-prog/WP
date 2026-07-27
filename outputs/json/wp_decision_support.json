@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-27 12:17:21",
+  "generated_at": "2026-07-27 12:33:18",
   "market_data_time": "2026-07-27 11:34:59",
   "market_regime": {
     "model_version": "market_regime_v1",
@@ -33,7 +33,9 @@
     "next_checkpoint": "14:20",
     "manual_execution_only": true,
     "order_routing_enabled": false,
-    "broker_connection": "disabled"
+    "broker_connection": "disabled",
+    "forecast_live_sample_count": 8,
+    "forecast_live_day_count": 6
   },
   "records": [],
   "manual_execution_only": true,

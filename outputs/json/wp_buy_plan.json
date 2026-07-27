@@ -1,8 +1,8 @@
 {
-  "generated_at": "2026-07-27 12:17:21",
+  "generated_at": "2026-07-27 12:33:18",
   "market_data_time": "2026-07-27 11:34:59",
   "source_data_hash": "9a3973ba3aa146c44efd6e1d868d1c97c0493391b2c9befee81ead141c4878b3",
-  "wp_run_time": "2026-07-27 12:17:21",
+  "wp_run_time": "2026-07-27 12:33:18",
   "summary": {
     "buy_count": 0,
     "max_buy_count": 1,
@@ -68,7 +68,9 @@
     "next_checkpoint": "14:20",
     "manual_execution_only": true,
     "order_routing_enabled": false,
-    "broker_connection": "disabled"
+    "broker_connection": "disabled",
+    "forecast_live_sample_count": 8,
+    "forecast_live_day_count": 6
   },
   "decision_support_records": [],
   "strategy_summary": {
