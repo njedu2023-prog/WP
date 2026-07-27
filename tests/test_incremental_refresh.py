@@ -1,6 +1,6 @@
 import pandas as pd
 
-from wp.main import should_rebuild_live_report, source_data_hash
+from wp.legacy_main import should_rebuild_live_report, source_data_hash
 
 
 def _input(price: float = 10.0) -> pd.DataFrame:

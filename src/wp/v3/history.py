@@ -40,6 +40,7 @@ MINUTE_STORE_COLUMNS = (
     "amount",
     "slot_amount",
 )
+WARMUP_SLOTS = ("14:00", "14:05", "14:10", "14:15")
 INDUSTRY_FIELDS = (
     "l1_code,l1_name,l2_code,l2_name,l3_code,l3_name,"
     "ts_code,name,in_date,out_date,is_new"
@@ -67,11 +68,12 @@ class TushareHistoryClient:
         *,
         cache_key: str,
         paged: bool = False,
+        refresh: bool = False,
         fields: str = "",
         **params: Any,
     ) -> pd.DataFrame:
         cache_path = self.cache_dir / api_name / f"{cache_key}.parquet"
-        if cache_path.exists():
+        if cache_path.exists() and not refresh:
             return pd.read_parquet(cache_path)
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         if paged:
@@ -324,13 +326,18 @@ def load_panel_partitions(path: str | Path) -> pd.DataFrame:
     return pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)
 
 
-def _load_stock_basic(client: TushareHistoryClient) -> pd.DataFrame:
+def _load_stock_basic(
+    client: TushareHistoryClient,
+    *,
+    cache_suffix: str = "",
+) -> pd.DataFrame:
     frames = []
+    suffix = f"_{cache_suffix}" if cache_suffix else ""
     for status in ("L", "D", "P"):
         frames.append(
             client.query(
                 "stock_basic",
-                cache_key=f"all_{status}",
+                cache_key=f"all_{status}{suffix}",
                 list_status=status,
                 fields="ts_code,name,industry,market,list_date,delist_date,list_status",
             )
@@ -344,12 +351,14 @@ def _load_industry_intervals(
     client: TushareHistoryClient,
     *,
     include_history: bool,
+    cache_suffix: str = "",
 ) -> dict[str, list[tuple[str, str, str]]]:
     statuses = ("Y", "N") if include_history else ("Y",)
+    suffix = f"_{cache_suffix}" if cache_suffix else ""
     frames = [
         client.query(
             "index_member_all",
-            cache_key=f"sw_l1_{status}",
+            cache_key=f"sw_l1_{status}{suffix}",
             paged=True,
             is_new=status,
             fields=INDUSTRY_FIELDS,
@@ -379,15 +388,12 @@ def _load_st_intervals(
     start_date: str,
     end_date: str,
 ) -> dict[str, list[tuple[str, str]]]:
-    try:
-        changes = client.query(
-            "namechange",
-            cache_key="all_history",
-            paged=True,
-            fields="ts_code,name,start_date,end_date,change_reason",
-        )
-    except RuntimeError:
-        return {}
+    changes = client.query(
+        "namechange",
+        cache_key="all_history",
+        paged=True,
+        fields="ts_code,name,start_date,end_date,change_reason",
+    )
     intervals: dict[str, list[tuple[str, str]]] = {}
     for row in changes.to_dict(orient="records"):
         name = str(row.get("name") or "").upper()
@@ -652,7 +658,10 @@ def _build_day_panel(
         bars[["ts_code", "day_open"]]
         .drop_duplicates("ts_code", keep="last")
     )
-    tail = bars[bars["trade_time"].dt.strftime("%H:%M").between("14:20", "14:50")].copy()
+    observation_slots = _observation_slots(config.strategy.signal_slots)
+    tail = bars[
+        bars["trade_time"].dt.strftime("%H:%M").isin(observation_slots)
+    ].copy()
     rows: list[pd.DataFrame] = []
     for slot in config.strategy.signal_slots:
         slot_bars = tail[tail["trade_time"].dt.strftime("%H:%M").le(slot)].copy()
@@ -678,12 +687,17 @@ def _build_day_panel(
         snapshots["entry_fillable"] = (
             snapshots["slot_amount"].ge(config.execution.min_slot_amount)
             & snapshots["distance_to_up_limit_pct"].ge(
-                config.execution.max_distance_to_up_limit_pct
+                config.execution.min_distance_to_up_limit_pct
             )
             & snapshots["slot_bar_lag_minutes"].between(0, 5, inclusive="both")
         )
         rows.append(snapshots)
     panel = pd.concat(rows, ignore_index=True)
+    panel = panel.loc[
+        panel["board"].astype(str).eq(config.strategy.board_scope)
+        & ~panel["is_st"].fillna(True).astype(bool)
+        & pd.to_numeric(panel["adj_factor"], errors="coerce").gt(0)
+    ].copy()
     panel = _add_market_context(panel)
     panel = _add_industry_context(panel)
     panel = build_supervised_panel(panel, config)
@@ -717,6 +731,8 @@ def _build_historical_minute_partitions(
         existing.get("start_date") == start_date
         and existing.get("end_date") == end_date
         and existing.get("signal_slots") == list(config.strategy.signal_slots)
+        and existing.get("observation_slots")
+        == list(_observation_slots(config.strategy.signal_slots))
     ):
         paths = {
             month: output_dir / f"wp_v3_minutes_{month}.parquet"
@@ -820,10 +836,13 @@ def _build_historical_minute_partitions(
     manifest_path.write_text(
         json.dumps(
             {
-                "schema_version": "wp_v3_historical_minutes_1",
+                "schema_version": "wp_v3_historical_minutes_2",
                 "start_date": start_date,
                 "end_date": end_date,
                 "signal_slots": list(config.strategy.signal_slots),
+                "observation_slots": list(
+                    _observation_slots(config.strategy.signal_slots)
+                ),
                 "symbol_count": len(codes),
                 "failed_symbols": query_failures,
                 "partitions": {
@@ -877,12 +896,10 @@ def _normalize_historical_minutes(
     result["trade_date"] = result["trade_time"].dt.strftime("%Y%m%d")
     grouped = result.groupby(["ts_code", "trade_date"], sort=False)
     result["day_open"] = grouped["open"].transform("first")
-    result["high"] = grouped["high"].cummax()
-    result["low"] = grouped["low"].cummin()
-    cumulative_amount = grouped["amount"].cumsum()
-    bar_count = grouped.cumcount() + 1
-    result["slot_amount"] = cumulative_amount / bar_count
-    selected = result["trade_time"].dt.strftime("%H:%M").isin(signal_slots)
+    result["slot_amount"] = result["amount"]
+    selected = result["trade_time"].dt.strftime("%H:%M").isin(
+        _observation_slots(signal_slots)
+    )
     return result.loc[selected, MINUTE_STORE_COLUMNS].reset_index(drop=True)
 
 
@@ -901,7 +918,7 @@ def _slot_features(bars: pd.DataFrame, slot: str) -> pd.DataFrame:
             {
                 "ts_code": code,
                 "slot_close": float(last["close"]),
-                "slot_amount": float(last["amount"]),
+                "slot_amount": float(last.get("slot_amount", last["amount"])),
                 "slot_bar_time": pd.Timestamp(last["trade_time"]).strftime(
                     "%Y-%m-%d %H:%M:%S"
                 ),
@@ -912,6 +929,7 @@ def _slot_features(bars: pd.DataFrame, slot: str) -> pd.DataFrame:
                         + int(pd.Timestamp(last["trade_time"]).minute)
                     )
                 ),
+                "intraday_snapshot_count": int(len(group)),
                 "ret_5m_pct": _return(closes, 1),
                 "ret_10m_pct": _return(closes, 2),
                 "ret_20m_pct": _return(closes, 4),
@@ -1070,6 +1088,10 @@ def _minute_universe_quality(
 def _minute_value(value: str) -> int:
     hour, minute = str(value).split(":")
     return int(hour) * 60 + int(minute)
+
+
+def _observation_slots(signal_slots: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*WARMUP_SLOTS, *signal_slots)))
 
 
 def _date_field(value: Any, default: str) -> str:

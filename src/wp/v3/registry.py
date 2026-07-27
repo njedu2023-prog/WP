@@ -88,23 +88,26 @@ def register_research_model(
     fingerprint = str(metadata["fingerprint"])
     policy = str(metadata.get("policy_fingerprint") or fingerprint)
     existing = model_record(registry, fingerprint)
-
-    if registry.get("active_policy_fingerprint") == policy and bool(
+    backtest_passed = bool(
         backtest.get("backtest_gate", {}).get("passed", False)
-    ):
+    )
+
+    if registry.get("active_policy_fingerprint") == policy and backtest_passed:
         status = "PROMOTED"
         previous = registry.get("active_model_fingerprint")
         _supersede(registry, previous, "SUPERSEDED_PRODUCTION")
         registry["active_model_fingerprint"] = fingerprint
     elif registry.get("active_policy_fingerprint") == policy:
         status = "RESEARCH"
-    elif registry.get("shadow_policy_fingerprint") == policy:
+    elif registry.get("shadow_policy_fingerprint") == policy and backtest_passed:
         status = "SHADOW"
         previous = registry.get("shadow_model_fingerprint")
         _supersede(registry, previous, "SUPERSEDED_SHADOW")
         registry["shadow_model_fingerprint"] = fingerprint
-    elif not registry.get("shadow_policy_fingerprint"):
+    elif backtest_passed:
         status = "SHADOW"
+        previous = registry.get("shadow_model_fingerprint")
+        _supersede(registry, previous, "SUPERSEDED_SHADOW")
         registry["shadow_policy_fingerprint"] = policy
         registry["shadow_model_fingerprint"] = fingerprint
     else:
@@ -132,7 +135,11 @@ def register_research_model(
     if existing is not None:
         record["shadow"] = existing.get("shadow", record["shadow"])
         record["promotion"] = existing.get("promotion", record["promotion"])
-        if existing.get("status") in {"PROMOTED", "SHADOW"}:
+        if (
+            existing.get("status") == "PROMOTED"
+            and registry.get("active_model_fingerprint") == fingerprint
+            and backtest_passed
+        ):
             record["status"] = existing["status"]
     same_policy = [
         model
@@ -287,6 +294,7 @@ def refresh_shadow_metrics(
         session
         for session in ledger.get("sessions", [])
         if session.get("frozen")
+        and not session.get("missing_slots")
         and _session_belongs_to_policy(session, policy, policy_models)
     ]
     candidates = [
@@ -335,7 +343,7 @@ def refresh_shadow_metrics(
     profits = float(returns[returns > 0].sum()) if len(returns) else 0.0
     losses = float(-returns[returns < 0].sum()) if len(returns) else 0.0
     stress_50 = returns - (
-        50.0 - config.execution.round_trip_cost_bps
+        50.0 - config.execution.baseline_all_in_cost_bps
     ) / 100.0
     shadow = {
         "policy_fingerprint": policy,

@@ -3,7 +3,7 @@ from datetime import datetime
 import pandas as pd
 
 from wp.calendar import CN_TZ
-from wp.main import _qualified_buy_plan
+from wp.legacy_main import _qualified_buy_plan
 from wp.strategy_ledger import (
     STRATEGY_VERSION,
     strategy_validation_rows,

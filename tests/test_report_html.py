@@ -1,6 +1,6 @@
 import pandas as pd
 
-from wp.main import load_backtest_summaries
+from wp.legacy_main import load_backtest_summaries
 from wp.report_html import render_html
 from wp.scoring_model import MODEL_VERSION
 from wp.tail_profit_model import TAIL_PROFIT_MODEL_VERSION

@@ -125,3 +125,37 @@ def test_t1_suspension_is_verified_as_a_contract_failure():
     assert candidate["truth_status"] == "verified"
     assert candidate["exit_fillable"] is False
     assert candidate["net_return_pct"] == -10.0
+
+
+def test_truth_uses_authoritative_entry_day_adjustment_factor():
+    candidate = {
+        "trade_date": "20260721",
+        "ts_code": "600001.SH",
+        "first_signal_price": 10.0,
+        "entry_adj_factor": 1.0,
+        "truth_status": "pending",
+    }
+    entry_truth = pd.DataFrame(
+        [{"ts_code": "600001.SH", "adj_factor": 1.1}]
+    ).set_index("ts_code")
+    target_truth = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "close": 10.0,
+                "vol": 1000,
+                "down_limit": 9.0,
+                "adj_factor": 1.1,
+            }
+        ]
+    ).set_index("ts_code")
+
+    _verify_candidate(
+        candidate,
+        target_truth,
+        V3Config(),
+        entry_truth=entry_truth,
+    )
+
+    assert candidate["entry_adj_factor_truth"] == 1.1
+    assert candidate["t1_total_return_close"] == pytest.approx(10.0)

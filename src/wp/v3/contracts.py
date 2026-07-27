@@ -48,21 +48,26 @@ class ExecutionContract:
     min_slot_amount: float = 3_000_000.0
     reference_order_notional: float = 100_000.0
     max_entry_pct_of_slot_amount: float = 0.01
-    max_distance_to_up_limit_pct: float = 0.50
+    min_distance_to_up_limit_pct: float = 0.50
     min_distance_to_down_limit_pct: float = 1.00
     max_market_data_age_seconds: int = 420
+    min_intraday_snapshot_count: int = 5
     non_fill_penalty_pct: float = -10.0
+
+    @property
+    def baseline_all_in_cost_bps(self) -> float:
+        return self.entry_slippage_bps + self.round_trip_cost_bps
 
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v3_policy_20260727_1"
-    feature_version: str = "wp_v3_causal_features_1"
+    policy_implementation_version: str = "wp_v3_policy_20260727_8"
+    feature_version: str = "wp_v3_causal_features_4"
     minimum_train_days: int = 252
     calibration_days: int = 21
-    test_days: int = 21
+    test_days: int = 42
     purge_days: int = 2
-    ensemble_windows_days: tuple[int, ...] = (252, 504, 756)
+    ensemble_windows_days: tuple[int, ...] = (126, 252, 504)
     probability_threshold: float = 0.60
     probability_lower_threshold: float = 0.52
     min_expected_net_return_pct: float = 0.30
@@ -73,6 +78,7 @@ class ModelContract:
     min_calibration_bin_clustered_lower: float = 0.50
     max_probability_model_spread: float = 0.10
     min_train_rows: int = 20_000
+    max_training_rows_per_slot: int = 300
     random_seed: int = 20_260_727
 
 
@@ -150,8 +156,17 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("production promotion requires at least 150 shadow trading days")
     if not 0.5 <= config.model.probability_threshold < 1.0:
         raise ValueError("probability_threshold must be in [0.5, 1.0)")
+    if len(set(config.model.ensemble_windows_days)) < 2:
+        raise ValueError("temporal ensemble requires at least two distinct windows")
+    if config.model.max_training_rows_per_slot < 100:
+        raise ValueError("training sample must retain at least 100 rows per slot-day")
     if config.execution.round_trip_cost_bps <= 0:
         raise ValueError("round-trip cost must be positive")
+    if any(
+        cost < config.execution.baseline_all_in_cost_bps
+        for cost in config.execution.stress_cost_bps
+    ):
+        raise ValueError("stress costs cannot be below the baseline all-in cost")
     if config.execution.non_fill_penalty_pct >= 0:
         raise ValueError("non-fill penalty must be negative")
 

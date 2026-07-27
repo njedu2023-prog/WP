@@ -7,7 +7,8 @@ from typing import Any
 
 import pandas as pd
 
-from .contracts import CN_TZ, V3Config
+from .contracts import CN_TZ, DEFAULT_SIGNAL_SLOTS, V3Config
+from .features import FEATURE_COLUMNS
 
 
 def empty_shadow_ledger() -> dict[str, Any]:
@@ -25,6 +26,26 @@ def load_shadow_ledger(path: str | Path) -> dict[str, Any]:
     ledger = json.loads(target.read_text(encoding="utf-8"))
     if ledger.get("schema_version") != "wp_candidate_ledger_v3":
         raise ValueError("unsupported candidate ledger schema")
+    for session in ledger.get("sessions", []):
+        if session.get("frozen"):
+            expected = session.setdefault(
+                "expected_slots",
+                list(DEFAULT_SIGNAL_SLOTS),
+            )
+            missing = session.setdefault(
+                "missing_slots",
+                [
+                    slot
+                    for slot in expected
+                    if slot not in session.get("covered_slots", [])
+                ],
+            )
+            session.setdefault(
+                "integrity_status",
+                "COMPLETE" if not missing else "INCOMPLETE",
+            )
+        else:
+            session.setdefault("integrity_status", "COLLECTING")
     return ledger
 
 
@@ -82,6 +103,7 @@ def record_shadow_slot(
                 "first_signal_time": signal_slot,
                 "first_signal_price": _float(row.get("signal_price")),
                 "entry_adj_factor": _float(row.get("adj_factor")),
+                "entry_adj_factor_observed": _float(row.get("adj_factor")),
                 "last_signal_time": signal_slot,
                 "last_signal_price": _float(row.get("signal_price")),
                 "appearance_count": 1,
@@ -95,7 +117,42 @@ def record_shadow_slot(
                 "feature_version": config.model.feature_version,
                 "entry_contract": config.execution.entry_price_contract,
                 "exit_contract": config.strategy.exit_contract,
+                "entry_slippage_bps": config.execution.entry_slippage_bps,
                 "round_trip_cost_bps": config.execution.round_trip_cost_bps,
+                "baseline_all_in_cost_bps": (
+                    config.execution.baseline_all_in_cost_bps
+                ),
+                "first_signal_market_data_time": row.get("market_data_time"),
+                "first_signal_bar_time": row.get("slot_bar_time"),
+                "first_signal_features": {
+                    feature: _float(row.get(feature))
+                    for feature in FEATURE_COLUMNS
+                },
+                "qualification_evidence": {
+                    field: _json_scalar(row.get(field))
+                    for field in (
+                        "p_net_positive",
+                        "p_net_positive_lower",
+                        "probability_model_spread",
+                        "expected_net_return_pct",
+                        "downside_q10_pct",
+                        "calibration_bin_count",
+                        "calibration_bin_days",
+                        "calibration_bin_win_rate",
+                        "calibration_bin_wilson_lower",
+                        "calibration_bin_clustered_lower",
+                        "data_age_seconds",
+                        "execution_eligible",
+                        "passes_probability",
+                        "passes_probability_lower",
+                        "passes_expected_return",
+                        "passes_downside",
+                        "passes_sample",
+                        "passes_empirical_lower",
+                        "passes_stability",
+                        "passes_freshness",
+                    )
+                },
                 "observed_at": observed_at,
                 "truth_status": "pending",
             }
@@ -108,6 +165,7 @@ def record_shadow_slot(
             existing["appearance_count"] = int(existing.get("appearance_count", 1)) + 1
             existing["last_observed_at"] = observed_at
     session["status"] = "COLLECTING"
+    session["integrity_status"] = "COLLECTING"
     session["candidate_count"] = len(candidates)
     return ledger
 
@@ -156,11 +214,34 @@ def freeze_shadow_session(
     session["missing_slots"] = [
         slot for slot in config.strategy.signal_slots if slot not in session.get("covered_slots", [])
     ]
+    session["integrity_status"] = (
+        "COMPLETE" if not session["missing_slots"] else "INCOMPLETE"
+    )
     return ledger
 
 
 def assert_ledger_invariants(ledger: dict[str, Any], config: V3Config) -> None:
     for session in ledger.get("sessions", []):
+        if session.get("frozen"):
+            expected = list(config.strategy.signal_slots)
+            missing = [
+                slot
+                for slot in expected
+                if slot not in session.get("covered_slots", [])
+            ]
+            if session.get("expected_slots") != expected:
+                raise ValueError(
+                    f"frozen session {session.get('trade_date')} has wrong expected slots"
+                )
+            if session.get("missing_slots") != missing:
+                raise ValueError(
+                    f"frozen session {session.get('trade_date')} has inconsistent missing slots"
+                )
+            expected_integrity = "COMPLETE" if not missing else "INCOMPLETE"
+            if session.get("integrity_status") != expected_integrity:
+                raise ValueError(
+                    f"frozen session {session.get('trade_date')} has inconsistent integrity"
+                )
         seen: set[str] = set()
         for candidate in session.get("candidates", []):
             code = str(candidate.get("ts_code"))
@@ -193,6 +274,7 @@ def _session(ledger: dict[str, Any], trade_date: str) -> dict[str, Any]:
         "covered_slots": [],
         "candidate_count": 0,
         "candidates": [],
+        "integrity_status": "COLLECTING",
     }
     ledger["sessions"].append(session)
     ledger["sessions"].sort(key=lambda item: str(item.get("trade_date")))
@@ -254,3 +336,18 @@ def _float(value: Any) -> float | None:
         return parsed if pd.notna(parsed) else None
     except (TypeError, ValueError):
         return None
+
+
+def _json_scalar(value: Any) -> Any:
+    if value is None:
+        return None
+    if hasattr(value, "item"):
+        value = value.item()
+    try:
+        if pd.isna(value):
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, (bool, int, float, str)):
+        return value
+    return str(value)

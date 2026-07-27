@@ -76,6 +76,7 @@ class ModelBundle:
     calibration_start: str
     calibration_end: str
     training_rows: int
+    eligible_fit_rows: int
     calibration_rows: int
     training_data_digest: str
     positive_rate: float
@@ -139,16 +140,25 @@ def train_bundle(
         )
     fit = eligible.loc[eligible["trade_date"].isin(fit_dates)].copy()
     calibration = eligible.loc[eligible["trade_date"].isin(calibration_dates)].copy()
-    y_fit = fit["target_net_positive"].astype(int).to_numpy()
+    sampled_fit = _deterministic_training_sample(
+        fit,
+        rows_per_slot=config.model.max_training_rows_per_slot,
+    )
+    y_fit = sampled_fit["target_net_positive"].astype(int).to_numpy()
     y_calibration = calibration["target_net_positive"].astype(int).to_numpy()
     if len(np.unique(y_fit)) < 2:
         raise ValueError("training sample contains only one target class")
 
     members: list[ClassifierMember] = []
     minimum_member_rows = min(500, max(200, config.model.min_train_rows // 20))
+    fitted_window_lengths: set[int] = set()
     for window_days in config.model.ensemble_windows_days:
         member_dates = fit_dates[-min(window_days, len(fit_dates)) :]
-        member_frame = fit.loc[fit["trade_date"].isin(member_dates)]
+        if len(member_dates) in fitted_window_lengths:
+            continue
+        member_frame = sampled_fit.loc[
+            sampled_fit["trade_date"].isin(member_dates)
+        ]
         if (
             len(member_frame) < minimum_member_rows
             or member_frame["target_net_positive"].nunique() < 2
@@ -170,8 +180,11 @@ def train_bundle(
                 ),
             )
         )
-    if not members:
-        raise ValueError("no temporal ensemble member could be trained")
+        fitted_window_lengths.add(len(member_dates))
+    if len(members) < 2:
+        raise ValueError(
+            "temporal ensemble requires at least two distinct trained windows"
+        )
 
     x_calibration = feature_matrix(calibration)
     raw_calibration, _ = _member_predictions(members, x_calibration)
@@ -184,8 +197,11 @@ def train_bundle(
         seed=config.model.random_seed,
     )
 
-    x_fit = feature_matrix(fit)
-    net_return = pd.to_numeric(fit["net_return_pct"], errors="coerce").fillna(-10.0)
+    x_fit = feature_matrix(sampled_fit)
+    net_return = pd.to_numeric(
+        sampled_fit["net_return_pct"],
+        errors="coerce",
+    ).fillna(-10.0)
     mean_regressor = _fit_regressor(
         x_fit,
         net_return.to_numpy(),
@@ -210,7 +226,8 @@ def train_bundle(
         "train_end": str(fit_dates[-1]),
         "calibration_start": str(calibration_dates[0]),
         "calibration_end": str(calibration_dates[-1]),
-        "rows": int(len(fit)),
+        "rows": int(len(sampled_fit)),
+        "eligible_fit_rows": int(len(fit)),
         "calibration_rows": int(len(calibration)),
         "training_data_digest": training_data_digest,
         "members": [member.name for member in members],
@@ -229,7 +246,8 @@ def train_bundle(
         train_end=str(fit_dates[-1]),
         calibration_start=str(calibration_dates[0]),
         calibration_end=str(calibration_dates[-1]),
-        training_rows=int(len(fit)),
+        training_rows=int(len(sampled_fit)),
+        eligible_fit_rows=int(len(fit)),
         calibration_rows=int(len(calibration)),
         training_data_digest=training_data_digest,
         positive_rate=float(np.mean(y_fit)),
@@ -385,6 +403,42 @@ def _fit_logistic(features: pd.DataFrame, target: np.ndarray, seed: int) -> Pipe
         ]
     )
     return pipeline.fit(features, target)
+
+
+def _deterministic_training_sample(
+    frame: pd.DataFrame,
+    *,
+    rows_per_slot: int,
+) -> pd.DataFrame:
+    if frame.empty:
+        return frame.copy()
+    sampled = frame.copy()
+    identity = (
+        sampled["trade_date"].astype(str)
+        + "|"
+        + sampled["signal_slot"].astype(str)
+        + "|"
+        + sampled["ts_code"].astype(str)
+    )
+    sampled["_sample_hash"] = pd.util.hash_pandas_object(
+        identity,
+        index=False,
+        categorize=True,
+    ).to_numpy(dtype=np.uint64)
+    sampled = sampled.sort_values(
+        ["trade_date", "signal_slot", "_sample_hash", "ts_code"],
+        kind="stable",
+    )
+    sampled = (
+        sampled.groupby(
+            ["trade_date", "signal_slot"],
+            sort=False,
+            group_keys=False,
+        )
+        .head(rows_per_slot)
+        .drop(columns="_sample_hash")
+    )
+    return sampled.reset_index(drop=True)
 
 
 def _fit_classifier(features: pd.DataFrame, target: np.ndarray, seed: int) -> Pipeline:

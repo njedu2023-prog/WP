@@ -39,7 +39,7 @@ def execution_eligibility(frame: pd.DataFrame, config: V3Config) -> pd.Series:
         & slot_amount.mul(execution.max_entry_pct_of_slot_amount).ge(
             execution.reference_order_notional
         )
-        & up_distance.ge(execution.max_distance_to_up_limit_pct)
+        & up_distance.ge(execution.min_distance_to_up_limit_pct)
         & down_distance.ge(execution.min_distance_to_down_limit_pct)
     )
     for flag in ("is_st", "is_suspended", "one_word_up_limit"):
@@ -54,6 +54,10 @@ def execution_eligibility(frame: pd.DataFrame, config: V3Config) -> pd.Series:
             0,
             5,
             inclusive="both",
+        )
+    if "intraday_snapshot_count" in frame:
+        eligible &= _numeric(frame, "intraday_snapshot_count").ge(
+            execution.min_intraday_snapshot_count
         )
     return eligible.fillna(False)
 

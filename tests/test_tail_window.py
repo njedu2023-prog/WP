@@ -1,6 +1,6 @@
 import pandas as pd
 
-from wp.main import _archive_decision_snapshots
+from wp.legacy_main import _archive_decision_snapshots
 from wp.tail_window import (
     TAIL_PHASE_ACTIVE,
     TAIL_PHASE_BEFORE,

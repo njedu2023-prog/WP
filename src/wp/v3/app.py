@@ -11,7 +11,7 @@ import pandas as pd
 from wp.calendar import now_cn
 from wp.utils import ensure_dir, write_json
 
-from .contracts import V3Config, load_v3_config, session_phase
+from .contracts import V3Config, load_v3_config, policy_fingerprint, session_phase
 from .dashboard import render_v3_dashboard
 from .ledger import (
     assert_ledger_invariants,
@@ -49,20 +49,16 @@ def run_v3() -> dict[str, Any]:
     frame = pd.read_csv(source_path, keep_default_na=False, dtype={"ts_code": str})
     source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
     market_time = pd.to_datetime(source_manifest.get("market_data_time"), errors="coerce")
-    if pd.notna(market_time):
-        current_naive = current.replace(tzinfo=None)
-        frame["data_age_seconds"] = max(
-            0.0,
-            (current_naive - market_time.to_pydatetime().replace(tzinfo=None)).total_seconds(),
-        )
-    else:
-        frame["data_age_seconds"] = float("inf")
+    frame = _refresh_data_age(frame, current=current, market_time=market_time)
     trade_date = str(source_manifest.get("trade_date") or current.strftime("%Y%m%d"))
     signal_slot = str(source_manifest.get("signal_slot") or "")
     phase = session_phase(current, config)
     registry_path = ROOT / "outputs" / "json" / "wp_model_registry_v3.json"
     registry = load_registry(registry_path)
-    model_path = _resolve_model_path(registry)
+    model_path = _resolve_model_path(
+        registry,
+        expected_policy_fingerprint=policy_fingerprint(config),
+    )
     explicit_model_path = os.environ.get("WP_V3_MODEL_PATH", "").strip()
     if explicit_model_path:
         model_path = Path(explicit_model_path)
@@ -98,6 +94,18 @@ def run_v3() -> dict[str, Any]:
     assert_ledger_invariants(ledger, config)
     save_shadow_ledger(ledger, ledger_path)
     replay = _read_json(output / "json" / "wp_v3_historical_replay.json")
+    current_session = next(
+        (
+            session
+            for session in ledger.get("sessions", [])
+            if str(session.get("trade_date")) == trade_date
+        ),
+        {},
+    )
+    missing_slots = list(current_session.get("missing_slots", []))
+    integrity_status = str(
+        current_session.get("integrity_status") or "COLLECTING"
+    )
 
     formal = inference.predictions.loc[
         inference.predictions.get(
@@ -108,6 +116,8 @@ def run_v3() -> dict[str, Any]:
     ].copy()
     if phase != "SIGNAL":
         formal = formal.iloc[0:0].copy()
+    data_age = pd.to_numeric(frame.get("data_age_seconds"), errors="coerce")
+    finite_data_age = data_age.loc[data_age.notna() & data_age.ge(0)]
     update_time = current.strftime("%Y-%m-%d %H:%M:%S")
     manifest = {
         "schema_version": "wp_manifest_v3",
@@ -130,7 +140,24 @@ def run_v3() -> dict[str, Any]:
         ),
         "live_universe_count": int(len(frame)),
         "eligible_universe_count": int(frame.get("execution_eligible", pd.Series(dtype=bool)).sum()),
-        "health_status": "ok",
+        "market_data_p95_age_seconds": (
+            float(finite_data_age.quantile(0.95))
+            if not finite_data_age.empty
+            else None
+        ),
+        "latest_bar_slot": source_manifest.get("latest_bar_slot"),
+        "expected_symbols": source_manifest.get("expected_symbols"),
+        "fresh_row_count": source_manifest.get("fresh_row_count"),
+        "open_universe_coverage": source_manifest.get("open_universe_coverage"),
+        "tail_universe_coverage": source_manifest.get("tail_universe_coverage"),
+        "health_status": (
+            "session_integrity_fault"
+            if phase in {"FROZEN", "CLOSED"} and missing_slots
+            else "ok"
+        ),
+        "session_integrity_status": integrity_status,
+        "covered_slots": list(current_session.get("covered_slots", [])),
+        "missing_slots": missing_slots,
         "manual_execution_only": True,
         "order_routing_enabled": False,
         **inference_manifest(inference),
@@ -197,6 +224,32 @@ def run_v3() -> dict[str, Any]:
     return manifest
 
 
+def _refresh_data_age(
+    frame: pd.DataFrame,
+    *,
+    current: datetime,
+    market_time: pd.Timestamp | Any,
+) -> pd.DataFrame:
+    result = frame.copy()
+    current_naive = current.replace(tzinfo=None)
+    if "slot_bar_time" in result:
+        bar_time = pd.to_datetime(result["slot_bar_time"], errors="coerce")
+        result["data_age_seconds"] = (
+            current_naive - bar_time
+        ).dt.total_seconds().clip(lower=0)
+    elif pd.notna(market_time):
+        result["data_age_seconds"] = max(
+            0.0,
+            (
+                current_naive
+                - pd.Timestamp(market_time).to_pydatetime().replace(tzinfo=None)
+            ).total_seconds(),
+        )
+    else:
+        result["data_age_seconds"] = float("inf")
+    return result
+
+
 def _write_not_ready(
     output: Path,
     config: V3Config,
@@ -239,11 +292,16 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _resolve_model_path(registry: dict[str, Any]) -> Path:
-    fingerprint = (
-        registry.get("active_model_fingerprint")
-        or registry.get("shadow_model_fingerprint")
-    )
+def _resolve_model_path(
+    registry: dict[str, Any],
+    *,
+    expected_policy_fingerprint: str,
+) -> Path:
+    fingerprint = None
+    if registry.get("active_policy_fingerprint") == expected_policy_fingerprint:
+        fingerprint = registry.get("active_model_fingerprint")
+    elif registry.get("shadow_policy_fingerprint") == expected_policy_fingerprint:
+        fingerprint = registry.get("shadow_model_fingerprint")
     record = next(
         (
             model

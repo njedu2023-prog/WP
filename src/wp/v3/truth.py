@@ -53,19 +53,31 @@ def run_v3_close_validation(
         pro = ts.pro_api(token)
         truth_by_date = {}
         truth_errors = {}
-        for target_date in sorted(
-            {str(candidate["target_trade_date"]) for candidate in due}
-        ):
+        truth_dates = {
+            str(candidate[date_field])
+            for candidate in due
+            for date_field in ("trade_date", "target_trade_date")
+            if str(candidate.get(date_field) or "").isdigit()
+        }
+        for target_date in sorted(truth_dates):
             try:
                 truth_by_date[target_date] = _fetch_close_truth(pro, target_date)
             except RuntimeError as error:
                 truth_errors[target_date] = str(error)
         for candidate in due:
             target_date = str(candidate["target_trade_date"])
-            if target_date in truth_by_date:
-                _verify_candidate(candidate, truth_by_date[target_date], config)
+            entry_date = str(candidate["trade_date"])
+            if target_date in truth_by_date and entry_date in truth_by_date:
+                _verify_candidate(
+                    candidate,
+                    truth_by_date[target_date],
+                    config,
+                    entry_truth=truth_by_date[entry_date],
+                )
             elif target_date in truth_errors:
                 candidate["truth_error"] = truth_errors[target_date]
+            elif entry_date in truth_errors:
+                candidate["truth_error"] = truth_errors[entry_date]
     assert_ledger_invariants(ledger, config)
     if json.dumps(ledger, ensure_ascii=False, sort_keys=True) != ledger_before:
         save_shadow_ledger(ledger, ledger_path)
@@ -96,6 +108,19 @@ def run_v3_close_validation(
         save_registry(registry, registry_path)
 
     validation = _validation_frame(ledger)
+    pending_mask = (
+        validation.get("truth_status", pd.Series("", index=validation.index))
+        != "verified"
+    )
+    target_dates = validation.get(
+        "target_trade_date",
+        pd.Series("", index=validation.index),
+    ).astype(str)
+    due_pending_mask = (
+        pending_mask
+        & target_dates.str.fullmatch(r"\d{8}", na=False)
+        & target_dates.le(today)
+    )
     validation.to_csv(
         output / "csv" / "wp_buy_plan_validation.csv",
         index=False,
@@ -112,8 +137,9 @@ def run_v3_close_validation(
             "session_phase": "CLOSED",
             "buy_plan_count": 0,
             "pending_truth_count": int(
-                (validation.get("truth_status", pd.Series(dtype=str)) != "verified").sum()
+                pending_mask.sum()
             ),
+            "pending_due_truth_count": int(due_pending_mask.sum()),
             "verified_candidate_count": int(
                 (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
             ),
@@ -131,8 +157,9 @@ def run_v3_close_validation(
                     (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
                 ),
                 "pending_count": int(
-                    (validation.get("truth_status", pd.Series(dtype=str)) != "verified").sum()
+                    pending_mask.sum()
                 ),
+                "pending_due_count": int(due_pending_mask.sum()),
                 "promotion": promotion_results,
             },
             "records": validation.to_dict(orient="records"),
@@ -186,8 +213,9 @@ def run_v3_close_validation(
             (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
         ),
         "pending_count": int(
-            (validation.get("truth_status", pd.Series(dtype=str)) != "verified").sum()
+            due_pending_mask.sum()
         ),
+        "pending_total_count": int(pending_mask.sum()),
         "newly_verified": int(newly_verified),
     }
 
@@ -227,6 +255,8 @@ def _verify_candidate(
     candidate: dict[str, Any],
     truth: pd.DataFrame,
     config: V3Config,
+    *,
+    entry_truth: pd.DataFrame | None = None,
 ) -> None:
     code = str(candidate["ts_code"])
     if code not in truth.index:
@@ -235,6 +265,13 @@ def _verify_candidate(
     signal_price = float(candidate["first_signal_price"])
     entry_price = signal_price * (1 + config.execution.entry_slippage_bps / 10_000.0)
     entry_adj_factor = _positive_float(candidate.get("entry_adj_factor"))
+    if entry_truth is not None:
+        if code not in entry_truth.index:
+            candidate["truth_error"] = "missing_entry_adjustment_truth"
+            return
+        entry_adj_factor = _positive_float(
+            entry_truth.loc[code].get("adj_factor")
+        )
     target_adj_factor = _positive_float(row.get("adj_factor"))
     if not entry_adj_factor or not target_adj_factor:
         candidate["truth_error"] = "missing_adjustment_factor"
@@ -268,6 +305,12 @@ def _verify_candidate(
     candidate.update(
         {
             "entry_price": entry_price,
+            "entry_adj_factor_truth": entry_adj_factor,
+            "entry_slippage_bps": config.execution.entry_slippage_bps,
+            "round_trip_cost_bps": config.execution.round_trip_cost_bps,
+            "baseline_all_in_cost_bps": (
+                config.execution.baseline_all_in_cost_bps
+            ),
             "t1_close": close,
             "t1_adj_factor": target_adj_factor,
             "t1_total_return_close": total_return_close,

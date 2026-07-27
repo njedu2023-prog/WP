@@ -56,6 +56,9 @@ def test_ledger_locks_first_signal_and_only_updates_last_observation():
     assert candidate["last_signal_price"] == 10.4
     assert candidate["appearance_count"] == 2
     assert candidate["policy_fingerprint"] == "policy-a"
+    assert candidate["baseline_all_in_cost_bps"] == 35.0
+    assert "first_signal_features" in candidate
+    assert "qualification_evidence" in candidate
     assert ledger["sessions"][0]["policy_fingerprint"] == "policy-a"
     assert_ledger_invariants(ledger, config)
 
@@ -108,6 +111,7 @@ def test_repeating_freeze_preserves_the_original_freeze_time():
         model_fingerprint="abc",
     )
     assert ledger["sessions"][0]["frozen_at"] == "2026-07-23T14:55:00+08:00"
+    assert ledger["sessions"][0]["integrity_status"] == "INCOMPLETE"
 
 
 def test_frozen_session_rejects_a_different_model_fingerprint():

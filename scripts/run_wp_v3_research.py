@@ -14,7 +14,7 @@ from wp.v3.contracts import load_v3_config
 from wp.v3.dashboard import render_v3_dashboard
 from wp.v3.dataset import audit_panel
 from wp.v3.history import load_panel_partitions
-from wp.v3.ledger import load_shadow_ledger, save_shadow_ledger
+from wp.v3.ledger import empty_shadow_ledger
 from wp.v3.model import bundle_metadata, save_bundle, train_bundle
 from wp.v3.registry import (
     apply_promotion_decision,
@@ -130,7 +130,8 @@ def main() -> int:
         json.dumps(summary, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
         encoding="utf-8",
     )
-    _publish_research_ready_dashboard(
+    _render_research_audit_dashboard(
+        output=output,
         config=config,
         registry=registry,
         model_fingerprint=bundle.fingerprint,
@@ -195,8 +196,9 @@ def _historical_replay(
     }
 
 
-def _publish_research_ready_dashboard(
+def _render_research_audit_dashboard(
     *,
+    output: Path,
     config,
     registry: dict,
     model_fingerprint: str,
@@ -206,9 +208,6 @@ def _publish_research_ready_dashboard(
 ) -> None:
     current = datetime.now(CN_TZ)
     revision = current.strftime("%Y-%m-%d %H:%M:%S")
-    ledger_path = ROOT / "outputs" / "json" / "wp_v3_candidate_ledger.json"
-    ledger = load_shadow_ledger(ledger_path)
-    save_shadow_ledger(ledger, ledger_path)
     model = model_record(registry, model_fingerprint) or {}
     state = "SHADOW" if deployment_state == "SHADOW" else "MODEL_NOT_READY"
     manifest = {
@@ -242,17 +241,11 @@ def _publish_research_ready_dashboard(
         "research_start": research_start,
         "research_end": research_end,
     }
-    manifest_path = ROOT / "outputs" / "json" / "wp_manifest.json"
-    manifest_path.parent.mkdir(parents=True, exist_ok=True)
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
     render_v3_dashboard(
-        ROOT / "outputs" / "html_reports" / "latest.html",
+        output / "wp_v3_research_report.html",
         manifest=manifest,
         predictions=pd.DataFrame(),
-        ledger=ledger,
+        ledger=empty_shadow_ledger(),
         registry=registry,
         config=config,
         replay=json.loads(

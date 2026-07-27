@@ -27,3 +27,15 @@ def test_shadow_period_cannot_be_reduced_below_150_days():
     with pytest.raises(ValueError, match="150"):
         validate_contract(config)
 
+
+def test_cost_contract_uses_35bps_baseline_and_rejects_lower_stress():
+    config = V3Config()
+    assert config.execution.baseline_all_in_cost_bps == 35.0
+    invalid = V3Config(
+        execution=replace(
+            config.execution,
+            stress_cost_bps=(30.0, 50.0),
+        )
+    )
+    with pytest.raises(ValueError, match="baseline all-in"):
+        validate_contract(invalid)

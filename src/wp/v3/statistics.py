@@ -40,6 +40,7 @@ def day_clustered_intervals(
     return_column: str = "net_return_pct",
     samples: int = 4_000,
     seed: int = 20_260_727,
+    block_days: int = 5,
 ) -> ClusteredInterval:
     clean = frame.reindex(columns=[date_column, return_column]).copy()
     clean[date_column] = clean[date_column].astype(str)
@@ -61,12 +62,19 @@ def day_clustered_intervals(
         )
     )
     rng = np.random.default_rng(seed)
-    choices = rng.integers(
+    block_length = max(1, min(int(block_days), len(clusters)))
+    blocks_per_sample = int(np.ceil(len(clusters) / block_length))
+    starts = rng.integers(
         0,
         len(clusters),
-        size=(samples, len(clusters)),
+        size=(samples, blocks_per_sample),
         endpoint=False,
     )
+    offsets = np.arange(block_length, dtype=int)
+    choices = (
+        (starts[:, :, None] + offsets[None, None, :])
+        % len(clusters)
+    ).reshape(samples, -1)[:, : len(clusters)]
     wins = clusters["wins"].to_numpy(dtype=float)[choices].sum(axis=1)
     observations = (
         clusters["observations"].to_numpy(dtype=float)[choices].sum(axis=1)

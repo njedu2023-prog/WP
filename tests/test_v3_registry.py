@@ -87,7 +87,7 @@ def _metadata(fingerprint: str, policy: str, trained_at: str) -> dict:
 
 def test_same_policy_monthly_retrain_keeps_one_shadow_clock():
     registry = empty_registry()
-    backtest = {"backtest_gate": {"passed": False}}
+    backtest = {"backtest_gate": {"passed": True}}
     register_research_model(
         registry,
         metadata=_metadata("model-a", "policy-a", "2026-06-01T00:00:00Z"),
@@ -130,18 +130,32 @@ def test_same_policy_monthly_retrain_keeps_one_shadow_clock():
 
 def test_material_policy_change_does_not_inherit_shadow_evidence():
     registry = empty_registry()
-    backtest = {"backtest_gate": {"passed": False}}
+    passed = {"backtest_gate": {"passed": True}}
+    failed = {"backtest_gate": {"passed": False}}
     register_research_model(
         registry,
         metadata=_metadata("model-a", "policy-a", "2026-06-01T00:00:00Z"),
-        backtest=backtest,
+        backtest=passed,
         artifact_path="a.joblib",
     )
     register_research_model(
         registry,
         metadata=_metadata("model-b", "policy-b", "2026-07-01T00:00:00Z"),
-        backtest=backtest,
+        backtest=failed,
         artifact_path="b.joblib",
     )
     assert registry["models"][1]["status"] == "RESEARCH"
     assert registry["shadow_policy_fingerprint"] == "policy-a"
+
+
+def test_backtest_failed_policy_cannot_start_shadow_clock():
+    registry = empty_registry()
+    register_research_model(
+        registry,
+        metadata=_metadata("model-a", "policy-a", "2026-06-01T00:00:00Z"),
+        backtest={"backtest_gate": {"passed": False}},
+        artifact_path="a.joblib",
+    )
+    assert registry["models"][0]["status"] == "RESEARCH"
+    assert registry["shadow_model_fingerprint"] is None
+    assert registry["shadow_policy_fingerprint"] is None

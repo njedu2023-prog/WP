@@ -20,19 +20,20 @@ execution:
   min_slot_amount: 3000000
   reference_order_notional: 100000
   max_entry_pct_of_slot_amount: 0.01
-  max_distance_to_up_limit_pct: 0.50
+  min_distance_to_up_limit_pct: 0.50
   min_distance_to_down_limit_pct: 1.00
   max_market_data_age_seconds: 420
+  min_intraday_snapshot_count: 5
   non_fill_penalty_pct: -10.00
 
 model:
-  policy_implementation_version: wp_v3_policy_20260727_1
-  feature_version: wp_v3_causal_features_1
+  policy_implementation_version: wp_v3_policy_20260727_8
+  feature_version: wp_v3_causal_features_4
   minimum_train_days: 252
   calibration_days: 21
-  test_days: 21
+  test_days: 42
   purge_days: 2
-  ensemble_windows_days: [252, 504, 756]
+  ensemble_windows_days: [126, 252, 504]
   probability_threshold: 0.60
   probability_lower_threshold: 0.52
   min_expected_net_return_pct: 0.30
@@ -43,6 +44,7 @@ model:
   min_calibration_bin_clustered_lower: 0.50
   max_probability_model_spread: 0.10
   min_train_rows: 20000
+  max_training_rows_per_slot: 300
   random_seed: 20260727
 
 promotion:

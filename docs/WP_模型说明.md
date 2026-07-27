@@ -5,7 +5,8 @@
 模型对每个候选独立估计：
 
 ```text
-P(T+1_close / first_qualified_signal_price - 1 - round_trip_cost > 0)
+P(T+1_close / (first_qualified_signal_price * (1 + entry_slippage))
+  - 1 - non_slippage_cost > 0)
 ```
 
 验证入场价是该股票当天第一次通过全部门槛时的实时价格。盘后价格、后续刷新价和人工最终选择都不得改写它。

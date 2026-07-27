@@ -140,7 +140,9 @@ def evaluate_predictions(
 
     stress: dict[str, dict[str, float | int]] = {}
     for cost_bps in config.execution.stress_cost_bps:
-        extra_cost_pct = (cost_bps - config.execution.round_trip_cost_bps) / 100.0
+        extra_cost_pct = (
+            cost_bps - config.execution.baseline_all_in_cost_bps
+        ) / 100.0
         stressed = candidate_returns - extra_cost_pct
         stress[f"{int(cost_bps)}bps"] = {
             "mean_net_return_pct": _finite_or_none(stressed.mean()),

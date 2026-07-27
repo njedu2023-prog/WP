@@ -11,7 +11,7 @@ import tushare as ts
 
 from wp.v3.contracts import DEFAULT_SIGNAL_SLOTS, load_v3_config
 from wp.v3.history import TushareHistoryClient
-from wp.v3.live_data import build_live_feature_frame
+from wp.v3.live_data import build_live_feature_frame, capture_live_minute_snapshot
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -61,6 +61,35 @@ def build_live_input(
         encoding="utf-8",
     )
     return csv_path, manifest
+
+
+def capture_warmup_input(
+    *,
+    observation_slot: str,
+    root: Path = ROOT,
+    env: dict[str, str] | None = None,
+) -> dict:
+    environment = env or os.environ
+    token = environment.get("TUSHARE_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("TUSHARE_TOKEN is required for V3 warmup snapshots")
+    now = datetime.now(CN_TZ)
+    trade_date = (
+        environment.get("WP_EXPECTED_TRADE_DATE", "").strip()
+        or now.strftime("%Y%m%d")
+    )
+    config = load_v3_config(root / "config" / "wp_v3.yml")
+    client = TushareHistoryClient(
+        ts.pro_api(token),
+        root / "data" / "v3" / "cache",
+        page_size=config.history.tushare_page_size,
+    )
+    return capture_live_minute_snapshot(
+        client,
+        trade_date=trade_date,
+        observation_slot=observation_slot,
+        config=config,
+    )
 
 
 def main() -> int:

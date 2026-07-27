@@ -44,12 +44,14 @@ def render_v3_dashboard(
     passed = predictions.loc[
         predictions.get("passes_policy", pd.Series(False, index=predictions.index)).fillna(False)
     ].copy()
+    passed = _attach_locked_candidate_fields(passed, session)
     if not passed.empty:
         passed = passed.sort_values(
             ["p_net_positive_lower", "expected_net_return_pct"],
             ascending=False,
             kind="stable",
         )
+    session_candidates = pd.DataFrame(session.get("candidates", []))
     near = _near_candidates(predictions)
     historical = [
         candidate
@@ -101,7 +103,7 @@ main{{max-width:1440px;margin:auto;background:var(--paper);min-height:100vh}}
 .alert{{display:flex;gap:12px;align-items:flex-start;background:{'#fff4dd' if not live_visible else '#e8f5ee'};
 border-left:5px solid {'#9a5b00' if not live_visible else '#087a43'};padding:13px 16px}}
 .alert strong{{display:block;margin-bottom:3px}}
-.metrics{{display:grid;grid-template-columns:repeat(6,minmax(140px,1fr));border-top:1px solid var(--line);
+.metrics{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--line);
 border-left:1px solid var(--line)}}
 .metric{{padding:14px 16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
 min-height:82px}} .metric span{{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}}
@@ -142,15 +144,18 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
   {_metric('模型状态', title_state, status_class)}
   {_metric('当前合格', str(len(passed)) if live_visible else '0', 'good' if len(passed) and live_visible else '')}
   {_metric('今日累计入账', str(len(session.get('candidates', []))), '')}
+  {_metric('时点完整性', _session_coverage(manifest, config), _integrity_class(manifest))}
   {_metric('影子交易日', f"{int(shadow.get('trading_days', 0) or 0)} / {config.promotion.minimum_shadow_trading_days}", 'warn')}
   {_metric('三年 OOS 候选', str(backtest.get('candidate_events', '—')), '')}
-  {_metric('数据时间', str(manifest.get('market_data_time') or '—'), '')}
+  {_metric('尾盘覆盖率', _pct(manifest.get('tail_universe_coverage')), _coverage_class(manifest, config))}
+  {_metric('行情 P95 年龄', _seconds(manifest.get('market_data_p95_age_seconds')), _age_class(manifest, config))}
 </section>
 <section class="band">
   <div class="section-head"><h2>{'当前合格候选' if live_visible else '当日冻结候选台账'}</h2>
   <span class="tag {'good' if state == 'PRODUCTION' else 'warn'}">{_e('正式资格' if state == 'PRODUCTION' else '影子资格，不授权实盘')}</span></div>
-  {_candidate_table(passed if live_visible else pd.DataFrame(session.get('candidates', [])), live=live_visible)}
+  {_candidate_table(passed if live_visible else session_candidates, live=live_visible)}
 </section>
+{_session_history_section(session_candidates) if live_visible else ''}
 <section class="band two-col">
   <div><h2>模型证据与晋级门槛</h2>
     <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
@@ -176,8 +181,8 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
 <span class="tag warn">RECONSTRUCTED_OOS，不冒充实时信号</span></div>
 {_validation_table(replay_candidates)}</section>
 <section class="band"><details><summary>固定交易与统计合同</summary>
-<div class="foot">信号时点：{', '.join(config.strategy.signal_slots)}；入场价：信号价加 {config.execution.entry_slippage_bps:.0f}bp；
-往返成本：{config.execution.round_trip_cost_bps:.0f}bp；参考订单：{config.execution.reference_order_notional:,.0f} 元；
+	<div class="foot">信号时点：{', '.join(config.strategy.signal_slots)}；入场冲击：{config.execution.entry_slippage_bps:.0f}bp；
+	费用及退出影响：{config.execution.round_trip_cost_bps:.0f}bp；基准全成本：{config.execution.baseline_all_in_cost_bps:.0f}bp；参考订单：{config.execution.reference_order_notional:,.0f} 元；
 退出：下一 A 股交易日收盘；同一股票当日首次通过即锁定首次信号价；人工实际成交与模型候选统计相互独立。</div>
 </details></section>
 <section class="band foot">报告版本 {_e(manifest.get('report_revision', ''))} · 政策指纹 {_e(manifest.get('v3_policy_fingerprint') or '无')} · 模型指纹 {_e(manifest.get('v3_model_fingerprint') or '无')}</section>
@@ -191,25 +196,92 @@ def _candidate_table(frame: pd.DataFrame, *, live: bool) -> str:
         return '<div class="empty">没有通过全部固定门槛的候选。</div>'
     rows = []
     for row in frame.to_dict(orient="records"):
-        rows.append(
+        common = (
             "<tr>"
             f"<td><strong>{_e(row.get('name', ''))}</strong><br><span class='foot'>{_e(row.get('ts_code', ''))}</span></td>"
-            f"<td>{_e(row.get('signal_slot') or row.get('first_signal_time', ''))}</td>"
-            f"<td class='num'>{_number(row.get('signal_price') or row.get('first_signal_price'), 2)}</td>"
+        )
+        if live:
+            timing = (
+                f"<td>{_e(row.get('signal_slot', ''))}</td>"
+                f"<td class='num'>{_number(row.get('signal_price'), 2)}</td>"
+                f"<td>{_e(row.get('first_signal_time', ''))}</td>"
+                f"<td class='num'>{_number(row.get('first_signal_price'), 2)}</td>"
+            )
+        else:
+            timing = (
+                f"<td>{_e(row.get('first_signal_time', ''))}</td>"
+                f"<td class='num'>{_number(row.get('first_signal_price'), 2)}</td>"
+                f"<td>{_e(row.get('last_signal_time', ''))}</td>"
+            )
+        rows.append(
+            common
+            + timing
+            + f"<td class='num'>{int(row.get('appearance_count') or 1)}</td>"
             f"<td class='num good'>{_pct(row.get('p_net_positive'))}</td>"
             f"<td class='num'>{_pct(row.get('p_net_positive_lower'))}</td>"
             f"<td class='num'>{_pct(row.get('expected_net_return_pct'), already_percent=True)}</td>"
             f"<td class='num'>{_pct(row.get('downside_q10_pct'), already_percent=True)}</td>"
-            f"<td>{_e('正式合格' if live and row.get('candidate_state') == 'QUALIFIED' else '影子合格')}</td>"
+            f"<td>{_e(_candidate_status(row))}</td>"
             "</tr>"
         )
+    timing_headers = (
+        "<th>当前时点</th><th>当前信号价</th><th>首次时点</th><th>首次信号价</th>"
+        if live
+        else "<th>首次时点</th><th>首次信号价</th><th>最后出现</th>"
+    )
     return (
-        '<div class="table-wrap"><table><thead><tr><th>股票</th><th>首次时点</th>'
-        "<th>信号价</th><th>净盈利概率</th><th>保守下界</th><th>期望净收益</th>"
+        '<div class="table-wrap"><table><thead><tr><th>股票</th>'
+        + timing_headers
+        + "<th>出现次数</th><th>净盈利概率</th><th>保守下界</th><th>期望净收益</th>"
         "<th>下行 Q10</th><th>状态</th></tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
     )
+
+
+def _attach_locked_candidate_fields(
+    predictions: pd.DataFrame,
+    session: dict[str, Any],
+) -> pd.DataFrame:
+    if predictions.empty:
+        return predictions.copy()
+    locked = {
+        str(candidate.get("ts_code")): candidate
+        for candidate in session.get("candidates", [])
+    }
+    result = predictions.copy()
+    for index, row in result.iterrows():
+        candidate = locked.get(str(row.get("ts_code")))
+        if not candidate:
+            continue
+        for field in (
+            "first_signal_time",
+            "first_signal_price",
+            "last_signal_time",
+            "appearance_count",
+            "status",
+        ):
+            result.at[index, field] = candidate.get(field)
+    return result
+
+
+def _session_history_section(frame: pd.DataFrame) -> str:
+    return (
+        '<section class="band"><div class="section-head">'
+        "<h2>今日累计锁定信号</h2>"
+        '<span class="tag">出现过即保留并逐票做 T+1 真值</span></div>'
+        + _candidate_table(frame, live=False)
+        + "</section>"
+    )
+
+
+def _candidate_status(row: dict[str, Any]) -> str:
+    state = str(row.get("candidate_state") or row.get("status") or "")
+    if state == "QUALIFIED":
+        return "正式合格"
+    if state == "SHADOW_QUALIFIED":
+        return "影子合格"
+    return state or "已锁定"
 
 
 def _near_candidates(predictions: pd.DataFrame) -> pd.DataFrame:
@@ -324,6 +396,58 @@ def _inverse_class(value: Any, threshold: float) -> str:
 def _stress(backtest: dict[str, Any]) -> str:
     passed = backtest.get("stress", {}).get("50bps", {}).get("positive_total_return")
     return "通过" if passed else "未通过"
+
+
+def _seconds(value: Any) -> str:
+    try:
+        return f"{float(value):.0f} 秒"
+    except (TypeError, ValueError):
+        return "—"
+
+
+def _session_coverage(manifest: dict[str, Any], config: V3Config) -> str:
+    covered = len(manifest.get("covered_slots") or [])
+    total = len(config.strategy.signal_slots)
+    missing = len(manifest.get("missing_slots") or [])
+    integrity = str(manifest.get("session_integrity_status") or "COLLECTING")
+    if integrity == "INCOMPLETE":
+        return f"{covered}/{total} 缺 {missing} 槽"
+    if integrity == "COMPLETE":
+        return f"{covered}/{total} 完整"
+    return f"{covered}/{total} 收集中"
+
+
+def _integrity_class(manifest: dict[str, Any]) -> str:
+    integrity = str(manifest.get("session_integrity_status") or "")
+    if integrity == "COMPLETE":
+        return "good"
+    if integrity == "INCOMPLETE":
+        return "bad"
+    return ""
+
+
+def _coverage_class(manifest: dict[str, Any], config: V3Config) -> str:
+    try:
+        coverage = float(manifest.get("tail_universe_coverage"))
+    except (TypeError, ValueError):
+        return ""
+    return (
+        "good"
+        if coverage >= config.history.minimum_minute_universe_coverage
+        else "bad"
+    )
+
+
+def _age_class(manifest: dict[str, Any], config: V3Config) -> str:
+    try:
+        age = float(manifest.get("market_data_p95_age_seconds"))
+    except (TypeError, ValueError):
+        return ""
+    return (
+        "good"
+        if age <= config.execution.max_market_data_age_seconds
+        else "bad"
+    )
 
 
 def _e(value: Any) -> str:

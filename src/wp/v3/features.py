@@ -38,6 +38,14 @@ FEATURE_COLUMNS = (
     "industry_breadth",
     "up_limit_count_log",
     "down_limit_count_log",
+    "relative_market_return_pct",
+    "relative_industry_return_pct",
+    "tail_relative_market_pct",
+    "return_cs_rank",
+    "tail_return_cs_rank",
+    "slot_amount_ratio_cs_rank",
+    "volatility_cs_rank",
+    "float_mv_cs_rank",
 )
 
 FORBIDDEN_FEATURE_TOKENS = (
@@ -108,5 +116,50 @@ def enrich_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
         denominator = pd.to_numeric(result.get("prev_20d_amount"), errors="coerce")
         result["slot_amount_ratio_20d"] = numerator / denominator.replace(0, np.nan)
 
-    return result
+    relative_features = {
+        "relative_market_return_pct": (
+            "ret_from_prev_close_pct",
+            "market_return_pct",
+        ),
+        "relative_industry_return_pct": (
+            "ret_from_prev_close_pct",
+            "industry_return_pct",
+        ),
+        "tail_relative_market_pct": (
+            "ret_20m_pct",
+            "market_tail_return_pct",
+        ),
+    }
+    for output, (left, right) in relative_features.items():
+        if output not in result:
+            result[output] = (
+                pd.to_numeric(result.get(left), errors="coerce")
+                - pd.to_numeric(result.get(right), errors="coerce")
+            )
 
+    rank_sources = {
+        "return_cs_rank": "ret_from_prev_close_pct",
+        "tail_return_cs_rank": "ret_20m_pct",
+        "slot_amount_ratio_cs_rank": "slot_amount_ratio_20d",
+        "volatility_cs_rank": "prev_20d_volatility_pct",
+        "float_mv_cs_rank": "float_mv",
+    }
+    group_columns = [
+        column for column in ("trade_date", "signal_slot") if column in result
+    ]
+    for output, source in rank_sources.items():
+        if output in result:
+            continue
+        if source not in result:
+            result[output] = np.nan
+            continue
+        values = pd.to_numeric(result.get(source), errors="coerce")
+        if group_columns:
+            result[output] = values.groupby(
+                [result[column] for column in group_columns],
+                sort=False,
+            ).rank(method="average", pct=True)
+        else:
+            result[output] = values.rank(method="average", pct=True)
+
+    return result

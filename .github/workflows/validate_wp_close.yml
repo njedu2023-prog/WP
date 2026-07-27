@@ -36,7 +36,6 @@ jobs:
         env:
           PYTHONPATH: src
           WP_MODE: live
-          WP_ENGINE_VERSION: v3
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}

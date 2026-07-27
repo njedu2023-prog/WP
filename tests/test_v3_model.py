@@ -8,7 +8,11 @@ import pandas as pd
 from wp.v3.contracts import V3Config
 from wp.v3.dataset import build_supervised_panel
 from wp.v3.features import FEATURE_COLUMNS
-from wp.v3.model import predict_bundle, train_bundle
+from wp.v3.model import (
+    _deterministic_training_sample,
+    predict_bundle,
+    train_bundle,
+)
 
 
 def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
@@ -53,7 +57,7 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
             calibration_days=20,
             purge_days=2,
             minimum_train_days=40,
-            ensemble_windows_days=(60,),
+            ensemble_windows_days=(30, 60),
             min_train_rows=100,
         ),
     )
@@ -63,3 +67,27 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
     assert prediction["p_net_positive_lower"].between(0, 1).all()
     assert prediction["expected_net_return_pct"].notna().all()
     assert prediction["passes_policy"].dtype == bool
+
+
+def test_training_sample_is_capped_and_independent_of_target_values():
+    rows = []
+    for stock_index in range(20):
+        rows.append(
+            {
+                "trade_date": "20260105",
+                "signal_slot": "14:20",
+                "ts_code": f"600{stock_index:03d}.SH",
+                "target_net_positive": stock_index % 2,
+                "net_return_pct": float(stock_index),
+            }
+        )
+    original = pd.DataFrame(rows)
+    changed_targets = original.copy()
+    changed_targets["target_net_positive"] = 1 - changed_targets["target_net_positive"]
+    changed_targets["net_return_pct"] *= -1
+
+    first = _deterministic_training_sample(original, rows_per_slot=7)
+    second = _deterministic_training_sample(changed_targets, rows_per_slot=7)
+
+    assert len(first) == 7
+    assert first["ts_code"].tolist() == second["ts_code"].tolist()

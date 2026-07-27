@@ -171,6 +171,34 @@ def test_stale_symbol_bar_is_not_execution_eligible():
     assert bool(panel.loc[0, "execution_eligible"]) is False
 
 
+def test_cold_session_without_five_observations_is_not_execution_eligible():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "adj_factor": 1.0,
+                "t1_close": 10.2,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "slot_bar_lag_minutes": 0,
+                "intraday_snapshot_count": 1,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": True,
+            }
+        ]
+    )
+    panel = build_supervised_panel(raw, V3Config())
+    assert bool(panel.loc[0, "execution_eligible"]) is False
+
+
 def test_first_crossing_keeps_the_first_signal_per_stock():
     predictions = pd.DataFrame(
         [

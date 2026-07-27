@@ -77,7 +77,7 @@ def test_market_minute_coverage_below_contract_fails_closed():
         )
 
 
-def test_historical_minutes_keep_only_signal_slots_and_normalize_amount():
+def test_historical_minutes_keep_warmup_and_signal_bars_without_redefining_ohlcv():
     frame = pd.DataFrame(
         {
             "ts_code": ["600000.SH"] * 4,
@@ -99,7 +99,11 @@ def test_historical_minutes_keep_only_signal_slots_and_normalize_amount():
         frame,
         signal_slots=("14:20", "14:25"),
     )
-    assert result["trade_time"].dt.strftime("%H:%M").tolist() == ["14:20", "14:25"]
-    assert result["day_open"].tolist() == [10.0, 10.0]
-    assert result["high"].tolist() == [10.4, 10.5]
-    assert result["slot_amount"].round(2).tolist() == [2_000.0, 2_500.0]
+    assert result["trade_time"].dt.strftime("%H:%M").tolist() == [
+        "14:15",
+        "14:20",
+        "14:25",
+    ]
+    assert result["day_open"].tolist() == [10.0, 10.0, 10.0]
+    assert result["high"].tolist() == [10.2, 10.4, 10.5]
+    assert result["slot_amount"].tolist() == [2_000.0, 3_000.0, 4_000.0]

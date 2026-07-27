@@ -7,8 +7,8 @@ on:
     paths:
       - scripts/trigger_wp_run.txt
   schedule:
-    # 06:16 UTC = 14:16 Asia/Shanghai. One warm process covers the full session.
-    - cron: "16 6 * * 1-5"
+    # 05:56 UTC = 13:56 Asia/Shanghai. Warm bars start at 14:00.
+    - cron: "56 5 * * 1-5"
 
 permissions:
   contents: write
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   tail-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 75
+    timeout-minutes: 85
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -35,7 +35,6 @@ jobs:
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
-          WP_ENGINE_VERSION: v3
           WP_MODE: live
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

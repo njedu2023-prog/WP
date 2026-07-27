@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import hashlib
 from datetime import datetime, timedelta
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -23,12 +25,13 @@ from .history import (
     _load_industry_intervals,
     _load_stock_basic,
     _minute_universe_quality,
+    _observation_slots,
     _slot_features,
 )
 
-RTK_FIELDS = (
-    "ts_code,name,pre_close,high,open,low,close,vol,amount,trade_time"
-)
+RTMIN_FIELDS = "code,time,open,close,high,low,vol,amount"
+RTMIN_BATCH_SIZE = 800
+RTK_FIELDS = "ts_code,pre_close,open,trade_time"
 RTK_WILDCARDS = "6*.SH,0*.SZ"
 
 
@@ -118,9 +121,14 @@ def build_live_feature_frame(
     previous_close = (
         daily.loc[
             daily["trade_date"].astype(str).eq(prior_dates[-1]),
-            ["ts_code", "close"],
+            ["ts_code", "close", "adj_factor"],
         ]
-        .rename(columns={"close": "pre_close"})
+        .rename(
+            columns={
+                "close": "pre_close",
+                "adj_factor": "prior_adj_factor",
+            }
+        )
         .drop_duplicates("ts_code")
     )
     current_adjustment = client.query(
@@ -143,18 +151,29 @@ def build_live_feature_frame(
         previous_close["adj_factor"] = pd.to_numeric(
             previous_close["current_adj_factor"],
             errors="coerce",
+        ).fillna(
+            pd.to_numeric(previous_close["prior_adj_factor"], errors="coerce")
         )
-        previous_close = previous_close.drop(columns="current_adj_factor")
+        previous_close = previous_close.drop(
+            columns=["current_adj_factor", "prior_adj_factor"]
+        )
     else:
-        previous_close["adj_factor"] = np.nan
+        previous_close["adj_factor"] = pd.to_numeric(
+            previous_close.pop("prior_adj_factor"),
+            errors="coerce",
+        )
     limits = client.query(
         "stk_limit",
         cache_key=trade_date,
         trade_date=trade_date,
         fields=LIMIT_FIELDS,
     )
-    stock_basic = _load_stock_basic(client)
-    industry_intervals = _load_industry_intervals(client, include_history=False)
+    stock_basic = _load_stock_basic(client, cache_suffix=trade_date)
+    industry_intervals = _load_industry_intervals(
+        client,
+        include_history=False,
+        cache_suffix=trade_date,
+    )
     base = (
         previous_close.merge(
             limits[["ts_code", "up_limit", "down_limit"]],
@@ -178,25 +197,6 @@ def build_live_feature_frame(
         for code in base["ts_code"]
     ]
 
-    current_rt = client.query(
-        "rt_k",
-        cache_key=f"{trade_date}_{signal_slot.replace(':', '')}_main",
-        ts_code=RTK_WILDCARDS,
-        fields=RTK_FIELDS,
-    )
-    current_rt = _normalize_rt_k(current_rt)
-    if current_rt.empty:
-        raise RuntimeError("live all-market rt_k snapshot is missing")
-    actual_market_time = current_rt["source_trade_time"].max()
-    if pd.isna(actual_market_time):
-        raise RuntimeError("live rt_k snapshot has no valid trade_time")
-    actual_slot = pd.Timestamp(actual_market_time).strftime("%H:%M")
-    source_lag_minutes = _minute_value(signal_slot) - _minute_value(actual_slot)
-    if source_lag_minutes < -1 or source_lag_minutes > 5:
-        raise RuntimeError(
-            f"live rt_k data is stale or future-dated: requested {signal_slot}, "
-            f"latest {actual_slot}"
-        )
     expected_symbols = set(
         base.loc[
             base["board"].astype(str).eq(config.strategy.board_scope)
@@ -205,28 +205,64 @@ def build_live_feature_frame(
             "ts_code",
         ].astype(str)
     )
+    current_minute = _fetch_rt_min_snapshot(
+        client,
+        trade_date=trade_date,
+        observation_slot=signal_slot,
+        ts_codes=sorted(expected_symbols),
+    )
+    if current_minute.empty:
+        raise RuntimeError("live all-market rt_min 5MIN snapshot is missing")
+    requested_time = pd.Timestamp(
+        f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {signal_slot}:00"
+    )
+    current_age = (
+        requested_time - pd.to_datetime(current_minute["trade_time"], errors="coerce")
+    ).dt.total_seconds()
+    fresh_current = current_minute.loc[
+        current_age.between(
+            -60,
+            config.execution.max_market_data_age_seconds,
+            inclusive="both",
+        )
+    ].copy()
+    actual_market_time = current_minute["trade_time"].max()
+    if pd.isna(actual_market_time):
+        raise RuntimeError("live rt_min snapshot has no valid time")
+    actual_slot = pd.Timestamp(actual_market_time).strftime("%H:%M")
+
+    open_snapshot = client.query(
+        "rt_k",
+        cache_key=f"{trade_date}_{signal_slot.replace(':', '')}_open",
+        refresh=True,
+        ts_code=RTK_WILDCARDS,
+        fields=RTK_FIELDS,
+    )
+    day_snapshot = _normalize_rt_k_day(open_snapshot)
+    if day_snapshot.empty:
+        raise RuntimeError("live all-market rt_k day-open/previous-close snapshot is missing")
     quality = _minute_universe_quality(
         expected_symbols,
-        set(current_rt["ts_code"].dropna().astype(str)),
-        set(current_rt["ts_code"].dropna().astype(str)),
+        set(day_snapshot["ts_code"].dropna().astype(str)),
+        set(fresh_current["ts_code"].dropna().astype(str)),
         config,
         trade_date=trade_date,
     )
-    open_price = (
-        current_rt.drop_duplicates("ts_code", keep="last")[["ts_code", "open"]]
-        .rename(columns={"open": "day_open"})
-    )
-    tail = _load_rt_k_session_snapshots(
+    tail = _load_rt_min_session_snapshots(
         client,
         trade_date=trade_date,
-        signal_slot=signal_slot,
-        current=current_rt,
-        signal_slots=config.strategy.signal_slots,
+        observation_slot=signal_slot,
+        current=current_minute,
+        observation_slots=_observation_slots(config.strategy.signal_slots),
     )
     snapshots = _slot_features(tail, signal_slot)
-    snapshots = snapshots.merge(open_price, on="ts_code", how="left").merge(
+    snapshots = snapshots.merge(day_snapshot, on="ts_code", how="left").merge(
         base, on="ts_code", how="inner"
     )
+    snapshots["pre_close"] = pd.to_numeric(
+        snapshots.pop("rt_pre_close"),
+        errors="coerce",
+    ).fillna(pd.to_numeric(snapshots["pre_close"], errors="coerce"))
     snapshots["signal_slot"] = signal_slot
     snapshots["signal_price"] = snapshots["slot_close"]
     snapshots["ret_from_prev_close_pct"] = (
@@ -244,21 +280,27 @@ def build_live_feature_frame(
     snapshots["entry_fillable"] = (
         snapshots["slot_amount"].ge(config.execution.min_slot_amount)
         & snapshots["distance_to_up_limit_pct"].ge(
-            config.execution.max_distance_to_up_limit_pct
+            config.execution.min_distance_to_up_limit_pct
         )
         & snapshots["slot_bar_lag_minutes"].between(0, 5, inclusive="both")
+        & snapshots["intraday_snapshot_count"].ge(
+            config.execution.min_intraday_snapshot_count
+        )
     )
     snapshots = _add_market_context(snapshots)
     snapshots = _add_industry_context(snapshots)
     snapshots = enrich_feature_frame(snapshots)
+    snapshots["data_age_seconds"] = (
+        requested_time
+        - pd.to_datetime(snapshots["slot_bar_time"], errors="coerce")
+    ).dt.total_seconds()
     snapshots["execution_eligible"] = execution_eligibility(snapshots, config)
-    snapshots["slot_bar_lag_minutes"] = max(0, source_lag_minutes)
     snapshots["market_data_time"] = pd.Timestamp(actual_market_time).strftime(
         "%Y-%m-%d %H:%M:%S"
     )
-    snapshots["entry_fillable"] &= snapshots["slot_bar_lag_minutes"].between(
-        0,
-        5,
+    snapshots["entry_fillable"] &= snapshots["data_age_seconds"].between(
+        -60,
+        config.execution.max_market_data_age_seconds,
         inclusive="both",
     )
     if len(snapshots) < 1_000:
@@ -271,6 +313,15 @@ def build_live_feature_frame(
         "market_data_time": snapshots["market_data_time"].iloc[0],
         "latest_bar_slot": actual_slot,
         "row_count": int(len(snapshots)),
+        "fresh_row_count": int(
+            snapshots["data_age_seconds"]
+            .between(
+                -60,
+                config.execution.max_market_data_age_seconds,
+                inclusive="both",
+            )
+            .sum()
+        ),
         "eligible_count": int(snapshots["execution_eligible"].sum()),
         "feature_version": config.model.feature_version,
         **quality,
@@ -278,88 +329,199 @@ def build_live_feature_frame(
     return snapshots, manifest
 
 
-def _normalize_rt_k(frame: pd.DataFrame) -> pd.DataFrame:
-    if frame.empty:
-        return pd.DataFrame(
-            columns=[
-                "ts_code",
-                "open",
-                "high",
-                "low",
-                "close",
-                "vol",
-                "amount",
-                "source_trade_time",
-            ]
-        )
-    result = frame.rename(columns={"code": "ts_code", "time": "trade_time"}).copy()
-    required = {"ts_code", "open", "high", "low", "close", "vol", "amount"}
-    missing = sorted(required - set(result.columns))
-    if missing:
-        raise RuntimeError(f"rt_k response is missing columns: {missing}")
-    for column in ("open", "high", "low", "close", "vol", "amount", "pre_close"):
-        if column in result:
-            result[column] = pd.to_numeric(result[column], errors="coerce").astype(float)
-    result["ts_code"] = result["ts_code"].astype(str)
-    result["source_trade_time"] = pd.to_datetime(
-        result.get("trade_time"),
-        errors="coerce",
-    )
-    return result.drop_duplicates("ts_code", keep="last")
-
-
-def _load_rt_k_session_snapshots(
+def capture_live_minute_snapshot(
     client: TushareHistoryClient,
     *,
     trade_date: str,
-    signal_slot: str,
-    current: pd.DataFrame,
-    signal_slots: tuple[str, ...],
+    observation_slot: str,
+    config: V3Config,
+) -> dict[str, Any]:
+    stock_basic = _load_stock_basic(client, cache_suffix=trade_date)
+    active = stock_basic.loc[
+        stock_basic["board"].astype(str).eq(config.strategy.board_scope)
+        & stock_basic["list_status"].astype(str).eq("L")
+        & ~stock_basic["name"].fillna("").astype(str).str.upper().str.contains("ST"),
+        "ts_code",
+    ].dropna()
+    expected = set(active.astype(str))
+    snapshot = _fetch_rt_min_snapshot(
+        client,
+        trade_date=trade_date,
+        observation_slot=observation_slot,
+        ts_codes=sorted(expected),
+    )
+    requested = pd.Timestamp(
+        f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {observation_slot}:00"
+    )
+    age = (
+        requested - pd.to_datetime(snapshot["trade_time"], errors="coerce")
+    ).dt.total_seconds()
+    fresh = set(
+        snapshot.loc[
+            age.between(
+                -60,
+                config.execution.max_market_data_age_seconds,
+                inclusive="both",
+            ),
+            "ts_code",
+        ].astype(str)
+    )
+    quality = _minute_universe_quality(
+        expected,
+        fresh,
+        fresh,
+        config,
+        trade_date=trade_date,
+    )
+    return {
+        "trade_date": trade_date,
+        "observation_slot": observation_slot,
+        "row_count": int(len(snapshot)),
+        "latest_bar_time": (
+            pd.Timestamp(snapshot["trade_time"].max()).strftime("%Y-%m-%d %H:%M:%S")
+            if not snapshot.empty
+            else None
+        ),
+        **quality,
+    }
+
+
+def _fetch_rt_min_snapshot(
+    client: TushareHistoryClient,
+    *,
+    trade_date: str,
+    observation_slot: str,
+    ts_codes: list[str],
 ) -> pd.DataFrame:
     frames: list[pd.DataFrame] = []
-    for slot in signal_slots:
-        if slot > signal_slot:
+    for index in range(0, len(ts_codes), RTMIN_BATCH_SIZE):
+        batch = ts_codes[index : index + RTMIN_BATCH_SIZE]
+        digest = hashlib.sha256(",".join(batch).encode("ascii")).hexdigest()[:10]
+        raw = client.query(
+            "rt_min",
+            cache_key=(
+                f"{trade_date}_{observation_slot.replace(':', '')}_"
+                f"{index // RTMIN_BATCH_SIZE:02d}_{digest}"
+            ),
+            refresh=True,
+            ts_code=",".join(batch),
+            freq="5MIN",
+            fields=RTMIN_FIELDS,
+        )
+        normalized = _normalize_rt_min(raw, trade_date=trade_date)
+        if normalized.empty:
             continue
-        cache_path = (
-            client.cache_dir
-            / "rt_k"
-            / f"{trade_date}_{slot.replace(':', '')}_main.parquet"
-        )
-        raw = current if slot == signal_slot else (
-            _normalize_rt_k(pd.read_parquet(cache_path))
-            if cache_path.exists()
-            else pd.DataFrame()
-        )
-        if raw.empty:
-            continue
-        normalized = raw.copy()
-        normalized["trade_time"] = pd.Timestamp(
-            f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {slot}:00"
-        )
-        normalized["amount"] = (
-            pd.to_numeric(normalized["amount"], errors="coerce")
-            / _completed_five_minute_bars(slot)
-        )
-        frames.append(
-            normalized[
-                ["ts_code", "trade_time", "open", "high", "low", "close", "vol", "amount"]
-            ]
-        )
+        frames.append(normalized)
     if not frames:
-        raise RuntimeError("no live rt_k session snapshots are available")
+        raise RuntimeError("no live rt_min rows returned for the main-board universe")
+    snapshot = (
+        pd.concat(frames, ignore_index=True)
+        .sort_values(["ts_code", "trade_time"], kind="stable")
+        .drop_duplicates("ts_code", keep="last")
+        .reset_index(drop=True)
+    )
+    session_path = _rt_min_session_path(
+        client,
+        trade_date=trade_date,
+        observation_slot=observation_slot,
+    )
+    session_path.parent.mkdir(parents=True, exist_ok=True)
+    temporary = session_path.with_suffix(".parquet.tmp")
+    snapshot.to_parquet(temporary, index=False)
+    temporary.replace(session_path)
+    return snapshot
+
+
+def _normalize_rt_min(frame: pd.DataFrame, *, trade_date: str) -> pd.DataFrame:
+    columns = [
+        "ts_code",
+        "trade_time",
+        "open",
+        "high",
+        "low",
+        "close",
+        "vol",
+        "amount",
+        "slot_amount",
+    ]
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    result = frame.rename(columns={"code": "ts_code", "time": "trade_time"}).copy()
+    required = {"ts_code", "trade_time", "open", "high", "low", "close", "vol", "amount"}
+    missing = sorted(required - set(result.columns))
+    if missing:
+        raise RuntimeError(f"rt_min response is missing columns: {missing}")
+    raw_time = result["trade_time"].astype(str).str.strip()
+    date_prefix = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
+    full_time = raw_time.where(
+        raw_time.str.contains(r"\d{4}[-/]\d{1,2}[-/]\d{1,2}", regex=True),
+        date_prefix + " " + raw_time,
+    )
+    result["trade_time"] = pd.to_datetime(full_time, errors="coerce")
+    for column in ("open", "high", "low", "close", "vol", "amount"):
+        result[column] = pd.to_numeric(result[column], errors="coerce").astype(float)
+    result["ts_code"] = result["ts_code"].astype(str)
+    result["slot_amount"] = result["amount"]
+    return result.dropna(
+        subset=["ts_code", "trade_time", "open", "high", "low", "close", "amount"]
+    )[columns]
+
+
+def _normalize_rt_k_day(frame: pd.DataFrame) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(columns=["ts_code", "rt_pre_close", "day_open"])
+    result = frame.rename(columns={"code": "ts_code"}).copy()
+    required = {"ts_code", "pre_close", "open"}
+    missing = sorted(required - set(result.columns))
+    if missing:
+        raise RuntimeError(f"rt_k response is missing day-contract columns: {missing}")
+    result["ts_code"] = result["ts_code"].astype(str)
+    result["rt_pre_close"] = pd.to_numeric(result["pre_close"], errors="coerce")
+    result["day_open"] = pd.to_numeric(result["open"], errors="coerce")
+    return result.dropna(subset=["ts_code", "rt_pre_close", "day_open"])[
+        ["ts_code", "rt_pre_close", "day_open"]
+    ].drop_duplicates("ts_code", keep="last")
+
+
+def _load_rt_min_session_snapshots(
+    client: TushareHistoryClient,
+    *,
+    trade_date: str,
+    observation_slot: str,
+    current: pd.DataFrame,
+    observation_slots: tuple[str, ...],
+) -> pd.DataFrame:
+    frames: list[pd.DataFrame] = []
+    for slot in observation_slots:
+        if slot > observation_slot:
+            continue
+        cache_path = _rt_min_session_path(
+            client,
+            trade_date=trade_date,
+            observation_slot=slot,
+        )
+        frame = current if slot == observation_slot else (
+            pd.read_parquet(cache_path) if cache_path.exists() else pd.DataFrame()
+        )
+        if frame.empty:
+            continue
+        frames.append(frame)
+    if not frames:
+        raise RuntimeError("no live rt_min session snapshots are available")
     return pd.concat(frames, ignore_index=True).sort_values(
         ["ts_code", "trade_time"],
         kind="stable",
     )
 
 
-def _completed_five_minute_bars(slot: str) -> int:
-    absolute = _minute_value(slot)
-    if absolute <= 11 * 60 + 30:
-        return max(1, (absolute - (9 * 60 + 30)) // 5)
-    return 24 + max(1, (absolute - 13 * 60) // 5)
-
-
-def _minute_value(value: str) -> int:
-    hour, minute = value.split(":")
-    return int(hour) * 60 + int(minute)
+def _rt_min_session_path(
+    client: TushareHistoryClient,
+    *,
+    trade_date: str,
+    observation_slot: str,
+) -> Path:
+    return (
+        client.cache_dir
+        / "rt_min_session"
+        / f"{trade_date}_{observation_slot.replace(':', '')}_main.parquet"
+    )

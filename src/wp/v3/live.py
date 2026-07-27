@@ -6,7 +6,7 @@ from typing import Any
 
 import pandas as pd
 
-from .contracts import V3Config
+from .contracts import V3Config, policy_fingerprint
 from .dataset import execution_eligibility
 from .features import enrich_feature_frame
 from .model import ModelBundle, load_bundle, predict_bundle
@@ -47,6 +47,29 @@ def run_live_inference(
         )
 
     bundle: ModelBundle = load_bundle(artifact)
+    expected_policy = policy_fingerprint(config)
+    if (
+        bundle.policy_fingerprint != expected_policy
+        or bundle.feature_version != config.model.feature_version
+    ):
+        rejected = frame.copy()
+        rejected["passes_policy"] = False
+        rejected["candidate_state"] = "POLICY_MISMATCH"
+        rejected["model_version"] = bundle.model_version
+        rejected["model_fingerprint"] = bundle.fingerprint
+        rejected["policy_fingerprint"] = bundle.policy_fingerprint
+        return LiveInference(
+            state="POLICY_MISMATCH",
+            model_version=bundle.model_version,
+            model_fingerprint=bundle.fingerprint,
+            policy_fingerprint=bundle.policy_fingerprint,
+            formal_authorization=False,
+            predictions=rejected,
+            message=(
+                "Model artifact does not match the current immutable policy or "
+                "feature contract; all candidates are rejected."
+            ),
+        )
     registry = load_registry(registry_path)
     promoted = is_model_promoted(registry, bundle.fingerprint)
     features = enrich_feature_frame(frame)
