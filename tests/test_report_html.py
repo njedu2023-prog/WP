@@ -353,6 +353,7 @@ def test_report_html_renders_single_objective_and_probability_gate(tmp_path):
             "forecast_profit_probability_lower": 51,
             "forecast_expected_net_return_pct": 0.8,
             "forecast_live_sample_count": 40,
+            "forecast_live_day_count": 35,
             "entry_deadline": "14:55",
             "exit_contract": "T+1收盘卖出",
             "reason": "检查通过",
@@ -360,7 +361,11 @@ def test_report_html_renders_single_objective_and_probability_gate(tmp_path):
         market_regime={"state": "允许寻找机会", "score": 62, "reason": "市场较强"},
     )
     page = path.read_text(encoding="utf-8")
+    assert "<title>WP T+1 净盈利决策</title>" in page
     assert "当日唯一正式决策" in page
+    assert "14:20–15:00执行窗口" in page
+    assert "真实样本 <strong>40</strong>" in page
+    assert "独立交易日 <strong>35</strong>" in page
     assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" not in page
     assert "成本后盈利概率" in page
     assert "95%单侧下界" in page

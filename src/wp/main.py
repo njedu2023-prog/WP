@@ -495,6 +495,16 @@ def run() -> dict:
         config,
         decision_time=update_time,
     )
+    # Show global causal-sample readiness even before a tail candidate exists.
+    # Candidate-specific values, when present, remain authoritative.
+    decision_support.summary.setdefault(
+        "forecast_live_sample_count",
+        int(forecast_result.summary.get("live_sample_count", 0)),
+    )
+    decision_support.summary.setdefault(
+        "forecast_live_day_count",
+        int(forecast_result.summary.get("live_day_count", 0)),
+    )
     buy_plan = _official_buy_plan(
         decision_support.summary,
         research_plan,

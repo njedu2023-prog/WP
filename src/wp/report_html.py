@@ -353,7 +353,7 @@ def _decision_support_panel(decision: dict, regime: dict) -> str:
     return (
         "<section class=\"v2-section\">"
         "<div class=\"v2-heading\"><strong>当日唯一正式决策</strong>"
-        "<span>目标：最大化T日14:20–14:55可成交买入后，T+1收盘卖出的净盈利概率</span></div>"
+        "<span>目标：在T日14:20–15:00执行窗口内，于14:55前发出可成交信号，最大化T+1收盘净盈利概率</span></div>"
         "<div class=\"decision-line\">"
         f"<span class=\"decision-action {action_class}\">{html.escape(action)}</span>"
         f"<strong>{html.escape(candidate)}</strong>"
@@ -644,7 +644,7 @@ def render_html(
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WP Top50</title>
+  <title>WP T+1 净盈利决策</title>
   <style>
     * {{ box-sizing: border-box; }}
     html, body {{ width: 100%; max-width: 100%; overflow-x: hidden; }}
