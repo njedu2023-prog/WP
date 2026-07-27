@@ -168,6 +168,13 @@ def train_bundle(
         fit,
         rows_per_slot=config.model.max_training_rows_per_slot,
     )
+    print(
+        f"[wp-v4] train bundle version={model_version or 'final'} "
+        f"fit_days={len(fit_dates)} sampled_rows={len(sampled_fit):,} "
+        f"calibration_days={len(calibration_fit_dates)} "
+        f"evidence_days={len(evidence_dates)}",
+        flush=True,
+    )
     y_fit = sampled_fit["target_net_positive"].astype(int).to_numpy()
     y_calibration = calibration_fit["target_net_positive"].astype(int).to_numpy()
     if len(np.unique(y_fit)) < 2:
@@ -195,6 +202,11 @@ def train_bundle(
         x_member = feature_matrix(member_frame)
         y_member = member_frame["target_net_positive"].astype(int).to_numpy()
         rank_target, rank_groups = _ranking_target_and_groups(member_frame)
+        print(
+            f"[wp-v4] fitting ensemble window={len(member_dates)}d "
+            f"rows={len(member_frame):,}",
+            flush=True,
+        )
         members.append(
             ClassifierMember(
                 name=f"tail_rank_{len(member_dates)}d",
@@ -214,6 +226,10 @@ def train_bundle(
                 ),
             )
         )
+        print(
+            f"[wp-v4] completed ensemble window={len(member_dates)}d",
+            flush=True,
+        )
         fitted_window_lengths.add(len(member_dates))
     if len(members) < 2:
         raise ValueError("temporal ensemble requires at least two trained windows")
@@ -227,11 +243,19 @@ def train_bundle(
         sampled_fit["net_return_pct"],
         errors="coerce",
     ).fillna(-10.0).clip(-15.0, 15.0)
+    print(
+        f"[wp-v4] fitting expected-return model rows={len(sampled_fit):,}",
+        flush=True,
+    )
     mean_regressor = _fit_regressor(
         x_fit,
         net_return.to_numpy(),
         config.model.random_seed + 101,
         objective="absolute_error",
+    )
+    print(
+        f"[wp-v4] fitting downside-q10 model rows={len(sampled_fit):,}",
+        flush=True,
     )
     downside_regressor = _fit_regressor(
         x_fit,
@@ -240,6 +264,7 @@ def train_bundle(
         objective="quantile",
         alpha=0.10,
     )
+    print("[wp-v4] completed return-risk models", flush=True)
 
     evidence_prediction = _score_frame(
         evidence,

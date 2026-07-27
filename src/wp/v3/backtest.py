@@ -73,6 +73,12 @@ def walk_forward_backtest(
         train_dates = dates[: test_start_index - config.model.purge_days]
         training = ordered.loc[ordered["trade_date"].isin(train_dates)]
         testing = ordered.loc[ordered["trade_date"].isin(test_dates)]
+        print(
+            f"[wp-v4] walk-forward fold {fold_number}/{len(test_starts)} "
+            f"train={train_dates[0]}..{train_dates[-1]} "
+            f"test={test_dates[0]}..{test_dates[-1]}",
+            flush=True,
+        )
         bundle = train_bundle(
             training,
             config,
@@ -84,6 +90,11 @@ def walk_forward_backtest(
         prediction["test_start"] = str(test_dates[0])
         prediction["test_end"] = str(test_dates[-1])
         fold_rows.append(prediction)
+        print(
+            f"[wp-v4] completed fold {fold_number}/{len(test_starts)} "
+            f"prediction_rows={len(prediction):,}",
+            flush=True,
+        )
         folds.append(
             WalkForwardFold(
                 fold=fold_number,

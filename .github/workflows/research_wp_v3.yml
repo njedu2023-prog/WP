@@ -81,9 +81,19 @@ jobs:
           path: artifacts/wp_v3_history
           key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-${{ github.run_id }}
       - name: Run chronological walk-forward research
-        run: python scripts/run_wp_v3_research.py
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/run_wp_v3_research.py &
+          research_pid=$!
+          while kill -0 "$research_pid" 2>/dev/null; do
+            echo "[wp-v4] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$research_pid"
         env:
           PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
           LOKY_MAX_CPU_COUNT: "2"
       - name: Verify V4 contracts and tests
         run: pytest tests/test_v3_*.py -q
