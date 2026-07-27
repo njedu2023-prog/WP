@@ -27,8 +27,8 @@ execution:
   non_fill_penalty_pct: -10.00
 
 model:
-  policy_implementation_version: wp_v3_policy_20260727_8
-  feature_version: wp_v3_causal_features_4
+  policy_implementation_version: wp_v3_policy_20260727_9
+  feature_version: wp_v3_causal_features_5
   minimum_train_days: 252
   calibration_days: 21
   test_days: 42

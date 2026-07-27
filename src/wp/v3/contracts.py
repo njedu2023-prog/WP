@@ -61,8 +61,8 @@ class ExecutionContract:
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v3_policy_20260727_8"
-    feature_version: str = "wp_v3_causal_features_4"
+    policy_implementation_version: str = "wp_v3_policy_20260727_9"
+    feature_version: str = "wp_v3_causal_features_5"
     minimum_train_days: int = 252
     calibration_days: int = 21
     test_days: int = 42

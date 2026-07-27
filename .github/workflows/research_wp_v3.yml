@@ -30,7 +30,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wp-v3-research-${{ github.ref }}
+  group: wp-v3-output-writer-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -57,9 +57,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r6-${{ github.run_id }}
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r7-${{ github.run_id }}
           restore-keys: |
-            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r6-
+            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r7-
       - name: Build three-year point-in-time panel
         run: >-
           python scripts/build_wp_v3_history.py
@@ -79,7 +79,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r6-${{ github.run_id }}
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r7-${{ github.run_id }}
       - name: Run chronological walk-forward research
         run: python scripts/run_wp_v3_research.py
         env:

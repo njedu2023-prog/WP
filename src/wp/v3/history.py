@@ -220,6 +220,9 @@ def build_three_year_panel(
             f"adjustment-factor coverage {adjustment_coverage:.2%} is below 98%"
         )
     daily_features = _build_prior_day_features(daily, daily_basic)
+    daily = _index_by_trade_date(daily)
+    daily_features = _index_by_trade_date(daily_features)
+    limits = _index_by_trade_date(limits)
     minute_partitions = _build_historical_minute_partitions(
         client,
         stock_basic=basic,
@@ -234,7 +237,7 @@ def build_three_year_panel(
     daily_quality: list[dict[str, Any]] = []
     month_rows: list[pd.DataFrame] = []
     current_month: str | None = None
-    current_minutes = pd.DataFrame(columns=MINUTE_STORE_COLUMNS)
+    current_minutes_by_date: dict[str, pd.DataFrame] = {}
     covered_dates: list[str] = []
 
     for index, trade_date in enumerate(target_dates, start=1):
@@ -247,6 +250,10 @@ def build_three_year_panel(
             if minute_path is None or not minute_path.exists():
                 raise RuntimeError(f"historical minute partition is missing for {month}")
             current_minutes = pd.read_parquet(minute_path)
+            current_minutes_by_date = {
+                str(date): group.copy()
+                for date, group in current_minutes.groupby("trade_date", sort=False)
+            }
         current_month = month
         try:
             frame = _build_day_panel(
@@ -258,9 +265,10 @@ def build_three_year_panel(
                 stock_basic=basic,
                 industry_intervals=industry_intervals,
                 st_intervals=st_intervals,
-                minute_bars=current_minutes.loc[
-                    current_minutes["trade_date"].astype(str).eq(trade_date)
-                ].copy(),
+                minute_bars=current_minutes_by_date.get(
+                    trade_date,
+                    pd.DataFrame(columns=MINUTE_STORE_COLUMNS),
+                ),
                 config=config,
             )
             if frame.empty:
@@ -698,15 +706,18 @@ def _build_day_panel(
     tail = bars[
         bars["trade_time"].dt.strftime("%H:%M").isin(observation_slots)
     ].copy()
+    all_snapshots = _slot_features_for_slots(
+        tail,
+        config.strategy.signal_slots,
+    )
     rows: list[pd.DataFrame] = []
     for slot in config.strategy.signal_slots:
-        slot_bars = tail[tail["trade_time"].dt.strftime("%H:%M").le(slot)].copy()
-        slot_bars = slot_bars.groupby("ts_code", group_keys=False).tail(5)
-        snapshots = _slot_features(slot_bars, slot)
+        snapshots = all_snapshots.loc[
+            all_snapshots["signal_slot"].eq(slot)
+        ].copy()
         snapshots = snapshots.merge(open_price, on="ts_code", how="left").merge(
             base, on="ts_code", how="inner"
         )
-        snapshots["signal_slot"] = slot
         snapshots["signal_price"] = snapshots["slot_close"]
         snapshots["ret_from_prev_close_pct"] = (
             snapshots["signal_price"] / snapshots["pre_close"] - 1.0
@@ -986,48 +997,163 @@ def _normalize_historical_minutes(
 
 
 def _slot_features(bars: pd.DataFrame, slot: str) -> pd.DataFrame:
-    records: list[dict[str, Any]] = []
-    for code, group in bars.groupby("ts_code", sort=False):
-        group = group.sort_values("trade_time")
-        last = group.iloc[-1]
-        closes = group["close"].to_numpy(dtype=float)
-        amounts = group["amount"].to_numpy(dtype=float)
-        highs = group["high"].tail(2)
-        lows = group["low"].tail(2)
-        range_high = float(highs.max())
-        range_low = float(lows.min())
-        records.append(
-            {
-                "ts_code": code,
-                "slot_close": float(last["close"]),
-                "slot_amount": float(last.get("slot_amount", last["amount"])),
-                "slot_bar_time": pd.Timestamp(last["trade_time"]).strftime(
-                    "%Y-%m-%d %H:%M:%S"
-                ),
-                "slot_bar_lag_minutes": (
-                    _minute_value(slot)
-                    - (
-                        int(pd.Timestamp(last["trade_time"]).hour) * 60
-                        + int(pd.Timestamp(last["trade_time"]).minute)
-                    )
-                ),
-                "intraday_snapshot_count": int(len(group)),
-                "ret_5m_pct": _return(closes, 1),
-                "ret_10m_pct": _return(closes, 2),
-                "ret_20m_pct": _return(closes, 4),
-                "tail_range_10m_pct": (range_high / range_low - 1.0) * 100.0
-                if range_low > 0
-                else np.nan,
-                "tail_close_position_10m": (float(last["close"]) - range_low)
-                / (range_high - range_low)
-                if range_high > range_low
-                else 0.5,
-                "tail_amount_acceleration": float(amounts[-1] / np.mean(amounts[-4:-1]))
-                if len(amounts) >= 4 and np.mean(amounts[-4:-1]) > 0
-                else np.nan,
-            }
+    result = _slot_features_for_slots(bars, (slot,))
+    return result.drop(columns=["signal_slot"], errors="ignore")
+
+
+def _slot_features_for_slots(
+    bars: pd.DataFrame,
+    slots: tuple[str, ...],
+) -> pd.DataFrame:
+    if bars.empty:
+        return pd.DataFrame(
+            columns=[
+                "ts_code",
+                "signal_slot",
+                "slot_close",
+                "slot_amount",
+                "slot_bar_time",
+                "slot_bar_lag_minutes",
+                "intraday_snapshot_count",
+                "ret_5m_pct",
+                "ret_10m_pct",
+                "ret_20m_pct",
+                "tail_range_10m_pct",
+                "tail_close_position_10m",
+                "tail_amount_acceleration",
+            ]
         )
-    return pd.DataFrame.from_records(records)
+
+    frame = bars.sort_values(
+        ["ts_code", "trade_time"],
+        kind="stable",
+    ).reset_index(drop=True)
+    frame["trade_time"] = pd.to_datetime(frame["trade_time"], errors="coerce")
+    frame = frame.dropna(subset=["ts_code", "trade_time"])
+    grouped = frame.groupby("ts_code", sort=False)
+    frame["_snapshot_count"] = grouped.cumcount() + 1
+    for periods, column in (
+        (1, "_ret_5m_pct"),
+        (2, "_ret_10m_pct"),
+        (4, "_ret_20m_pct"),
+    ):
+        base = grouped["close"].shift(periods)
+        frame[column] = np.where(
+            base.gt(0),
+            (frame["close"] / base - 1.0) * 100.0,
+            np.nan,
+        )
+    frame["_range_high"] = (
+        grouped["high"]
+        .rolling(2, min_periods=1)
+        .max()
+        .reset_index(level=0, drop=True)
+    )
+    frame["_range_low"] = (
+        grouped["low"]
+        .rolling(2, min_periods=1)
+        .min()
+        .reset_index(level=0, drop=True)
+    )
+    previous_amount = grouped["amount"].shift(1)
+    previous_three_mean = (
+        previous_amount.groupby(frame["ts_code"], sort=False)
+        .rolling(3, min_periods=3)
+        .mean()
+        .reset_index(level=0, drop=True)
+    )
+    frame["_amount_acceleration"] = np.where(
+        previous_three_mean.gt(0),
+        frame["amount"] / previous_three_mean,
+        np.nan,
+    )
+
+    frame["slot_amount"] = pd.to_numeric(
+        frame["slot_amount"] if "slot_amount" in frame else frame["amount"],
+        errors="coerce",
+    )
+    range_width = frame["_range_high"] - frame["_range_low"]
+    frame["tail_range_10m_pct"] = np.where(
+        frame["_range_low"].gt(0),
+        (frame["_range_high"] / frame["_range_low"] - 1.0) * 100.0,
+        np.nan,
+    )
+    frame["tail_close_position_10m"] = np.where(
+        range_width.gt(0),
+        (frame["close"] - frame["_range_low"]) / range_width,
+        0.5,
+    )
+    frame = frame.rename(
+        columns={
+            "close": "slot_close",
+            "_snapshot_count": "intraday_snapshot_count",
+            "_ret_5m_pct": "ret_5m_pct",
+            "_ret_10m_pct": "ret_10m_pct",
+            "_ret_20m_pct": "ret_20m_pct",
+            "_amount_acceleration": "tail_amount_acceleration",
+        }
+    )
+    day = frame["trade_time"].dt.normalize().min()
+    targets = pd.MultiIndex.from_product(
+        [
+            frame["ts_code"].drop_duplicates().astype(str),
+            slots,
+        ],
+        names=["ts_code", "signal_slot"],
+    ).to_frame(index=False)
+    targets["target_time"] = day + pd.to_timedelta(
+        targets["signal_slot"].map(_minute_value).astype(int),
+        unit="m",
+    )
+    source = frame[
+        [
+            "ts_code",
+            "trade_time",
+            "slot_close",
+            "slot_amount",
+            "intraday_snapshot_count",
+            "ret_5m_pct",
+            "ret_10m_pct",
+            "ret_20m_pct",
+            "tail_range_10m_pct",
+            "tail_close_position_10m",
+            "tail_amount_acceleration",
+        ]
+    ].copy()
+    targets["ts_code"] = targets["ts_code"].astype(str)
+    source["ts_code"] = source["ts_code"].astype(str)
+    matched = pd.merge_asof(
+        targets.sort_values(["target_time", "ts_code"], kind="stable"),
+        source.sort_values(["trade_time", "ts_code"], kind="stable"),
+        left_on="target_time",
+        right_on="trade_time",
+        by="ts_code",
+        direction="backward",
+        allow_exact_matches=True,
+    ).dropna(subset=["trade_time", "slot_close"])
+    matched["slot_bar_lag_minutes"] = (
+        matched["target_time"] - matched["trade_time"]
+    ).dt.total_seconds() / 60.0
+    matched["slot_bar_time"] = matched["trade_time"].dt.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    return matched[
+        [
+            "ts_code",
+            "signal_slot",
+            "slot_close",
+            "slot_amount",
+            "slot_bar_time",
+            "slot_bar_lag_minutes",
+            "intraday_snapshot_count",
+            "ret_5m_pct",
+            "ret_10m_pct",
+            "ret_20m_pct",
+            "tail_range_10m_pct",
+            "tail_close_position_10m",
+            "tail_amount_acceleration",
+        ]
+    ].reset_index(drop=True)
 
 
 def _add_market_context(panel: pd.DataFrame) -> pd.DataFrame:
@@ -1087,7 +1213,21 @@ def _write_partition(
 
 
 def _day(frame: pd.DataFrame, trade_date: str) -> pd.DataFrame:
+    if frame.index.name == "_trade_date_index":
+        try:
+            return frame.loc[[str(trade_date)]].copy()
+        except KeyError:
+            return frame.iloc[0:0].copy()
     return frame.loc[frame["trade_date"].astype(str).eq(str(trade_date))].copy()
+
+
+def _index_by_trade_date(frame: pd.DataFrame) -> pd.DataFrame:
+    result = frame.copy()
+    result.index = pd.Index(
+        result["trade_date"].astype(str),
+        name="_trade_date_index",
+    )
+    return result.sort_index(kind="stable")
 
 
 def _return(closes: np.ndarray, periods: int) -> float:
