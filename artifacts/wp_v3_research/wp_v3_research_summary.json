@@ -1,0 +1,285 @@
+{
+  "backtest": {
+    "backtest_gate": {
+      "checks": {
+        "maximum_ece": false,
+        "minimum_clustered_mean_return_lower": false,
+        "minimum_clustered_win_rate_lower": false,
+        "minimum_mean_net_return": false,
+        "minimum_median_net_return": false,
+        "minimum_oos_candidates": false,
+        "minimum_oos_win_rate": false,
+        "minimum_oos_win_rate_lower": false,
+        "minimum_profit_factor": false,
+        "stress_50bps_nonnegative": false
+      },
+      "passed": false
+    },
+    "benchmarks": {
+      "all_executable_at_1450": {
+        "events": 242326,
+        "mean_net_return_pct": -0.3574906721527456,
+        "median_net_return_pct": -0.513993579994598,
+        "win_rate": 0.41348431451845863,
+        "win_rate_wilson_lower": 0.4115249727329515
+      },
+      "legacy_8_to_12_pct_at_1450": {
+        "events": 2471,
+        "mean_net_return_pct": -0.7682727597312006,
+        "median_net_return_pct": -1.234327543683683,
+        "win_rate": 0.40145690004046947,
+        "win_rate_wilson_lower": 0.38229661632685946
+      }
+    },
+    "brier_score": 0.24790412883084256,
+    "candidate_days": 0,
+    "candidate_events": 0,
+    "day_equal_weight_mean_net_return_pct": null,
+    "day_equal_weight_win_rate": null,
+    "ece": 0.053727682600424195,
+    "labelled_slot_rows": 1246675,
+    "log_loss": 0.6904340665726055,
+    "maximum_day_equal_weight_drawdown_pct": null,
+    "mean_net_return_day_clustered_lower_pct": null,
+    "mean_net_return_day_clustered_upper_pct": null,
+    "mean_net_return_pct": null,
+    "median_net_return_pct": null,
+    "net_return_q10_pct": null,
+    "net_return_q90_pct": null,
+    "pbo_estimate": 0.4444444444444444,
+    "profit_factor": 0.0,
+    "slot_rows": 1246675,
+    "stress": {
+      "35bps": {
+        "candidates": 0,
+        "mean_net_return_pct": null,
+        "positive_total_return": false,
+        "win_rate": null
+      },
+      "50bps": {
+        "candidates": 0,
+        "mean_net_return_pct": null,
+        "positive_total_return": false,
+        "win_rate": null
+      }
+    },
+    "win_count": 0,
+    "win_rate": 0.0,
+    "win_rate_day_clustered_lower": 0.0,
+    "win_rate_day_clustered_upper": 0.0,
+    "win_rate_wilson_lower": 0.0,
+    "win_rate_wilson_upper": 0.0
+  },
+  "dataset": {
+    "eligible_rows": 1551890,
+    "labelled_rows": 1551890,
+    "positive_rows": 633897,
+    "rows": 1551890,
+    "symbols": 3159,
+    "trade_days": 725
+  },
+  "date_end": "20260724",
+  "date_start": "20230727",
+  "deployment_state": "RESEARCH",
+  "minimum_shadow_trading_days": 150,
+  "model": {
+    "calibration_end": "20260724",
+    "calibration_rows": 61566,
+    "calibration_start": "20260626",
+    "calibration_table": [
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.0,
+        "right": 0.1,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.1,
+        "right": 0.2,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.2,
+        "right": 0.3,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.24810289389067525,
+        "count": 8360,
+        "days": 11,
+        "left": 0.3,
+        "right": 0.4,
+        "wilson_lower": 0.4341122779700881,
+        "win_rate": 0.44473684210526315
+      },
+      {
+        "clustered_lower": 0.3265327311071996,
+        "count": 53206,
+        "days": 21,
+        "left": 0.4,
+        "right": 0.5,
+        "wilson_lower": 0.39396111556379687,
+        "win_rate": 0.3981129947750254
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.5,
+        "right": 0.6,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.6,
+        "right": 0.7,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.7,
+        "right": 0.8,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.8,
+        "right": 0.9,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      },
+      {
+        "clustered_lower": 0.0,
+        "count": 0,
+        "days": 0,
+        "left": 0.9,
+        "right": 1.0,
+        "wilson_lower": 0.0,
+        "win_rate": 0.0
+      }
+    ],
+    "eligible_fit_rows": 1483847,
+    "ensemble_members": [
+      {
+        "name": "temporal_126d",
+        "train_end": "20260623",
+        "train_start": "20251211",
+        "window_days": 126
+      },
+      {
+        "name": "temporal_252d",
+        "train_end": "20260623",
+        "train_start": "20250610",
+        "window_days": 252
+      },
+      {
+        "name": "temporal_504d",
+        "train_end": "20260623",
+        "train_start": "20240524",
+        "window_days": 504
+      }
+    ],
+    "feature_columns": [
+      "slot_minute",
+      "ret_from_prev_close_pct",
+      "ret_from_open_pct",
+      "ret_5m_pct",
+      "ret_10m_pct",
+      "ret_20m_pct",
+      "tail_range_10m_pct",
+      "tail_close_position_10m",
+      "slot_amount_log",
+      "slot_amount_ratio_20d",
+      "tail_amount_acceleration",
+      "distance_to_up_limit_pct",
+      "distance_to_down_limit_pct",
+      "prev_1d_return_pct",
+      "prev_2d_return_pct",
+      "prev_5d_return_pct",
+      "prev_10d_return_pct",
+      "prev_20d_return_pct",
+      "prev_20d_volatility_pct",
+      "prev_5d_amplitude_pct",
+      "prev_20d_amount_log",
+      "prev_turnover_rate",
+      "float_mv_log",
+      "total_mv_log",
+      "market_return_pct",
+      "market_breadth",
+      "market_tail_return_pct",
+      "industry_return_pct",
+      "industry_breadth",
+      "up_limit_count_log",
+      "down_limit_count_log",
+      "relative_market_return_pct",
+      "relative_industry_return_pct",
+      "tail_relative_market_pct",
+      "return_cs_rank",
+      "tail_return_cs_rank",
+      "slot_amount_ratio_cs_rank",
+      "volatility_cs_rank",
+      "float_mv_cs_rank"
+    ],
+    "feature_version": "wp_v3_causal_features_5",
+    "fingerprint": "b5ec1c4c5980948d64e3",
+    "max_market_data_age_seconds": 420,
+    "max_probability_model_spread": 0.1,
+    "min_calibration_bin_clustered_lower": 0.5,
+    "min_calibration_bin_days": 10,
+    "min_calibration_bin_samples": 100,
+    "min_calibration_bin_wilson_lower": 0.52,
+    "min_downside_q10_pct": -4.5,
+    "min_expected_net_return_pct": 0.3,
+    "model_version": "wpv3-20260623-1551890",
+    "policy_fingerprint": "7e5d1c7b200096aef5ef",
+    "positive_rate": 0.4069932558677509,
+    "probability_lower_threshold": 0.52,
+    "probability_threshold": 0.6,
+    "strategy_id": "wp_t1_net_profit_v3",
+    "train_end": "20260623",
+    "train_start": "20230727",
+    "trained_at": "2026-07-27T17:12:34.956688+00:00",
+    "training_data_digest": "be10d86428e3c760bb1e4f3b175ae638fb9ac86dd50a1426ed97e3e211c3c2e6",
+    "training_rows": 1123940
+  },
+  "promotion": {
+    "checks": {
+      "backtest_gate": false,
+      "shadow_50bps_stress": false,
+      "shadow_candidate_days": false,
+      "shadow_candidates": false,
+      "shadow_clustered_mean_return_lower": false,
+      "shadow_clustered_win_rate_lower": false,
+      "shadow_ece": false,
+      "shadow_mean_net_return": false,
+      "shadow_median_net_return": false,
+      "shadow_profit_factor": false,
+      "shadow_trading_days": false,
+      "shadow_win_rate": false,
+      "shadow_win_rate_lower": false
+    },
+    "eligible": false,
+    "reason": "failed:backtest_gate,shadow_trading_days,shadow_candidate_days,shadow_candidates,shadow_win_rate,shadow_win_rate_lower,shadow_clustered_win_rate_lower,shadow_mean_net_return,shadow_clustered_mean_return_lower,shadow_median_net_return,shadow_profit_factor,shadow_ece,shadow_50bps_stress"
+  },
+  "schema_version": "wp_v3_research_summary_1"
+}

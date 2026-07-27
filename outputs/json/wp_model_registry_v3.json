@@ -1,0 +1,134 @@
+{
+  "active_model_fingerprint": null,
+  "active_policy_fingerprint": null,
+  "generated_at": "2026-07-27T17:13:02.518052+00:00",
+  "models": [
+    {
+      "artifact_path": "artifacts/wp_v3_research/models/b5ec1c4c5980948d64e3.joblib",
+      "backtest": {
+        "backtest_gate": {
+          "checks": {
+            "maximum_ece": false,
+            "minimum_clustered_mean_return_lower": false,
+            "minimum_clustered_win_rate_lower": false,
+            "minimum_mean_net_return": false,
+            "minimum_median_net_return": false,
+            "minimum_oos_candidates": false,
+            "minimum_oos_win_rate": false,
+            "minimum_oos_win_rate_lower": false,
+            "minimum_profit_factor": false,
+            "stress_50bps_nonnegative": false
+          },
+          "passed": false
+        },
+        "benchmarks": {
+          "all_executable_at_1450": {
+            "events": 242326,
+            "mean_net_return_pct": -0.3574906721527456,
+            "median_net_return_pct": -0.513993579994598,
+            "win_rate": 0.41348431451845863,
+            "win_rate_wilson_lower": 0.4115249727329515
+          },
+          "legacy_8_to_12_pct_at_1450": {
+            "events": 2471,
+            "mean_net_return_pct": -0.7682727597312006,
+            "median_net_return_pct": -1.234327543683683,
+            "win_rate": 0.40145690004046947,
+            "win_rate_wilson_lower": 0.38229661632685946
+          }
+        },
+        "brier_score": 0.24790412883084256,
+        "candidate_days": 0,
+        "candidate_events": 0,
+        "day_equal_weight_mean_net_return_pct": null,
+        "day_equal_weight_win_rate": null,
+        "ece": 0.053727682600424195,
+        "labelled_slot_rows": 1246675,
+        "log_loss": 0.6904340665726055,
+        "maximum_day_equal_weight_drawdown_pct": null,
+        "mean_net_return_day_clustered_lower_pct": null,
+        "mean_net_return_day_clustered_upper_pct": null,
+        "mean_net_return_pct": null,
+        "median_net_return_pct": null,
+        "net_return_q10_pct": null,
+        "net_return_q90_pct": null,
+        "pbo_estimate": 0.4444444444444444,
+        "profit_factor": 0.0,
+        "slot_rows": 1246675,
+        "stress": {
+          "35bps": {
+            "candidates": 0,
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          },
+          "50bps": {
+            "candidates": 0,
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          }
+        },
+        "win_count": 0,
+        "win_rate": 0.0,
+        "win_rate_day_clustered_lower": 0.0,
+        "win_rate_day_clustered_upper": 0.0,
+        "win_rate_wilson_lower": 0.0,
+        "win_rate_wilson_upper": 0.0
+      },
+      "feature_version": "wp_v3_causal_features_5",
+      "fingerprint": "b5ec1c4c5980948d64e3",
+      "model_version": "wpv3-20260623-1551890",
+      "policy_fingerprint": "7e5d1c7b200096aef5ef",
+      "promotion": {
+        "checks": {
+          "backtest_gate": false,
+          "shadow_50bps_stress": false,
+          "shadow_candidate_days": false,
+          "shadow_candidates": false,
+          "shadow_clustered_mean_return_lower": false,
+          "shadow_clustered_win_rate_lower": false,
+          "shadow_ece": false,
+          "shadow_mean_net_return": false,
+          "shadow_median_net_return": false,
+          "shadow_profit_factor": false,
+          "shadow_trading_days": false,
+          "shadow_win_rate": false,
+          "shadow_win_rate_lower": false
+        },
+        "eligible": false,
+        "evaluated_at": "2026-07-27T17:13:02.518010+00:00",
+        "reason": "failed:backtest_gate,shadow_trading_days,shadow_candidate_days,shadow_candidates,shadow_win_rate,shadow_win_rate_lower,shadow_clustered_win_rate_lower,shadow_mean_net_return,shadow_clustered_mean_return_lower,shadow_median_net_return,shadow_profit_factor,shadow_ece,shadow_50bps_stress"
+      },
+      "shadow": {
+        "candidate_days": 0,
+        "candidates": 0,
+        "ece": null,
+        "mean_net_return_day_clustered_lower_pct": null,
+        "mean_net_return_day_clustered_upper_pct": null,
+        "mean_net_return_pct": null,
+        "median_net_return_pct": null,
+        "policy_fingerprint": null,
+        "profit_factor": null,
+        "started_trade_date": null,
+        "stress_50bps_positive_total_return": false,
+        "trading_days": 0,
+        "verified_candidates": 0,
+        "win_rate": null,
+        "win_rate_day_clustered_lower": null,
+        "win_rate_day_clustered_upper": null,
+        "win_rate_wilson_lower": null,
+        "win_rate_wilson_upper": null,
+        "wins": 0
+      },
+      "status": "RESEARCH",
+      "train_end": "20260623",
+      "train_start": "20230727",
+      "trained_at": "2026-07-27T17:12:34.956688+00:00",
+      "training_data_digest": "be10d86428e3c760bb1e4f3b175ae638fb9ac86dd50a1426ed97e3e211c3c2e6"
+    }
+  ],
+  "schema_version": "wp_model_registry_v3",
+  "shadow_model_fingerprint": null,
+  "shadow_policy_fingerprint": null
+}

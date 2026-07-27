@@ -1,0 +1,174 @@
+{
+  "folds": [
+    {
+      "fold": 1,
+      "test_days": 42,
+      "test_end": "20241120",
+      "test_start": "20240913",
+      "train_days": 275,
+      "train_end": "20240910",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 2,
+      "test_days": 42,
+      "test_end": "20250120",
+      "test_start": "20241121",
+      "train_days": 317,
+      "train_end": "20241118",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 3,
+      "test_days": 42,
+      "test_end": "20250327",
+      "test_start": "20250121",
+      "train_days": 359,
+      "train_end": "20250116",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 4,
+      "test_days": 42,
+      "test_end": "20250530",
+      "test_start": "20250328",
+      "train_days": 401,
+      "train_end": "20250325",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 5,
+      "test_days": 42,
+      "test_end": "20250730",
+      "test_start": "20250603",
+      "train_days": 443,
+      "train_end": "20250528",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 6,
+      "test_days": 42,
+      "test_end": "20250926",
+      "test_start": "20250731",
+      "train_days": 485,
+      "train_end": "20250728",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 7,
+      "test_days": 42,
+      "test_end": "20251203",
+      "test_start": "20250929",
+      "train_days": 527,
+      "train_end": "20250924",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 8,
+      "test_days": 42,
+      "test_end": "20260203",
+      "test_start": "20251204",
+      "train_days": 569,
+      "train_end": "20251201",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 9,
+      "test_days": 42,
+      "test_end": "20260413",
+      "test_start": "20260204",
+      "train_days": 611,
+      "train_end": "20260130",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 10,
+      "test_days": 42,
+      "test_end": "20260615",
+      "test_start": "20260414",
+      "train_days": 653,
+      "train_end": "20260409",
+      "train_start": "20230727"
+    },
+    {
+      "fold": 11,
+      "test_days": 28,
+      "test_end": "20260724",
+      "test_start": "20260616",
+      "train_days": 695,
+      "train_end": "20260611",
+      "train_start": "20230727"
+    }
+  ],
+  "metrics": {
+    "backtest_gate": {
+      "checks": {
+        "maximum_ece": false,
+        "minimum_clustered_mean_return_lower": false,
+        "minimum_clustered_win_rate_lower": false,
+        "minimum_mean_net_return": false,
+        "minimum_median_net_return": false,
+        "minimum_oos_candidates": false,
+        "minimum_oos_win_rate": false,
+        "minimum_oos_win_rate_lower": false,
+        "minimum_profit_factor": false,
+        "stress_50bps_nonnegative": false
+      },
+      "passed": false
+    },
+    "benchmarks": {
+      "all_executable_at_1450": {
+        "events": 242326,
+        "mean_net_return_pct": -0.3574906721527456,
+        "median_net_return_pct": -0.513993579994598,
+        "win_rate": 0.41348431451845863,
+        "win_rate_wilson_lower": 0.4115249727329515
+      },
+      "legacy_8_to_12_pct_at_1450": {
+        "events": 2471,
+        "mean_net_return_pct": -0.7682727597312006,
+        "median_net_return_pct": -1.234327543683683,
+        "win_rate": 0.40145690004046947,
+        "win_rate_wilson_lower": 0.38229661632685946
+      }
+    },
+    "brier_score": 0.24790412883084256,
+    "candidate_days": 0,
+    "candidate_events": 0,
+    "day_equal_weight_mean_net_return_pct": null,
+    "day_equal_weight_win_rate": null,
+    "ece": 0.053727682600424195,
+    "labelled_slot_rows": 1246675,
+    "log_loss": 0.6904340665726055,
+    "maximum_day_equal_weight_drawdown_pct": null,
+    "mean_net_return_day_clustered_lower_pct": null,
+    "mean_net_return_day_clustered_upper_pct": null,
+    "mean_net_return_pct": null,
+    "median_net_return_pct": null,
+    "net_return_q10_pct": null,
+    "net_return_q90_pct": null,
+    "pbo_estimate": 0.4444444444444444,
+    "profit_factor": 0.0,
+    "slot_rows": 1246675,
+    "stress": {
+      "35bps": {
+        "candidates": 0,
+        "mean_net_return_pct": null,
+        "positive_total_return": false,
+        "win_rate": null
+      },
+      "50bps": {
+        "candidates": 0,
+        "mean_net_return_pct": null,
+        "positive_total_return": false,
+        "win_rate": null
+      }
+    },
+    "win_count": 0,
+    "win_rate": 0.0,
+    "win_rate_day_clustered_lower": 0.0,
+    "win_rate_day_clustered_upper": 0.0,
+    "win_rate_wilson_lower": 0.0,
+    "win_rate_wilson_upper": 0.0
+  }
+}
