@@ -26,7 +26,7 @@
   "exit_contract": "T+1_close",
   "failed_trade_days": [],
   "feature_version": "wp_v3_causal_features_5",
-  "generated_at": "2026-07-27T16:57:28.136895+00:00",
+  "generated_at": "2026-07-27T17:45:34.247024+00:00",
   "minute_partitions": {
     "202307": "/home/runner/work/WP/WP/artifacts/wp_v3_history/minute/wp_v3_minutes_202307.parquet",
     "202308": "/home/runner/work/WP/WP/artifacts/wp_v3_history/minute/wp_v3_minutes_202308.parquet",

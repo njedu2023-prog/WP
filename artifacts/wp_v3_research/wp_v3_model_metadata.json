@@ -174,7 +174,7 @@
   "strategy_id": "wp_t1_net_profit_v3",
   "train_end": "20260623",
   "train_start": "20230727",
-  "trained_at": "2026-07-27T17:12:34.956688+00:00",
+  "trained_at": "2026-07-27T18:01:01.364550+00:00",
   "training_data_digest": "be10d86428e3c760bb1e4f3b175ae638fb9ac86dd50a1426ed97e3e211c3c2e6",
   "training_rows": 1123940
 }
