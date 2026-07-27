@@ -10,6 +10,7 @@ from wp.v3.contracts import V3Config
 from wp.v3.history import (
     TushareHistoryClient,
     _industry_at,
+    _load_daily_history,
     _minute_universe_quality,
     _normalize_historical_minutes,
     _ordered_bounded_map,
@@ -25,6 +26,24 @@ class _CappedPro:
         offset = int(params.get("offset", 0))
         requested = int(params.get("limit", 8_000))
         return pd.DataFrame(self.rows[offset : offset + min(requested, 2)])
+
+
+class _DailyPro:
+    def query(self, _api_name: str, **params):
+        trade_date = str(params["trade_date"])
+        fields = str(params["fields"]).split(",")
+        row = {
+            column: (
+                trade_date
+                if column == "trade_date"
+                else "600000.SH"
+                if column == "ts_code"
+                else 1.0
+            )
+            for column in fields
+        }
+        time.sleep(0.005)
+        return pd.DataFrame([row])
 
 
 def test_pagination_continues_when_api_cap_is_below_requested_page_size(tmp_path):
@@ -58,6 +77,25 @@ def test_bounded_parallel_map_preserves_order_and_uses_multiple_workers():
 
     assert result == [value * 10 for value in range(8)]
     assert maximum_active >= 2
+
+
+def test_daily_history_parallel_fetch_retains_trade_date_order(tmp_path):
+    client = TushareHistoryClient(
+        _DailyPro(),
+        tmp_path,
+        requests_per_minute=100_000,
+    )
+    daily, basic, limits, adjustments = _load_daily_history(
+        client,
+        ["20260721", "20260722", "20260723"],
+        workers=3,
+    )
+
+    expected = ["20260721", "20260722", "20260723"]
+    assert daily["trade_date"].tolist() == expected
+    assert basic["trade_date"].tolist() == expected
+    assert limits["trade_date"].tolist() == expected
+    assert adjustments["trade_date"].tolist() == expected
 
 
 def test_industry_membership_is_resolved_at_the_signal_date():

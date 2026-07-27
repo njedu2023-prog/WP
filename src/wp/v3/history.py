@@ -205,6 +205,7 @@ def build_three_year_panel(
     daily, daily_basic, limits, adjustments = _load_daily_history(
         client,
         required_daily_dates,
+        workers=config.history.minute_fetch_workers,
     )
     daily = daily.merge(
         adjustments.drop_duplicates(["ts_code", "trade_date"], keep="last"),
@@ -433,44 +434,54 @@ def _load_st_intervals(
 def _load_daily_history(
     client: TushareHistoryClient,
     trade_dates: list[str],
+    *,
+    workers: int = 1,
 ) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
     daily_frames: list[pd.DataFrame] = []
     basic_frames: list[pd.DataFrame] = []
     limit_frames: list[pd.DataFrame] = []
     adjustment_frames: list[pd.DataFrame] = []
-    for index, trade_date in enumerate(trade_dates, start=1):
-        daily_frames.append(
-            client.query(
-                "daily",
-                cache_key=trade_date,
-                trade_date=trade_date,
-                fields=DAILY_FIELDS,
-            )
+
+    def fetch_trade_date(
+        item: tuple[int, str],
+    ) -> tuple[int, pd.DataFrame, pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+        index, trade_date = item
+        daily = client.query(
+            "daily",
+            cache_key=trade_date,
+            trade_date=trade_date,
+            fields=DAILY_FIELDS,
         )
-        basic_frames.append(
-            client.query(
-                "daily_basic",
-                cache_key=trade_date,
-                trade_date=trade_date,
-                fields=DAILY_BASIC_FIELDS,
-            )
+        basic = client.query(
+            "daily_basic",
+            cache_key=trade_date,
+            trade_date=trade_date,
+            fields=DAILY_BASIC_FIELDS,
         )
-        limit_frames.append(
-            client.query(
-                "stk_limit",
-                cache_key=trade_date,
-                trade_date=trade_date,
-                fields=LIMIT_FIELDS,
-            )
+        limits = client.query(
+            "stk_limit",
+            cache_key=trade_date,
+            trade_date=trade_date,
+            fields=LIMIT_FIELDS,
         )
-        adjustment_frames.append(
-            client.query(
-                "adj_factor",
-                cache_key=trade_date,
-                trade_date=trade_date,
-                fields=ADJ_FIELDS,
-            )
+        adjustments = client.query(
+            "adj_factor",
+            cache_key=trade_date,
+            trade_date=trade_date,
+            fields=ADJ_FIELDS,
         )
+        return index, daily, basic, limits, adjustments
+
+    indexed_dates = list(enumerate(trade_dates, start=1))
+    for index, daily, basic, limits, adjustments in _ordered_bounded_map(
+        fetch_trade_date,
+        indexed_dates,
+        workers=workers,
+    ):
+        daily_frames.append(daily)
+        basic_frames.append(basic)
+        limit_frames.append(limits)
+        adjustment_frames.append(adjustments)
         if index % 50 == 0:
             print(f"daily history {index}/{len(trade_dates)}", flush=True)
     return (
