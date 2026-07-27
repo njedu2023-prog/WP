@@ -30,7 +30,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wp-v3-output-writer-${{ github.ref }}
+  group: wp-v3-research-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
