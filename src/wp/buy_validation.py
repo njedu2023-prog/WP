@@ -122,10 +122,6 @@ def _new_snapshot_rows(buy_plan: pd.DataFrame, health: dict, current: datetime) 
         return pd.DataFrame(columns=VALIDATION_COLUMNS)
     target_trade_date = next_trading_day_str(plan_trade_date)
     snapshot_plan = buy_plan.copy()
-    if "portfolio_group" in snapshot_plan.columns:
-        primary = snapshot_plan["portfolio_group"].fillna("").astype(str).eq("主票")
-        if primary.any():
-            snapshot_plan = snapshot_plan[primary].copy()
     rows = []
     for _, row in snapshot_plan.iterrows():
         rows.append(
@@ -492,30 +488,38 @@ def update_buy_plan_validation(buy_plan: pd.DataFrame, health: dict, output_root
         )
         snapshot = snapshot[~snapshot["plan_trade_date"].astype(str).isin(locked_dates)].copy()
     if not snapshot.empty:
-        snapshot_keys = set(
-            zip(
-                snapshot["buy_model_version"].fillna("").astype(str),
-                snapshot["plan_trade_date"].astype(str),
-                snapshot["ts_code"].fillna("").astype(str),
-            )
-        )
-        existing_keys = list(
+        existing_keys = set(
             zip(
                 existing["buy_model_version"].fillna("").astype(str),
                 existing["plan_trade_date"].astype(str),
                 existing["ts_code"].fillna("").astype(str),
             )
         )
-        # Keep one causal research sample per stock and trade date. Intraday
-        # refreshes replace the earlier sample until truth is locked, avoiding
-        # repeated appearances being counted as independent trades.
-        existing = existing[[key not in snapshot_keys for key in existing_keys]].copy()
-        table = snapshot.copy() if existing.empty else pd.concat([existing, snapshot], ignore_index=True)
+        snapshot_keys = list(
+            zip(
+                snapshot["buy_model_version"].fillna("").astype(str),
+                snapshot["plan_trade_date"].astype(str),
+                snapshot["ts_code"].fillna("").astype(str),
+            )
+        )
+        # The first qualified snapshot is the causal entry contract. Later
+        # appearances may update the cohort ledger's counters, but can never
+        # replace the original signal time or signal price used for truth.
+        snapshot = snapshot[
+            [key not in existing_keys for key in snapshot_keys]
+        ].copy()
+        table = (
+            existing
+            if snapshot.empty
+            else snapshot.copy()
+            if existing.empty
+            else pd.concat([existing, snapshot], ignore_index=True)
+        )
     else:
         table = existing
     if not table.empty:
         key_cols = ["buy_model_version", "plan_trade_date", "ts_code"]
-        table = table.drop_duplicates(key_cols, keep="last")
+        table = table.drop_duplicates(key_cols, keep="first")
         table["_buy_rank_sort"] = pd.to_numeric(table["buy_rank"], errors="coerce").fillna(999)
         table = table.sort_values(["plan_trade_date", "plan_time", "_buy_rank_sort"]).drop(columns=["_buy_rank_sort"])
     table = _fill_truth(table, current)

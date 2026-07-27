@@ -80,7 +80,7 @@ def test_top50_and_buy_plan_share_tail_profit_order():
     assert len(decision.buy_plan) == 1
     assert decision.buy_plan.iloc[0]["ts_code"] == "000001.SZ"
     assert decision.buy_plan.iloc[0]["tail_profit_score"] == top50.iloc[0]["tail_profit_score"]
-    assert decision.summary["max_buy_count"] == 1
+    assert decision.summary["max_buy_count"] == 0
 
 
 def test_missing_required_tail_field_forces_cash():

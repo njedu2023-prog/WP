@@ -78,7 +78,7 @@ def test_tail_observation_accumulates_primaries_and_reranks(tmp_path):
     )
 
     assert result.table["ts_code"].tolist() == ["000002.SZ", "000001.SZ"]
-    assert result.table["observation_status"].tolist() == ["当前主票", "观察票"]
+    assert result.table["observation_status"].tolist() == ["基础候选", "观察票"]
     assert result.table["quality_rank"].tolist() == [1, 2]
     assert result.table.iloc[1]["first_seen"] == "2026-07-17 14:20:00"
 
@@ -221,7 +221,7 @@ def test_tail_observation_recovers_today_primaries_from_validation_history(tmp_p
     assert recovered["observation_status"] == "观察票"
 
 
-def test_tail_observation_freezes_after_1455_without_adding_a_new_primary(tmp_path):
+def test_tail_observation_freezes_after_1450_without_adding_a_new_candidate(tmp_path):
     state_path = tmp_path / "wp_tail_observation.csv"
     first = pd.DataFrame([_candidate("000001.SZ", 82.0)])
     initial = update_tail_observation(
@@ -237,7 +237,7 @@ def test_tail_observation_freezes_after_1455_without_adding_a_new_primary(tmp_pa
         later,
         _plan("000002.SZ"),
         later,
-        _health("2026-07-17 14:55:01"),
+        _health("2026-07-17 14:50:01"),
         state_path,
     )
 

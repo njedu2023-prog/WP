@@ -61,8 +61,8 @@ def test_tail_snapshot_window_accepts_pre_window_fallback():
     assert _in_tail_window("2026-07-14 14:20:00")
     assert _in_tail_window("2026-07-14 14:35:00")
     assert _in_tail_window("2026-07-14 14:50:00")
-    assert _in_tail_window("2026-07-14 14:55:00")
-    assert not _in_tail_window("2026-07-14 14:55:01")
+    assert not _in_tail_window("2026-07-14 14:50:01")
+    assert not _in_tail_window("2026-07-14 14:55:00")
 
 
 def test_truth_becomes_due_only_after_target_day_close():
@@ -72,7 +72,7 @@ def test_truth_becomes_due_only_after_target_day_close():
     assert not _is_truth_due("20260717", datetime(2026, 7, 16, 16, 0, 0, tzinfo=CN_TZ))
 
 
-def test_tail_snapshot_keeps_every_primary_stock_observation_time(tmp_path):
+def test_tail_snapshot_keeps_every_baseline_stock_first_observation(tmp_path):
     first_plan = pd.DataFrame(
         [
             {
@@ -105,12 +105,13 @@ def test_tail_snapshot_keeps_every_primary_stock_observation_time(tmp_path):
     current = datetime(2026, 7, 15, 14, 40, tzinfo=CN_TZ)
     first = update_buy_plan_validation(first_plan, first_health, tmp_path, current)
 
-    assert len(first.table) == 1
-    assert first.table.iloc[0]["ts_code"] == "000001.SZ"
+    assert len(first.table) == 2
+    assert first.table["ts_code"].tolist() == ["000001.SZ", "000002.SZ"]
 
     latest_plan = first_plan.iloc[[1]].copy()
     latest_plan["buy_rank"] = 1
-    latest_plan["portfolio_group"] = "主票"
+    latest_plan["portfolio_group"] = "资格候选"
+    latest_plan["price"] = 22.0
     latest_health = dict(first_health, market_data_time="2026-07-15 14:46:00")
     latest = update_buy_plan_validation(latest_plan, latest_health, tmp_path, current)
 
@@ -118,7 +119,8 @@ def test_tail_snapshot_keeps_every_primary_stock_observation_time(tmp_path):
     audit = pd.read_csv(tmp_path / "csv" / "wp_buy_plan_validation.csv", dtype={"plan_trade_date": str})
     assert len(audit) == 2
     assert audit["ts_code"].tolist() == ["000001.SZ", "000002.SZ"]
-    assert audit["plan_time"].tolist() == ["2026-07-15 14:36:00", "2026-07-15 14:46:00"]
+    assert audit["plan_time"].tolist() == ["2026-07-15 14:36:00", "2026-07-15 14:36:00"]
+    assert audit["plan_price"].tolist() == [10.0, 20.0]
 
     after_close_plan = first_plan.iloc[[0]].copy()
     after_close_health = dict(first_health, market_data_time="2026-07-14 15:10:00")

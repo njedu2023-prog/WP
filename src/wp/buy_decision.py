@@ -9,8 +9,8 @@ from .t1_forecast import FORECAST_COLUMNS
 
 
 DEFAULT_BUY_CONFIG = {
-    "buy_max_count": 1,
-    "buy_max_sector_positions": 1,
+    "buy_max_count": 0,
+    "buy_max_sector_positions": 0,
 }
 
 
@@ -115,10 +115,6 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     cfg.update({key: value for key, value in (config or {}).items() if key in cfg})
     for key in DEFAULT_BUY_CONFIG:
         cfg[key] = float(cfg[key])
-    # tail_profit_v1 was validated as a single-position model. Keep the
-    # production constraint fixed even if an older config requests more.
-    max_count = 1
-    max_sector_positions = 1
 
     if ranked_input.empty:
         empty_plan = pd.DataFrame(columns=BUY_COLUMNS)
@@ -162,30 +158,23 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     out["buy_eligible"] = out.get("tail_profit_eligible", False).fillna(False).astype(bool)
     out = _sort_for_buy(out)
 
-    selected_indexes: list[int] = []
-    sector_counts: dict[str, int] = {}
-    for idx, row in out.iterrows():
-        if not bool(row["buy_eligible"]):
-            continue
-        sector = str(row["sector_name"])
-        if sector_counts.get(sector, 0) >= max_sector_positions:
-            continue
-        selected_indexes.append(idx)
-        sector_counts[sector] = sector_counts.get(sector, 0) + 1
-        if len(selected_indexes) >= max_count:
-            break
+    selected_indexes = [
+        int(idx)
+        for idx, row in out.iterrows()
+        if bool(row["buy_eligible"])
+    ]
 
     out["buy_flag"] = 0
     out["decision_action"] = "跳过"
     out.loc[out["buy_eligible"], "decision_action"] = "备选观察"
     if selected_indexes:
         out.loc[selected_indexes, "buy_flag"] = 1
-        out.loc[selected_indexes, "decision_action"] = "买入观察"
+        out.loc[selected_indexes, "decision_action"] = "资格观察"
 
     selected = out.loc[selected_indexes].copy()
     if not selected.empty:
         selected["buy_rank"] = range(1, len(selected) + 1)
-        selected["portfolio_group"] = "主票"
+        selected["portfolio_group"] = "资格候选"
         selected["confirm_before_buy"] = _confirm_text()
         selected["reject_if"] = _reject_text()
         selected["buy_reason"] = selected.apply(_reason, axis=1)
@@ -209,9 +198,9 @@ def build_buy_decision(ranked_input: pd.DataFrame, config: dict | None = None) -
     decision_table = decision[DECISION_COLUMNS].copy()
     summary = {
         "buy_count": int(len(buy_plan)),
-        "max_buy_count": max_count,
-        "max_sector_positions": max_sector_positions,
+        "max_buy_count": 0,
+        "max_sector_positions": 0,
         "buy_model_version": TAIL_PROFIT_MODEL_VERSION,
-        "selection_rule": "14:35截面选最多1支；无合格标的则空仓，14:50前人工确认。",
+        "selection_rule": "14:20-14:50保留全部基础资格候选；最终合格由概率、样本、风险、稳定性和数据新鲜度逐票判定。",
     }
     return BuyDecisionResult(buy_plan, decision_table, summary)

@@ -29,7 +29,6 @@ from .report_md import render_markdown
 from .scoring_model import MODEL_VERSION, add_scores
 from .strategy_ledger import (
     STRATEGY_VERSION,
-    locked_decision_for_date,
     strategy_validation_rows,
     update_strategy_ledger,
 )
@@ -215,93 +214,46 @@ def _archive_decision_snapshots(
     return paths
 
 
-def _official_buy_plan(
-    decision_summary: dict,
-    research_plan: pd.DataFrame,
-    ranked_input: pd.DataFrame,
-    locked_decision: dict | None = None,
+def _qualified_buy_plan(
+    decision_table: pd.DataFrame,
 ) -> pd.DataFrame:
-    if str(decision_summary.get("action_code") or "") != "BUY":
+    if decision_table is None or decision_table.empty:
         return pd.DataFrame(columns=BUY_COLUMNS)
-    code = str(decision_summary.get("candidate_code") or "")
-    source = research_plan
-    selected = source[source.get("ts_code", pd.Series(dtype="object")).astype(str).eq(code)].copy()
-    if selected.empty:
-        selected = ranked_input[
-            ranked_input.get("ts_code", pd.Series(dtype="object")).astype(str).eq(code)
-        ].head(1).copy()
-    if selected.empty and locked_decision:
-        selected = pd.DataFrame(
-            [
-                {
-                    "ts_code": locked_decision.get("ts_code", ""),
-                    "name": locked_decision.get("name", ""),
-                    "sector_name": locked_decision.get("sector_name", ""),
-                    "price": locked_decision.get("plan_price", ""),
-                }
-            ]
+    selected = decision_table[
+        decision_table.get(
+            "support_action",
+            pd.Series("", index=decision_table.index),
         )
+        .fillna("")
+        .astype(str)
+        .eq("合格")
+    ].copy()
     if selected.empty:
         return pd.DataFrame(columns=BUY_COLUMNS)
-    selected = selected.head(1).copy()
-    if locked_decision:
-        selected["price"] = locked_decision.get("plan_price", selected.iloc[0].get("price", ""))
-        for column in (
-            "forecast_profit_probability",
-            "forecast_profit_probability_lower",
-            "forecast_expected_net_return_pct",
-            "forecast_live_sample_count",
-            "forecast_live_day_count",
-            "forecast_effective_sample_count",
-        ):
-            selected[column] = locked_decision.get(column, selected.iloc[0].get(column, ""))
-    selected["buy_rank"] = 1
-    selected["portfolio_group"] = "正式策略"
+    selected["buy_rank"] = pd.to_numeric(
+        selected.get("support_rank", pd.Series(index=selected.index)),
+        errors="coerce",
+    ).fillna(999).astype(int)
+    selected["portfolio_group"] = "合格候选"
+    selected["tail_profit_model_version"] = STRATEGY_VERSION
     probability_lower = (
         selected["forecast_profit_probability_lower"]
         if "forecast_profit_probability_lower" in selected.columns
         else pd.Series(0.0, index=selected.index)
     )
     selected["decision_score"] = pd.to_numeric(probability_lower, errors="coerce").fillna(0.0)
-    selected["confirm_before_buy"] = "仅在14:55前人工确认可成交"
+    selected["confirm_before_buy"] = "仅在14:50前人工确认可成交"
     selected["reject_if"] = "数据过期/封板不可买/价格显著偏离参考价"
-    selected["buy_reason"] = str(decision_summary.get("reason") or "")
+    selected["buy_reason"] = selected.get(
+        "decision_reason",
+        pd.Series("逐票通过全部固定门槛", index=selected.index),
+    )
     for column in BUY_COLUMNS:
         if column not in selected.columns:
             selected[column] = ""
-    return selected[BUY_COLUMNS].copy()
-
-
-def _apply_locked_decision(decision_support: object, locked: dict) -> None:
-    action = str(locked.get("action") or "")
-    published_at = str(locked.get("published_at") or "")
-    summary = decision_support.summary
-    summary.update(
-        {
-            "action": "买入（当日已锁定）" if action == "BUY" else "NO_TRADE（当日已锁定）",
-            "action_code": action,
-            "is_final": True,
-            "candidate_code": str(locked.get("ts_code") or ""),
-            "candidate_name": str(locked.get("name") or ""),
-            "reason": f"当日正式决策已于{published_at}锁定，后续行情刷新不得修改",
-            "next_checkpoint": "T+1收盘卖出" if action == "BUY" else "下一交易日14:20",
-        }
-    )
-    for column in (
-        "forecast_profit_probability",
-        "forecast_profit_probability_lower",
-        "forecast_expected_net_return_pct",
-        "forecast_live_sample_count",
-        "forecast_live_day_count",
-        "forecast_effective_sample_count",
-    ):
-        summary[column] = locked.get(column, "")
-    table = decision_support.table
-    if table is not None and not table.empty:
-        chosen = table["ts_code"].fillna("").astype(str).eq(str(locked.get("ts_code") or ""))
-        table["is_current_choice"] = chosen
-        table.loc[chosen, "support_action"] = summary["action"]
-        table.loc[chosen, "decision_reason"] = summary["reason"]
+    return selected.sort_values(["buy_rank", "ts_code"], kind="mergesort")[
+        BUY_COLUMNS
+    ].copy()
 
 
 def run() -> dict:
@@ -505,19 +457,21 @@ def run() -> dict:
         "forecast_live_day_count",
         int(forecast_result.summary.get("live_day_count", 0)),
     )
-    buy_plan = _official_buy_plan(
-        decision_support.summary,
-        research_plan,
-        ranked_input,
-    )
+    buy_plan = _qualified_buy_plan(decision_support.table)
     health["manual_execution_only"] = True
     health["order_routing_enabled"] = False
     archive_dir = output_root / "html_reports" / "archive" / current.strftime("%Y%m%d")
     ensure_dir(archive_dir)
-    # The research ledger collects one latest causal sample per stock/day even
-    # while the production strategy correctly abstains. It never contributes
-    # to reported strategy PnL.
-    validation_result = update_buy_plan_validation(research_plan, health, output_root, current)
+    # The research ledger keeps the first baseline-eligible snapshot per
+    # stock/day so the forecast can accumulate causal samples without lowering
+    # the formal qualification gates. The strategy ledger below remains the
+    # only official qualified-candidate performance scope.
+    validation_result = update_buy_plan_validation(
+        research_plan,
+        health,
+        output_root,
+        current,
+    )
     sampling_result = update_tail_sampling(
         validation_result.table,
         health,
@@ -535,18 +489,6 @@ def run() -> dict:
         current,
         config,
     )
-    locked_decision = locked_decision_for_date(
-        strategy_result.table,
-        str(health.get("data_trade_date") or forecast_trade_date),
-    )
-    if locked_decision is not None and tail_phase != TAIL_PHASE_CLOSED:
-        _apply_locked_decision(decision_support, locked_decision)
-        buy_plan = _official_buy_plan(
-            decision_support.summary,
-            research_plan,
-            ranked_input,
-            locked_decision,
-        )
     health["decision_support_action"] = decision_support.summary.get("action", "")
     strategy_validation = strategy_validation_rows(
         strategy_result.table,
@@ -769,9 +711,9 @@ def run() -> dict:
     if preserve_latest:
         logging.error("Source failed; preserving existing latest.html. error=%s", load_result.error)
     else:
-        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=strategy_result.table, validation_summary=strategy_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
-    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, observation_pool=tail_observation, validation=strategy_result.table, validation_summary=strategy_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
-    render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan, observation_pool=tail_observation, decision_support=decision_support.summary, exit_guidance=exit_guidance.table)
+        render_html(top50, full_rank, health, latest_html, buy_plan=buy_plan, observation_pool=buy_plan, validation=strategy_result.table, validation_summary=strategy_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
+    render_html(top50, full_rank, health, archive_html, buy_plan=buy_plan, observation_pool=buy_plan, validation=strategy_result.table, validation_summary=strategy_result.summary, backtests=backtest_summaries, decision_support=decision_support.summary, market_regime=market_regime, t1_forecasts=decision_support.table, exit_guidance=exit_guidance.table)
+    render_markdown(top50, output_root / "html_reports" / "latest.md", buy_plan=buy_plan, observation_pool=buy_plan, decision_support=decision_support.summary, exit_guidance=exit_guidance.table)
     logging.info(
         "WP run completed: raw=%s candidates=%s top50=%s buy_plan=%s tail_observation=%s missing_fields=%s fallback=%s outputs=%s log=%s",
         len(raw),

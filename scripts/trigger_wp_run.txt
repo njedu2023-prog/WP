@@ -1,1 +1,1 @@
-2026-07-27 12:27:07 +08:00 target_slot=2026-07-27 14:20:00 reason=align_t1_strategy_reporting
+2026-07-27 15:38:04 +08:00 target_slot=2026-07-27 15:00:00 reason=multi_qualified_candidate_contract

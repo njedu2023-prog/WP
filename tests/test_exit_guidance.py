@@ -21,7 +21,7 @@ def test_exit_guidance_does_not_change_fixed_contract_on_intraday_loss():
     market = pd.DataFrame([{"ts_code": "600001.SH", "open": 9.6, "high": 10.2, "low": 9.5, "price": 9.7}])
     result = build_exit_guidance(_history(), market, "20260720", "2026-07-20 09:40:00")
     assert result.table.iloc[0]["guidance_action"] == "按合同持有"
-    assert result.table.iloc[0]["holding_confirmation"] == "待人工确认实际持仓"
+    assert result.table.iloc[0]["holding_confirmation"] == "待人工确认是否实际买入"
     assert result.summary["order_routing_enabled"] is False
 
 
@@ -31,7 +31,7 @@ def test_exit_guidance_waits_until_fixed_close_window():
     assert result.table.iloc[0]["guidance_action"] == "按合同持有"
 
     close_window = build_exit_guidance(_history(), market, "20260720", "2026-07-20 14:50:00")
-    assert close_window.table.iloc[0]["guidance_action"] == "执行T+1收盘卖出"
+    assert close_window.table.iloc[0]["guidance_action"] == "如实际持有，执行T+1收盘卖出"
 
 
 def test_exit_guidance_refuses_conclusion_without_market_price():
@@ -45,7 +45,7 @@ def test_exit_guidance_never_changes_to_t2_after_close():
     )
     result = build_exit_guidance(_history(), market, "20260720", "2026-07-20 15:00:00")
     row = result.table.iloc[0]
-    assert row["guidance_action"] == "T+1收盘合同已结束"
+    assert row["guidance_action"] == "候选验证合同已结束"
     assert "收盘真值" in row["next_checkpoint"]
     assert bool(row["order_routing_enabled"]) is False
 
@@ -55,4 +55,4 @@ def test_exit_guidance_uses_same_close_contract_after_reseal():
         [{"ts_code": "600001.SH", "open": 10.2, "high": 11.0, "low": 10.1, "price": 11.0, "up_limit": 11.0, "open_board_count": 1}]
     )
     result = build_exit_guidance(_history(), market, "20260720", "2026-07-20 15:00:00")
-    assert result.table.iloc[0]["guidance_action"] == "T+1收盘合同已结束"
+    assert result.table.iloc[0]["guidance_action"] == "候选验证合同已结束"

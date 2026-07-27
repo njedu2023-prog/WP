@@ -66,25 +66,23 @@ def render_markdown(
         "core_reason",
         "risk_reason",
     ]
-    content = ["# WP T+1 净盈利决策", ""]
+    content = ["# WP 尾盘合格票 T+1 验证", ""]
     content.extend(
         [
-            "## 当日唯一正式决策",
+            "## 14:20–14:50 合格票",
             "",
-            "目标：最大化T日14:20–14:55可成交买入后，T+1收盘卖出的成本后盈利概率。",
+            "目标：逐票发布全部通过固定门槛的候选，由人工决定买哪一支，并对每支首次合格信号做T+1收盘净收益验证。",
             "",
-            f"- 当前建议：{_escape(decision_support.get('action', '继续观察'))}",
-            f"- 当前首选：{_escape(decision_support.get('candidate_name', ''))} {_escape(decision_support.get('candidate_code', ''))}",
+            f"- 当前状态：{_escape(decision_support.get('action', '继续观察'))}",
+            f"- 当前合格票：{_escape(decision_support.get('qualified_count', 0))} 支",
             f"- 判断依据：{_escape(decision_support.get('reason', ''))}",
-            f"- 成本后盈利概率：{_escape(decision_support.get('forecast_profit_probability', '-'))}%",
-            f"- 95%单侧下界：{_escape(decision_support.get('forecast_profit_probability_lower', '-'))}%",
             f"- 真实样本/独立交易日：{_escape(decision_support.get('forecast_live_sample_count', 0))} / {_escape(decision_support.get('forecast_live_day_count', 0))}",
-            f"- 买入截止：{_escape(decision_support.get('entry_deadline', '14:55'))}",
+            f"- 候选截止：{_escape(decision_support.get('entry_deadline', '14:50'))}",
             f"- 卖出合同：{_escape(decision_support.get('exit_contract', 'T+1收盘'))}",
             "",
         ]
     )
-    content.append("## 尾盘观察")
+    content.append("## 当前合格票（人工选择）")
     if observation_pool.empty:
         content.append("")
         content.append("当前无具备资格的尾盘观察票。")

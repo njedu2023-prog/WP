@@ -9,7 +9,7 @@ from wp.tail_profit_model import TAIL_PROFIT_MODEL_VERSION
 def test_report_html_contains_title(tmp_path):
     path = tmp_path / "latest.html"
     render_html(pd.DataFrame(), pd.DataFrame(), {"status": "无符合条件股票", "data_time": "now"}, path)
-    assert "WP T+1 净盈利决策" in path.read_text(encoding="utf-8")
+    assert "WP 尾盘合格票 T+1 验证" in path.read_text(encoding="utf-8")
 
 
 def test_report_html_polls_manifest_and_keeps_stale_buy_plan_visible(tmp_path):
@@ -192,7 +192,7 @@ def test_report_html_shows_missing_sampling_days_and_closed_message(tmp_path):
     )
 
     page = path.read_text(encoding="utf-8")
-    assert "15:00已收盘，停止生成尾盘名单" in page
+    assert "15:00已收盘，停止展示可买名单" in page
     assert "2026-07-23" in page
     assert "采样缺失" in page
     assert "采样缺失1日" in page
@@ -299,7 +299,7 @@ def test_report_html_contains_backtest_windows_and_data_links(tmp_path):
     assert "+4.34%" in page
     assert "../backtests/20260427_20260522/buy_trades.csv" in page
     assert "主票明细" in page
-    assert "收盘日线代理不具备14:20–14:55因果性" in page
+    assert "收盘日线代理不具备14:20–14:50因果性" in page
     assert "../backtests/20260427_20260522/monthly_summary.csv" in page
 
 
@@ -323,7 +323,7 @@ def test_backtest_summary_list_hides_contained_windows(tmp_path):
     assert [(item["start_date"], item["end_date"]) for item in summaries] == [("20260313", "20260709")]
 
 
-def test_report_html_renders_single_objective_and_probability_gate(tmp_path):
+def test_report_html_renders_multi_candidate_objective(tmp_path):
     path = tmp_path / "latest.html"
     render_html(
         pd.DataFrame(),
@@ -331,10 +331,10 @@ def test_report_html_renders_single_objective_and_probability_gate(tmp_path):
         {"status": "ok", "data_time": "2026-07-20 14:35:00"},
         path,
         decision_support={
-            "action": "买入",
-            "action_code": "BUY",
-            "candidate_name": "甲",
-            "candidate_code": "600001.SH",
+            "action": "2支合格票",
+            "action_code": "QUALIFIED_SET",
+            "candidate_count": 3,
+            "qualified_count": 2,
             "forecast_mode": "实时因果样本",
             "forecast_confidence": 60,
             "forecast_open_q10_pct": -2,
@@ -354,19 +354,19 @@ def test_report_html_renders_single_objective_and_probability_gate(tmp_path):
             "forecast_expected_net_return_pct": 0.8,
             "forecast_live_sample_count": 40,
             "forecast_live_day_count": 35,
-            "entry_deadline": "14:55",
+            "entry_deadline": "14:50",
             "exit_contract": "T+1收盘卖出",
             "reason": "检查通过",
         },
         market_regime={"state": "允许寻找机会", "score": 62, "reason": "市场较强"},
     )
     page = path.read_text(encoding="utf-8")
-    assert "<title>WP T+1 净盈利决策</title>" in page
-    assert "当日唯一正式决策" in page
-    assert "14:20–15:00执行窗口" in page
+    assert "<title>WP 尾盘合格票 T+1 验证</title>" in page
+    assert "14:20–14:50 合格票" in page
+    assert "当前合格 2 支 / 观察 3 支" in page
     assert "真实样本 <strong>40</strong>" in page
     assert "独立交易日 <strong>35</strong>" in page
     assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" not in page
-    assert "成本后盈利概率" in page
-    assert "95%单侧下界" in page
-    assert "T+1 固定卖出合同" in page
+    assert "由人工决定买哪一支" in page
+    assert "候选截止 <strong>14:50</strong>" in page
+    assert "T+1 候选验证合同" in page

@@ -52,7 +52,7 @@
 ## 买入观察计划字段
 
 - `buy_rank`: 尾盘观察优先级，当前最多 1 支。
-- `portfolio_group`: 观察类型，当前为主票。
+- `portfolio_group`: 观察类型；基础研究层为资格候选，正式层为合格候选。
 - `decision_score`: 与 `tail_profit_score` 相同，保留该字段用于历史接口兼容。
 - `confirm_before_buy`: 14:50 前需要人工确认仍然成立的条件。
 - `reject_if`: 触发后应放弃买入的条件。

@@ -202,7 +202,7 @@ def _finalize(frame: pd.DataFrame, primary_codes: set[str]) -> pd.DataFrame:
     out.loc[out["qualification_status"].eq("已封板"), "observation_status"] = "已封板"
     out.loc[out["qualification_status"].eq("资格复核"), "observation_status"] = "资格复核"
     current_primary = out["ts_code"].isin(primary_codes) & out["qualification_status"].eq("合格")
-    out.loc[current_primary, "observation_status"] = "当前主票"
+    out.loc[current_primary, "observation_status"] = "基础候选"
     out = out.drop(columns=["_status_priority", "_tail_score", "_risk_score", "_entry_order"])
     for column in OBSERVATION_COLUMNS:
         if column not in out.columns:
@@ -221,7 +221,7 @@ def update_tail_observation(
     max_limit_up_pct: float = 10.0,
     invalid_grace_runs: int = INVALID_GRACE_RUNS,
 ) -> TailObservationResult:
-    """Persist primaries only inside 14:20-14:50 and hide the pool after close."""
+    """Persist all baseline-eligible candidates inside 14:20-14:50."""
     path = Path(state_path)
     existing = _dedupe(_read_state(path))
     market_time_text = str(health.get("market_data_time") or health.get("data_time") or "")
@@ -372,7 +372,7 @@ def update_tail_observation(
             {
                 "observation_trade_date": trade_date,
                 "quality_rank": "",
-                "observation_status": "已封板" if sealed else "当前主票",
+                "observation_status": "已封板" if sealed else "基础候选",
                 "qualification_status": "已封板" if sealed else "合格",
                 "qualification_reason": "已涨停，停止新买入" if sealed else "",
                 "invalid_count": 0,

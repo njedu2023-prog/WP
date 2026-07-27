@@ -290,7 +290,7 @@ def _blank_forecast() -> dict:
         {
             "forecast_model_version": T1_FORECAST_MODEL_VERSION,
             "forecast_mode": "\u6837\u672c\u4e0d\u8db3",
-            "forecast_warning": "真实14:20-14:55因果样本不足，正式策略强制NO_TRADE",
+            "forecast_warning": "真实14:20-14:50因果样本不足，候选不得标记为合格",
             "forecast_actionable": False,
             "forecast_path_status": "固定验证口径：信号参考价买入，T+1收盘卖出，扣除成本",
         }
@@ -301,7 +301,7 @@ def _blank_forecast() -> dict:
 def _forecast_row(row: pd.Series, samples: pd.DataFrame, cfg: dict) -> dict:
     result = _blank_forecast()
     weights = _similarity_weights(samples, row, cfg)
-    # End-of-day backtests are not causal 14:20-14:55 samples. They remain
+    # End-of-day backtests are not causal 14:20-14:50 samples. They remain
     # available for research diagnostics but can never authorize a live trade.
     weights.loc[~samples["sample_source"].eq("live_validation")] = 0.0
     usable = weights.gt(0)

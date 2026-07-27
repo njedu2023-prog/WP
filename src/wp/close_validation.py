@@ -11,8 +11,8 @@ from .calendar import now_cn
 from .main import ROOT, load_backtest_summaries
 from .report_html import render_html
 from .strategy_ledger import strategy_validation_rows, update_strategy_ledger
-from .tail_sampling import update_tail_sampling
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
+from .tail_sampling import update_tail_sampling
 from .tail_window import TAIL_PHASE_CLOSED, tail_window_phase
 from .utils import ensure_dir, write_json
 
@@ -47,7 +47,7 @@ def run_close_validation(
 
     health_path = output_root / "json" / "wp_data_healthcheck.json"
     health = _read_json(health_path)
-    health["buy_model_version"] = str(health.get("buy_model_version") or TAIL_PROFIT_MODEL_VERSION)
+    health["buy_model_version"] = TAIL_PROFIT_MODEL_VERSION
     health["wp_run_time"] = update_time
     health["report_revision"] = update_time
     health["validation_updated_at"] = update_time
@@ -180,7 +180,7 @@ def run_close_validation(
         health,
         latest_html,
         buy_plan=buy_plan,
-        observation_pool=tail_observation,
+        observation_pool=buy_plan,
         validation=report_validation,
         validation_summary=report_validation_summary,
         backtests=backtests,
@@ -195,7 +195,7 @@ def run_close_validation(
         health,
         archive_html,
         buy_plan=buy_plan,
-        observation_pool=tail_observation,
+        observation_pool=buy_plan,
         validation=report_validation,
         validation_summary=report_validation_summary,
         backtests=backtests,

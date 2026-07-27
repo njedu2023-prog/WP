@@ -28,6 +28,37 @@ def test_buy_decision_uses_execution_quality_not_probability_alone():
     assert result.buy_plan.iloc[0]["decision_score"] == result.buy_plan.iloc[0]["tail_profit_score"]
 
 
+def test_buy_decision_keeps_all_baseline_eligible_candidates():
+    base = {
+        "rank": 1,
+        "p_limitup_t1": 8,
+        "wp_score": 80,
+        "acceptance_score": 90,
+        "sector_strength_score": 90,
+        "stock_strength_score": 90,
+        "momentum_score": 90,
+        "capital_score": 90,
+        "model_confidence": 90,
+        "risk_penalty_score": 0,
+        "close_position": 90,
+        "amount_ratio_5d": 1.3,
+        "pct_chg": 9,
+        "price": 10,
+        "amount": 200000000,
+    }
+    frame = pd.DataFrame(
+        [
+            {**base, "ts_code": "B", "name": "乙", "sector_name": "板块B"},
+            {**base, "ts_code": "C", "name": "丙", "sector_name": "板块C"},
+        ]
+    )
+
+    result = build_buy_decision(frame)
+
+    assert set(result.buy_plan["ts_code"]) == {"B", "C"}
+    assert result.buy_plan["portfolio_group"].eq("资格候选").all()
+
+
 def test_missing_market_truth_is_not_counted_as_a_miss():
     today = pd.DataFrame([{"ts_code": "A", "rank": 1}])
     next_day = pd.DataFrame([{"ts_code": "A", "next_day_high": None, "next_day_limitup_price": 11.0}])

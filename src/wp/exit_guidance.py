@@ -129,13 +129,13 @@ def build_exit_guidance(
             reason = "无法解析行情时间，禁止临时改变固定卖出合同"
             checkpoint = "14:50复核"
         elif current_time >= time(15, 0):
-            action = "T+1收盘合同已结束"
+            action = "候选验证合同已结束"
             reason = "正式验证使用T+1收盘价并扣除统一往返成本"
             checkpoint = "等待收盘真值入库"
         elif current_time >= exit_time:
-            action = "执行T+1收盘卖出"
-            reason = "固定卖出合同进入14:50-15:00执行窗口"
-            checkpoint = "15:00前人工完成卖出"
+            action = "如实际持有，执行T+1收盘卖出"
+            reason = "候选验证统一按T+1收盘；是否实际持有由人工成交记录确认"
+            checkpoint = "实际持仓需在15:00前人工完成卖出"
         else:
             action = "按合同持有"
             reason = "训练、决策和验证统一使用T+1收盘退出，盘中不临时改规则"
@@ -147,7 +147,7 @@ def build_exit_guidance(
                 "target_trade_date": normalized_date,
                 "ts_code": code,
                 "name": str(plan.get("name") or market.get("name") or ""),
-                "holding_confirmation": "待人工确认实际持仓",
+                "holding_confirmation": "待人工确认是否实际买入",
                 "plan_time": plan.get("plan_time", ""),
                 "plan_price": "" if entry is None else entry,
                 "current_price": "" if current_price is None else current_price,
@@ -176,7 +176,7 @@ def _summary(count: int, table: pd.DataFrame | None = None) -> dict:
         "version": EXIT_GUIDANCE_VERSION,
         "record_count": int(count),
         "action_counts": actions,
-        "position_basis": "仅正式BUY策略记录；实际持仓与成交价须人工确认",
+        "position_basis": "全部合格候选的假设退出路径；实际持仓与成交价须人工确认",
         "exit_contract": "T+1_close",
         "manual_execution_only": True,
         "order_routing_enabled": False,
