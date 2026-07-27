@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import shutil
 import time
 from dataclasses import asdict
 from datetime import datetime, timedelta, timezone
@@ -10,6 +11,8 @@ from typing import Any
 
 import numpy as np
 import pandas as pd
+import pyarrow as pa
+import pyarrow.parquet as pq
 
 from .contracts import V3Config
 from .dataset import audit_panel, build_supervised_panel
@@ -24,6 +27,19 @@ DAILY_BASIC_FIELDS = (
 LIMIT_FIELDS = "trade_date,ts_code,up_limit,down_limit"
 ADJ_FIELDS = "ts_code,trade_date,adj_factor"
 MINUTE_FIELDS = "ts_code,trade_time,open,high,low,close,vol,amount"
+MINUTE_STORE_COLUMNS = (
+    "ts_code",
+    "trade_date",
+    "trade_time",
+    "day_open",
+    "open",
+    "high",
+    "low",
+    "close",
+    "vol",
+    "amount",
+    "slot_amount",
+)
 INDUSTRY_FIELDS = (
     "l1_code,l1_name,l2_code,l2_name,l3_code,l3_name,"
     "ts_code,name,in_date,out_date,is_new"
@@ -176,12 +192,21 @@ def build_three_year_panel(
             f"adjustment-factor coverage {adjustment_coverage:.2%} is below 98%"
         )
     daily_features = _build_prior_day_features(daily, daily_basic)
+    minute_partitions = _build_historical_minute_partitions(
+        client,
+        stock_basic=basic,
+        start_date=config.history.start_date,
+        end_date=end,
+        output_dir=output / "minute",
+        config=config,
+    )
 
     failures: list[dict[str, str]] = []
     partitions: list[dict[str, Any]] = []
     daily_quality: list[dict[str, Any]] = []
     month_rows: list[pd.DataFrame] = []
     current_month: str | None = None
+    current_minutes = pd.DataFrame(columns=MINUTE_STORE_COLUMNS)
     covered_dates: list[str] = []
 
     for index, trade_date in enumerate(target_dates, start=1):
@@ -189,10 +214,14 @@ def build_three_year_panel(
         if current_month is not None and month != current_month and month_rows:
             partitions.append(_write_partition(month_rows, current_month, partition_dir))
             month_rows = []
+        if month != current_month:
+            minute_path = minute_partitions.get(month)
+            if minute_path is None or not minute_path.exists():
+                raise RuntimeError(f"historical minute partition is missing for {month}")
+            current_minutes = pd.read_parquet(minute_path)
         current_month = month
         try:
             frame = _build_day_panel(
-                client,
                 trade_date=trade_date,
                 target_trade_date=next_date[trade_date],
                 daily=daily,
@@ -201,6 +230,9 @@ def build_three_year_panel(
                 stock_basic=basic,
                 industry_intervals=industry_intervals,
                 st_intervals=st_intervals,
+                minute_bars=current_minutes.loc[
+                    current_minutes["trade_date"].astype(str).eq(trade_date)
+                ].copy(),
                 config=config,
             )
             if frame.empty:
@@ -269,6 +301,10 @@ def build_three_year_panel(
         },
         "failed_trade_days": failures,
         "partitions": partitions,
+        "minute_partitions": {
+            month: str(path.as_posix())
+            for month, path in minute_partitions.items()
+        },
         "execution_contract": asdict(config.execution),
         "signal_slots": list(config.strategy.signal_slots),
         "exit_contract": config.strategy.exit_contract,
@@ -486,7 +522,6 @@ def _build_prior_day_features(daily: pd.DataFrame, basic: pd.DataFrame) -> pd.Da
 
 
 def _build_day_panel(
-    client: TushareHistoryClient,
     *,
     trade_date: str,
     target_trade_date: str,
@@ -496,29 +531,11 @@ def _build_day_panel(
     stock_basic: pd.DataFrame,
     industry_intervals: dict[str, list[tuple[str, str, str]]],
     st_intervals: dict[str, list[tuple[str, str]]],
+    minute_bars: pd.DataFrame,
     config: V3Config,
 ) -> pd.DataFrame:
-    day_dash = f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]}"
-    open_minutes = client.query(
-        "stk_mins",
-        cache_key=f"{trade_date}_open_5m",
-        paged=True,
-        start_date=f"{day_dash} 09:30:00",
-        end_date=f"{day_dash} 09:35:00",
-        freq="5min",
-        fields=MINUTE_FIELDS,
-    )
-    tail_minutes = client.query(
-        "stk_mins",
-        cache_key=f"{trade_date}_tail_5m",
-        paged=True,
-        start_date=f"{day_dash} 14:00:00",
-        end_date=f"{day_dash} 14:50:00",
-        freq="5min",
-        fields=MINUTE_FIELDS,
-    )
-    if open_minutes.empty or tail_minutes.empty:
-        raise RuntimeError("missing all-market five-minute bars")
+    if minute_bars.empty:
+        raise RuntimeError("missing historical five-minute decision snapshots")
 
     current_daily = _day(daily, trade_date)
     current_limit = _day(limits, trade_date)
@@ -602,12 +619,11 @@ def _build_day_panel(
             "ts_code",
         ].astype(str)
     )
-    open_symbols = set(open_minutes["ts_code"].dropna().astype(str))
-    tail_symbols = set(tail_minutes["ts_code"].dropna().astype(str))
+    minute_symbols = set(minute_bars["ts_code"].dropna().astype(str))
     quality = _minute_universe_quality(
         expected_symbols,
-        open_symbols,
-        tail_symbols,
+        minute_symbols,
+        minute_symbols,
         config,
         trade_date=trade_date,
     )
@@ -627,21 +643,16 @@ def _build_day_panel(
         np.nan,
     )
 
-    bars = pd.concat([open_minutes, tail_minutes], ignore_index=True)
+    bars = minute_bars.copy()
     bars["trade_time"] = pd.to_datetime(bars["trade_time"], errors="coerce")
     bars = bars.dropna(subset=["trade_time", "ts_code"]).sort_values(["ts_code", "trade_time"])
     for column in ("open", "high", "low", "close", "amount"):
         bars[column] = pd.to_numeric(bars[column], errors="coerce")
     open_price = (
-        open_minutes.assign(
-            trade_time=pd.to_datetime(open_minutes["trade_time"], errors="coerce"),
-            open=pd.to_numeric(open_minutes["open"], errors="coerce"),
-        )
-        .sort_values(["ts_code", "trade_time"])
-        .drop_duplicates("ts_code", keep="first")[["ts_code", "open"]]
-        .rename(columns={"open": "day_open"})
+        bars[["ts_code", "day_open"]]
+        .drop_duplicates("ts_code", keep="last")
     )
-    tail = bars[bars["trade_time"].dt.strftime("%H:%M").between("14:00", "14:50")].copy()
+    tail = bars[bars["trade_time"].dt.strftime("%H:%M").between("14:20", "14:50")].copy()
     rows: list[pd.DataFrame] = []
     for slot in config.strategy.signal_slots:
         slot_bars = tail[tail["trade_time"].dt.strftime("%H:%M").le(slot)].copy()
@@ -682,6 +693,197 @@ def _build_day_panel(
     ].reset_index(drop=True)
     panel.attrs["data_quality"] = quality
     return panel
+
+
+def _build_historical_minute_partitions(
+    client: TushareHistoryClient,
+    *,
+    stock_basic: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+    output_dir: Path,
+    config: V3Config,
+) -> dict[str, Path]:
+    months = sorted(
+        pd.period_range(
+            pd.Timestamp(_date(start_date)),
+            pd.Timestamp(_date(end_date)),
+            freq="M",
+        ).strftime("%Y%m")
+    )
+    manifest_path = output_dir / "manifest.json"
+    existing = _read_json(manifest_path)
+    if (
+        existing.get("start_date") == start_date
+        and existing.get("end_date") == end_date
+        and existing.get("signal_slots") == list(config.strategy.signal_slots)
+    ):
+        paths = {
+            month: output_dir / f"wp_v3_minutes_{month}.parquet"
+            for month in months
+        }
+        if all(path.exists() for path in paths.values()):
+            return paths
+
+    building = output_dir / "_building"
+    if building.exists():
+        shutil.rmtree(building)
+    building.mkdir(parents=True, exist_ok=True)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    writers: dict[str, pq.ParquetWriter] = {}
+    paths = {
+        month: output_dir / f"wp_v3_minutes_{month}.parquet"
+        for month in months
+    }
+    temporary_paths = {
+        month: building / f"wp_v3_minutes_{month}.parquet"
+        for month in months
+    }
+    query_failures: list[dict[str, str]] = []
+    codes = _historical_minute_codes(stock_basic, start_date, end_date)
+    if len(codes) < 1_000:
+        raise RuntimeError(
+            f"historical main-board minute universe has only {len(codes)} symbols"
+        )
+    try:
+        for index, row in enumerate(codes.to_dict(orient="records"), start=1):
+            code = str(row["ts_code"])
+            symbol_start = max(start_date, _date_field(row.get("list_date"), start_date))
+            symbol_end = min(end_date, _date_field(row.get("delist_date"), end_date))
+            try:
+                raw = client.query(
+                    "stk_mins",
+                    cache_key=(
+                        f"{code.replace('.', '_')}_{symbol_start}_{symbol_end}_5min"
+                    ),
+                    paged=True,
+                    ts_code=code,
+                    start_date=f"{_dash(symbol_start)} 09:30:00",
+                    end_date=f"{_dash(symbol_end)} 15:00:00",
+                    freq="5min",
+                    fields=MINUTE_FIELDS,
+                )
+                selected = _normalize_historical_minutes(
+                    raw,
+                    signal_slots=config.strategy.signal_slots,
+                )
+            except Exception as error:
+                query_failures.append({"ts_code": code, "error": str(error)[:300]})
+                if index == 1:
+                    raise RuntimeError(
+                        "historical minute probe failed; verify Tushare stk_mins "
+                        f"permission and parameters: {error}"
+                    ) from error
+                continue
+            for month, group in selected.groupby(
+                selected["trade_date"].astype(str).str[:6],
+                sort=False,
+            ):
+                if month not in temporary_paths or group.empty:
+                    continue
+                table = pa.Table.from_pandas(
+                    group.reindex(columns=MINUTE_STORE_COLUMNS),
+                    preserve_index=False,
+                )
+                writer = writers.get(month)
+                if writer is None:
+                    writer = pq.ParquetWriter(
+                        temporary_paths[month],
+                        table.schema,
+                        compression="zstd",
+                    )
+                    writers[month] = writer
+                writer.write_table(table)
+            if index % 50 == 0:
+                print(
+                    f"minute history {index}/{len(codes)}; "
+                    f"failed_symbols={len(query_failures)}",
+                    flush=True,
+                )
+    finally:
+        for writer in writers.values():
+            writer.close()
+
+    failure_rate = len(query_failures) / len(codes)
+    if failure_rate > 0.02:
+        raise RuntimeError(
+            f"historical minute symbol failure rate {failure_rate:.2%} exceeds 2%; "
+            f"examples={query_failures[:5]}"
+        )
+    missing_months = [
+        month for month, path in temporary_paths.items() if not path.exists()
+    ]
+    if missing_months:
+        raise RuntimeError(f"historical minute months are missing: {missing_months}")
+    for month, temporary in temporary_paths.items():
+        temporary.replace(paths[month])
+    manifest_path.write_text(
+        json.dumps(
+            {
+                "schema_version": "wp_v3_historical_minutes_1",
+                "start_date": start_date,
+                "end_date": end_date,
+                "signal_slots": list(config.strategy.signal_slots),
+                "symbol_count": len(codes),
+                "failed_symbols": query_failures,
+                "partitions": {
+                    month: str(path.as_posix())
+                    for month, path in paths.items()
+                },
+            },
+            ensure_ascii=False,
+            indent=2,
+            sort_keys=True,
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+    shutil.rmtree(building)
+    return paths
+
+
+def _historical_minute_codes(
+    stock_basic: pd.DataFrame,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    frame = stock_basic.copy()
+    listed = frame["list_date"].map(lambda value: _date_field(value, "29991231"))
+    delisted = frame["delist_date"].map(lambda value: _date_field(value, "29991231"))
+    return frame.loc[
+        frame["board"].astype(str).eq("main_board")
+        & listed.le(end_date)
+        & delisted.ge(start_date),
+        ["ts_code", "list_date", "delist_date"],
+    ].drop_duplicates("ts_code")
+
+
+def _normalize_historical_minutes(
+    frame: pd.DataFrame,
+    *,
+    signal_slots: tuple[str, ...],
+) -> pd.DataFrame:
+    if frame.empty:
+        return pd.DataFrame(columns=MINUTE_STORE_COLUMNS)
+    result = frame.reindex(columns=MINUTE_FIELDS.split(",")).copy()
+    result["trade_time"] = pd.to_datetime(result["trade_time"], errors="coerce")
+    result = result.dropna(subset=["ts_code", "trade_time"]).sort_values(
+        ["ts_code", "trade_time"],
+        kind="stable",
+    )
+    for column in ("open", "high", "low", "close", "vol", "amount"):
+        result[column] = pd.to_numeric(result[column], errors="coerce").astype(float)
+    result["ts_code"] = result["ts_code"].astype(str)
+    result["trade_date"] = result["trade_time"].dt.strftime("%Y%m%d")
+    grouped = result.groupby(["ts_code", "trade_date"], sort=False)
+    result["day_open"] = grouped["open"].transform("first")
+    result["high"] = grouped["high"].cummax()
+    result["low"] = grouped["low"].cummin()
+    cumulative_amount = grouped["amount"].cumsum()
+    bar_count = grouped.cumcount() + 1
+    result["slot_amount"] = cumulative_amount / bar_count
+    selected = result["trade_time"].dt.strftime("%H:%M").isin(signal_slots)
+    return result.loc[selected, MINUTE_STORE_COLUMNS].reset_index(drop=True)
 
 
 def _slot_features(bars: pd.DataFrame, slot: str) -> pd.DataFrame:
@@ -879,3 +1081,15 @@ def _date_field(value: Any, default: str) -> str:
 
 def _date(value: str) -> datetime:
     return datetime.strptime(str(value), "%Y%m%d")
+
+
+def _dash(value: str) -> str:
+    parsed = _date(value)
+    return parsed.strftime("%Y-%m-%d")
+
+
+def _read_json(path: Path) -> dict[str, Any]:
+    try:
+        return json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return {}

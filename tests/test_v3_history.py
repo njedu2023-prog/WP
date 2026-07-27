@@ -8,6 +8,7 @@ from wp.v3.history import (
     TushareHistoryClient,
     _industry_at,
     _minute_universe_quality,
+    _normalize_historical_minutes,
     _slot_features,
 )
 
@@ -74,3 +75,31 @@ def test_market_minute_coverage_below_contract_fails_closed():
             V3Config(),
             trade_date="20260727",
         )
+
+
+def test_historical_minutes_keep_only_signal_slots_and_normalize_amount():
+    frame = pd.DataFrame(
+        {
+            "ts_code": ["600000.SH"] * 4,
+            "trade_time": [
+                "2026-07-21 09:35:00",
+                "2026-07-21 14:15:00",
+                "2026-07-21 14:20:00",
+                "2026-07-21 14:25:00",
+            ],
+            "open": [10.0, 10.1, 10.2, 10.3],
+            "high": [10.1, 10.2, 10.4, 10.5],
+            "low": [9.9, 10.0, 10.1, 10.2],
+            "close": [10.0, 10.1, 10.3, 10.4],
+            "vol": [100.0, 200.0, 300.0, 400.0],
+            "amount": [1_000.0, 2_000.0, 3_000.0, 4_000.0],
+        }
+    )
+    result = _normalize_historical_minutes(
+        frame,
+        signal_slots=("14:20", "14:25"),
+    )
+    assert result["trade_time"].dt.strftime("%H:%M").tolist() == ["14:20", "14:25"]
+    assert result["day_open"].tolist() == [10.0, 10.0]
+    assert result["high"].tolist() == [10.4, 10.5]
+    assert result["slot_amount"].round(2).tolist() == [2_000.0, 2_500.0]

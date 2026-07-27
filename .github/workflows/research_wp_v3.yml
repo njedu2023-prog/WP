@@ -46,7 +46,7 @@ jobs:
       - name: Install dependencies
         run: pip install -r requirements.txt
       - name: Restore Tushare response cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: .cache/wp_v3_tushare
           key: wp-v3-raw-${{ github.run_id }}
@@ -54,12 +54,12 @@ jobs:
             wp-v3-raw-
       - name: Restore causal panel cache
         if: github.event.inputs.rebuild_history != 'true'
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
-          path: artifacts/wp_v3_history/panel
-          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r3-${{ github.run_id }}
+          path: artifacts/wp_v3_history
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r4-${{ github.run_id }}
           restore-keys: |
-            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r3-
+            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r4-
       - name: Build three-year point-in-time panel
         run: >-
           python scripts/build_wp_v3_history.py
@@ -68,6 +68,18 @@ jobs:
         env:
           PYTHONPATH: src
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+      - name: Save incremental Tushare response cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/wp_v3_tushare
+          key: wp-v3-raw-${{ github.run_id }}
+      - name: Save rebuilt causal panel cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r4-${{ github.run_id }}
       - name: Run chronological walk-forward research
         run: python scripts/run_wp_v3_research.py
         env:
