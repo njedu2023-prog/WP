@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import json
-from datetime import time
 from pathlib import Path
 
 import pandas as pd
+
+from .tail_window import accepts_new_tail_primary
 
 
 AUDIT_VERSION = "legacy_tail_history_audit_v1"
@@ -62,7 +63,8 @@ def build_legacy_history_audit(
         valid = [
             item
             for item in snapshots
-            if item["clock"] is not None and time(14, 20) <= item["clock"] < time(14, 55)
+            if item["clock"] is not None
+            and accepts_new_tail_primary(f"{trade_date} {item['clock']}")
         ]
         chosen = valid[-1] if valid else None
         if chosen is None:
@@ -70,7 +72,7 @@ def build_legacy_history_audit(
             code = ""
             name = ""
             status = "missing_valid_preclose_snapshot"
-            reason = "没有14:20-14:54可交易时点快照；盘后名单无效，按未交易记账"
+            reason = "没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账"
         else:
             decision = chosen["decision"]
             raw_action = str(decision.get("action") or "")

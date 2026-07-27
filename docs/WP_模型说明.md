@@ -30,7 +30,7 @@ P(T+1_close / first_qualified_signal_price - 1 - round_trip_cost > 0)
 
 ### 合格候选层
 
-`t1_qualified_cohort_v4` 在 14:20-14:50 对每支股票独立应用固定门槛。通过即输出 `QUALIFIED`，可以同时有多支。系统不设置“唯一首选”，也不使用连续领先作为硬门槛。
+`t1_qualified_cohort_v5` 在 14:20-14:50 对每支股票独立应用固定门槛。通过即输出 `QUALIFIED`，可以同时有多支。系统不设置“唯一首选”，也不使用连续领先作为硬门槛。
 
 ## 统计口径
 

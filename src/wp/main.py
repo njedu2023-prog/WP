@@ -242,7 +242,7 @@ def _qualified_buy_plan(
         else pd.Series(0.0, index=selected.index)
     )
     selected["decision_score"] = pd.to_numeric(probability_lower, errors="coerce").fillna(0.0)
-    selected["confirm_before_buy"] = "仅在14:50前人工确认可成交"
+    selected["confirm_before_buy"] = "仅在15:00前人工确认并确保可成交"
     selected["reject_if"] = "数据过期/封板不可买/价格显著偏离参考价"
     selected["buy_reason"] = selected.get(
         "decision_reason",

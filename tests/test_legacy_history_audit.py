@@ -44,3 +44,27 @@ def test_legacy_audit_never_treats_post_close_list_as_trade(tmp_path):
     assert day22["legacy_action"] == "NO_TRADE"
     assert not bool(day22["formal_strategy_eligible"])
     assert summarize_legacy_history_audit(table)["missing_valid_preclose_days"] == 3
+
+
+def test_legacy_audit_accepts_full_1450_minute_only(tmp_path):
+    _write(
+        tmp_path / "20260721" / "1450_decision.json",
+        "2026-07-21 14:50:59",
+        "建议空仓",
+    )
+    _write(
+        tmp_path / "20260721" / "1451_decision.json",
+        "2026-07-21 14:51:00",
+        "买入",
+        "600001.SH",
+    )
+
+    table = build_legacy_history_audit(
+        tmp_path,
+        start_date="20260721",
+        end_date="20260721",
+    )
+    row = table.iloc[0]
+    assert row["valid_preclose_snapshot_count"] == 1
+    assert row["invalid_late_snapshot_count"] == 1
+    assert row["legacy_action"] == "NO_TRADE"

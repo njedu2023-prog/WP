@@ -77,7 +77,8 @@ def render_markdown(
             f"- 当前合格票：{_escape(decision_support.get('qualified_count', 0))} 支",
             f"- 判断依据：{_escape(decision_support.get('reason', ''))}",
             f"- 真实样本/独立交易日：{_escape(decision_support.get('forecast_live_sample_count', 0))} / {_escape(decision_support.get('forecast_live_day_count', 0))}",
-            f"- 候选截止：{_escape(decision_support.get('entry_deadline', '14:50'))}",
+            f"- 候选截止：{_escape(decision_support.get('candidate_deadline', '14:50'))}",
+            f"- 人工买入截止：{_escape(decision_support.get('entry_deadline', '15:00'))}",
             f"- 卖出合同：{_escape(decision_support.get('exit_contract', 'T+1收盘'))}",
             "",
         ]

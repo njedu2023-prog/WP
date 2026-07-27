@@ -354,7 +354,8 @@ def test_report_html_renders_multi_candidate_objective(tmp_path):
             "forecast_expected_net_return_pct": 0.8,
             "forecast_live_sample_count": 40,
             "forecast_live_day_count": 35,
-            "entry_deadline": "14:50",
+            "candidate_deadline": "14:50",
+            "entry_deadline": "15:00",
             "exit_contract": "T+1收盘卖出",
             "reason": "检查通过",
         },
@@ -369,4 +370,5 @@ def test_report_html_renders_multi_candidate_objective(tmp_path):
     assert "仅辅助人工下单，不接入券商、不读取账户、不自动交易" not in page
     assert "由人工决定买哪一支" in page
     assert "候选截止 <strong>14:50</strong>" in page
+    assert "人工买入截止 <strong>15:00</strong>" in page
     assert "T+1 候选验证合同" in page

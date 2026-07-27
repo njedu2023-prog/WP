@@ -8,6 +8,7 @@ import pandas as pd
 TAIL_WINDOW_START = time(14, 20)
 OFFICIAL_DECISION_START = TAIL_WINDOW_START
 TAIL_WINDOW_END = time(14, 50)
+TAIL_WINDOW_END_EXCLUSIVE = time(14, 51)
 MARKET_CLOSE = time(15, 0)
 
 TAIL_PHASE_UNKNOWN = "unknown"
@@ -31,7 +32,9 @@ def tail_window_phase(value: object) -> str:
     clock = parsed.time()
     if clock < TAIL_WINDOW_START:
         return TAIL_PHASE_BEFORE
-    if clock <= TAIL_WINDOW_END:
+    # "14:50" denotes the full scheduled minute. A snapshot stamped
+    # 14:50:xx is still the 14:50 checkpoint and must remain eligible.
+    if clock < TAIL_WINDOW_END_EXCLUSIVE:
         return TAIL_PHASE_ACTIVE
     if clock < MARKET_CLOSE:
         return TAIL_PHASE_FROZEN

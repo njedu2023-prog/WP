@@ -11,7 +11,7 @@ import pandas as pd
 from .calendar import CN_TZ, next_trading_day_str
 from .data_loader import _read_remote_text
 from .tail_profit_model import TAIL_PROFIT_MODEL_VERSION
-from .tail_window import TAIL_WINDOW_END, TAIL_WINDOW_START
+from .tail_window import accepts_new_tail_primary
 from .t1_forecast import FORECAST_COLUMNS
 
 
@@ -75,7 +75,7 @@ def _in_tail_window(value: object) -> bool:
     parsed = _parse_dt(value)
     if parsed is None:
         return False
-    return TAIL_WINDOW_START <= parsed.time() <= TAIL_WINDOW_END
+    return accepts_new_tail_primary(parsed)
 
 
 def _limit_threshold(ts_code: str) -> float:

@@ -88,7 +88,7 @@ def test_decision_support_freezes_after_1450():
     result = build_decision_support(
         _observation(),
         {"state": "允许寻找机会", "score": 60},
-        "2026-07-20 14:50:01",
+        "2026-07-20 14:51:00",
     )
 
     assert result.summary["action_code"] == "FROZEN"

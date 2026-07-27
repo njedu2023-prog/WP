@@ -7,13 +7,12 @@ import pandas as pd
 from .tail_window import (
     TAIL_PHASE_CLOSED,
     TAIL_PHASE_FROZEN,
-    TAIL_WINDOW_END,
     TAIL_WINDOW_START,
     tail_window_phase,
 )
 
 
-DECISION_SUPPORT_VERSION = "t1_qualified_cohort_v4"
+DECISION_SUPPORT_VERSION = "t1_qualified_cohort_v5"
 
 DEFAULT_GUIDANCE_CONFIG = {
     "guidance_min_stable_runs": 2,
@@ -53,6 +52,7 @@ DECISION_COLUMNS = [
     "checks_passed",
     "checks_failed",
     "decision_reason",
+    "candidate_deadline",
     "entry_deadline",
     "exit_contract",
     "next_checkpoint",
@@ -111,7 +111,8 @@ def _summary(
         "market_state": str(market_regime.get("state") or "数据不足"),
         "market_score": _num(market_regime.get("score")),
         "reason": reason,
-        "entry_deadline": "14:50",
+        "candidate_deadline": "14:50",
+        "entry_deadline": "15:00",
         "exit_contract": "T+1收盘卖出",
         "next_checkpoint": next_checkpoint,
         "selection_contract": "发布全部合格票，由人工决定买哪一支",
@@ -214,18 +215,6 @@ def build_decision_support(
                 next_checkpoint="14:20",
             )
         )
-    if market_ts.time() > TAIL_WINDOW_END:
-        return _empty_result(
-            _summary(
-                market_regime,
-                action="候选已冻结",
-                action_code="FROZEN",
-                reason="14:50后禁止新增合格票",
-                is_final=True,
-                next_checkpoint="15:00停止可买展示",
-            )
-        )
-
     pool = observation_pool.copy() if observation_pool is not None else pd.DataFrame()
     if not pool.empty:
         qualification = (
@@ -302,7 +291,8 @@ def build_decision_support(
                 "checks_passed": "、".join(passed),
                 "checks_failed": "、".join(failed),
                 "decision_reason": reason,
-                "entry_deadline": "14:50",
+                "candidate_deadline": "14:50",
+                "entry_deadline": "15:00",
                 "exit_contract": "T+1收盘卖出",
                 "next_checkpoint": "首次合格即锁定" if is_qualified else "下一次5分钟快照",
                 "manual_execution_only": True,
@@ -328,7 +318,11 @@ def build_decision_support(
         action_code=action_code,
         reason=reason,
         is_final=False,
-        next_checkpoint="下一次5分钟快照" if market_ts.time() < TAIL_WINDOW_END else "14:50候选集合冻结",
+        next_checkpoint=(
+            "14:50候选集合冻结"
+            if market_ts.hour == 14 and market_ts.minute == 50
+            else "下一次5分钟快照"
+        ),
         candidate_count=len(pool),
         qualified_count=qualified_count,
     )

@@ -155,7 +155,7 @@ def _candidate_row(
         "sector_name": row.get("sector_name", ""),
         "plan_price": row.get("price", ""),
         "entry_contract": ENTRY_CONTRACT,
-        "entry_deadline": f"{plan_trade_date} 14:50:00",
+        "entry_deadline": f"{plan_trade_date} 15:00:00",
         "target_trade_date": target_trade_date,
         "exit_contract": EXIT_CONTRACT,
         "forecast_profit_probability": row.get("forecast_profit_probability", ""),

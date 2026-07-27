@@ -237,7 +237,7 @@ def test_tail_observation_freezes_after_1450_without_adding_a_new_candidate(tmp_
         later,
         _plan("000002.SZ"),
         later,
-        _health("2026-07-17 14:50:01"),
+        _health("2026-07-17 14:51:00"),
         state_path,
     )
 
