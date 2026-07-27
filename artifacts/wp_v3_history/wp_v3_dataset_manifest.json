@@ -25,8 +25,8 @@
   },
   "exit_contract": "T+1_close",
   "failed_trade_days": [],
-  "feature_version": "wp_v3_causal_features_5",
-  "generated_at": "2026-07-27T17:45:34.247024+00:00",
+  "feature_version": "wp_v4_causal_features_6",
+  "generated_at": "2026-07-27T19:24:12.130254+00:00",
   "minute_partitions": {
     "202307": "/home/runner/work/WP/WP/artifacts/wp_v3_history/minute/wp_v3_minutes_202307.parquet",
     "202308": "/home/runner/work/WP/WP/artifacts/wp_v3_history/minute/wp_v3_minutes_202308.parquet",
@@ -80,7 +80,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202307.parquet",
       "positive_rows": 2243,
       "rows": 4274,
-      "sha256": "fda87a9c9ab7bf957fd6601d409ab7ffdb034ef9651cddc3a48be21ae667f17f",
+      "sha256": "285a1f46c1901bf32663f459cd34831bce4dd94e1a8233cab29ca326e807181f",
       "start_trade_date": "20230727",
       "symbols": 686,
       "trade_days": 3
@@ -92,7 +92,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202308.parquet",
       "positive_rows": 9761,
       "rows": 28203,
-      "sha256": "e7b429554a9d826a9c3572b9ef88c24d206a44328f9854f5306d2a6f4db5ed09",
+      "sha256": "21ceda0b427e1ee480f8b0be13d07f37fac28968758511d12550ca666a72845d",
       "start_trade_date": "20230801",
       "symbols": 1168,
       "trade_days": 23
@@ -104,7 +104,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202309.parquet",
       "positive_rows": 6297,
       "rows": 18625,
-      "sha256": "b20e4093087ef8dd2a18c16905b29336032035d3db96e4112dcd747e144b1221",
+      "sha256": "ed236aac7ceed74c2843d66c86221276e6989d59fb716e885f447d0458578520",
       "start_trade_date": "20230901",
       "symbols": 991,
       "trade_days": 20
@@ -116,7 +116,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202310.parquet",
       "positive_rows": 6636,
       "rows": 17872,
-      "sha256": "2690cea5fbaa3947ada6819a6c332597a5b9117f705e85c6fc0f8e1fcb71491e",
+      "sha256": "314ca02797c64c0d0f815544be86ff31344020cde6313b2c6ecb57633b0e59fe",
       "start_trade_date": "20231009",
       "symbols": 972,
       "trade_days": 17
@@ -128,7 +128,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202311.parquet",
       "positive_rows": 9179,
       "rows": 24243,
-      "sha256": "94175f3d01e0dba091e63c5001215b90569ab8bfa4a07ba4a6693673b8de547e",
+      "sha256": "a040aadda09cc9d40a2315c495a9787a2e94d2cdf0d9d3723043871be56d66b8",
       "start_trade_date": "20231101",
       "symbols": 1230,
       "trade_days": 22
@@ -140,7 +140,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202312.parquet",
       "positive_rows": 8072,
       "rows": 22393,
-      "sha256": "ee45ad73f0369023cf7759e7d0a172616a3ded2a21504303666f823be1266408",
+      "sha256": "725682967450f1dba7f14c1d68daf7db94985d073f07e50a4686c4f64adff1c2",
       "start_trade_date": "20231201",
       "symbols": 1194,
       "trade_days": 21
@@ -152,7 +152,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202401.parquet",
       "positive_rows": 8889,
       "rows": 24584,
-      "sha256": "3e34e504df2f15f9cd2084d67fe460d729ec2fbe4e230a3b9ddb713e78468e72",
+      "sha256": "74d842f31cfc1f54b1e237dfe915f91fe0bae8d4a7a59cfbfbdc71d04eefe723",
       "start_trade_date": "20240102",
       "symbols": 1192,
       "trade_days": 22
@@ -164,7 +164,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202402.parquet",
       "positive_rows": 11489,
       "rows": 20860,
-      "sha256": "2b1f95ddf92661604b2f528e10f3c41111956a7254201f204e45616928eb49a6",
+      "sha256": "165752eee9add8ab37e3d16c61b461db9960368169da4fe9502f876bdb581632",
       "start_trade_date": "20240201",
       "symbols": 1074,
       "trade_days": 15
@@ -176,7 +176,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202403.parquet",
       "positive_rows": 12434,
       "rows": 31525,
-      "sha256": "b531ba7ae4db13c0e3297866d0414d49ff9422a7119e8b6edf6a66e36cb68138",
+      "sha256": "1a1153f8322949a937ce927edd8188db35e867d96a751f1b8d1c1fee7d11d468",
       "start_trade_date": "20240301",
       "symbols": 1362,
       "trade_days": 21
@@ -188,7 +188,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202404.parquet",
       "positive_rows": 10985,
       "rows": 26398,
-      "sha256": "ae5cc2c3018fcca4321f9beabef118615d4287b2b32d3a4a8b46865455170d9e",
+      "sha256": "9e04f9161e45c23b4d8f687b10d4ef7c650530687b06e57b5f8bd8f7bd5c1b2c",
       "start_trade_date": "20240401",
       "symbols": 1229,
       "trade_days": 20
@@ -200,7 +200,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202405.parquet",
       "positive_rows": 9330,
       "rows": 24904,
-      "sha256": "dc688b12d73945dcdc670b473dff0a4e96c5c64a6db3e525a39a8fbc148a30c0",
+      "sha256": "d645e1d828e86d24562d05142d1cd58e76c1dbf81c0d3eef3eb3f7b84e61adbe",
       "start_trade_date": "20240506",
       "symbols": 1205,
       "trade_days": 20
@@ -212,7 +212,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202406.parquet",
       "positive_rows": 7529,
       "rows": 19688,
-      "sha256": "b8d9684a0d9b1616d94789d2cddee5666c6a218532fc84b1aa4377daac83a8fb",
+      "sha256": "831d93ff3e0cb168587da19c02d3a19f5e246a0f91b599ffb22bec2354e6a2c9",
       "start_trade_date": "20240603",
       "symbols": 881,
       "trade_days": 19
@@ -224,7 +224,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202407.parquet",
       "positive_rows": 8126,
       "rows": 20493,
-      "sha256": "d7b79a9f23cc6be6be8bdba047b21023b0adeb39d20f0ca310db553f2a3e873c",
+      "sha256": "1d897a633c70a62ec32cc87e97d2aa6985ffe2f9e228e81b12d831896bc642ae",
       "start_trade_date": "20240701",
       "symbols": 801,
       "trade_days": 23
@@ -236,7 +236,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202408.parquet",
       "positive_rows": 5078,
       "rows": 15317,
-      "sha256": "1d319f37442656ce8a81b447aed0acbae3ad95806504d5cb06be3d25fc46b821",
+      "sha256": "0af6fcc94903949c3e43b3b3eeb52a2b328a258afdb7c623fbc84571ad8834b0",
       "start_trade_date": "20240801",
       "symbols": 782,
       "trade_days": 22
@@ -248,7 +248,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202409.parquet",
       "positive_rows": 13579,
       "rows": 20216,
-      "sha256": "9d8fda0bb5f9f7916c1479f075c1859e5ca2e1cb2a5d82c92a53191dc6fb49ce",
+      "sha256": "f829928868c48506fa016369e4600ed75bb64b503a63b34ad457130587372fbb",
       "start_trade_date": "20240902",
       "symbols": 1279,
       "trade_days": 19
@@ -260,7 +260,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202410.parquet",
       "positive_rows": 17309,
       "rows": 44999,
-      "sha256": "74b88358a8ef3cf952d190fc9e659f6ca6268908458db7e4a31285c7e8824100",
+      "sha256": "9f690b351cc99c5c9f5c8a931344d607344e8192bd5b2f7bf07e3541a1805bd3",
       "start_trade_date": "20241008",
       "symbols": 1699,
       "trade_days": 18
@@ -272,7 +272,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202411.parquet",
       "positive_rows": 25687,
       "rows": 59663,
-      "sha256": "5eea80053e117f74bc113c1ba199ccdd6e5ed940ed1caf49a8ca6495f5303533",
+      "sha256": "c4aed3c0aec3c1446e595d2da124ea04e2b7519f81c81d470ded607e53eb6f3c",
       "start_trade_date": "20241101",
       "symbols": 2001,
       "trade_days": 21
@@ -284,7 +284,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202412.parquet",
       "positive_rows": 18525,
       "rows": 51396,
-      "sha256": "d38d3d742055337186fd9654cb7294b419184ea8f7ad4fc7f909883f6e8564f3",
+      "sha256": "6cfdc64995b66ba9391c1d5b2f2d1463aaf507360580ab6f3aab2040594c9f2e",
       "start_trade_date": "20241202",
       "symbols": 2017,
       "trade_days": 22
@@ -296,7 +296,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202501.parquet",
       "positive_rows": 11731,
       "rows": 31373,
-      "sha256": "773c2ac45fbf6bcbf96fac77a6a1944de976ea440cf4be13bec6d92967780b73",
+      "sha256": "f3d210d985d27d0668310d840042c531cfa9e77c02ffc38106ceaf874afcd2b7",
       "start_trade_date": "20250102",
       "symbols": 1355,
       "trade_days": 18
@@ -308,7 +308,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202502.parquet",
       "positive_rows": 21161,
       "rows": 46598,
-      "sha256": "61772fb6e99d655309a40833f96d077c453719cbfa995703db3fceed2befab90",
+      "sha256": "7b522f79e94e5b3a975cdcb49509269df05f61a1ea0b66c56e5c27b336249465",
       "start_trade_date": "20250205",
       "symbols": 1645,
       "trade_days": 18
@@ -320,7 +320,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202503.parquet",
       "positive_rows": 17785,
       "rows": 46942,
-      "sha256": "5b26a463edd6b3a0920749c6c1435409b23dadcdc5e2077a50072fb5393e8fce",
+      "sha256": "5725802662bb927440c13523156d831147c1140d672a75bd862bc10c49959f1b",
       "start_trade_date": "20250303",
       "symbols": 1803,
       "trade_days": 21
@@ -332,7 +332,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202504.parquet",
       "positive_rows": 15979,
       "rows": 34006,
-      "sha256": "4ad807cc1a0a83e21c02159f4665150432d89e53b426549de2aa0dea139ba658",
+      "sha256": "bcc67d27326791c4b1624eb1e68ea34072ade294ccee11eeff4ec01984b54201",
       "start_trade_date": "20250401",
       "symbols": 1598,
       "trade_days": 21
@@ -344,7 +344,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202505.parquet",
       "positive_rows": 11887,
       "rows": 33178,
-      "sha256": "006be673685e82208b2e188c844a387d1c08a36e212fe711b37ae06070cacb1b",
+      "sha256": "4cf783c9a801484ee264b3ac790fccead0d2c43b67585c55d2d84e2d1f3b964d",
       "start_trade_date": "20250506",
       "symbols": 1625,
       "trade_days": 19
@@ -356,7 +356,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202506.parquet",
       "positive_rows": 15455,
       "rows": 38114,
-      "sha256": "b7a75c88ecc0b41c06a99e37f35a9304f92405cb5ba3aa63aaf98e64675078d1",
+      "sha256": "5d9fc55c1b04069bd4dd67b6ed1fe1478cb1a98db72630a6d410bc7898a775ce",
       "start_trade_date": "20250603",
       "symbols": 1734,
       "trade_days": 20
@@ -368,7 +368,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202507.parquet",
       "positive_rows": 23103,
       "rows": 59755,
-      "sha256": "651bfc7c6c503756d1146af47f9c81984283bacbc7b14b676b36deb0569145e5",
+      "sha256": "e477c8a778e63954e1adfc261d7f865359e754cd4061aa9139cda3b188e018ff",
       "start_trade_date": "20250701",
       "symbols": 2054,
       "trade_days": 23
@@ -380,7 +380,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202508.parquet",
       "positive_rows": 33351,
       "rows": 73627,
-      "sha256": "b2ed0f83b11ab73ba6ed9f62eaf46abc6a3dbbb42388d371f7a49fb94d4a0d43",
+      "sha256": "98633d3c239e1704a8c97a9a9d78f5d8007a4f574a284f07092136478ab0105b",
       "start_trade_date": "20250801",
       "symbols": 2164,
       "trade_days": 21
@@ -392,7 +392,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202509.parquet",
       "positive_rows": 31733,
       "rows": 74609,
-      "sha256": "77a884505ecb10ab3ce5bdeab5cc872b1abecfcc6783de579cb8a62ddce7bf14",
+      "sha256": "5033933eed91e4ad3d2e985b1b1d95a6866468c4e00b61816aab2a68a12089da",
       "start_trade_date": "20250901",
       "symbols": 2052,
       "trade_days": 22
@@ -404,7 +404,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202510.parquet",
       "positive_rows": 21569,
       "rows": 53047,
-      "sha256": "ae190d98e2963c08cbe20cf7e5f684c688bc6059f66b27e9a0b1b965d102a6b2",
+      "sha256": "a7d4724fea6c1247aefa59ea3e46ebf4775657d389da009262ff0f35d097acb6",
       "start_trade_date": "20251009",
       "symbols": 1830,
       "trade_days": 17
@@ -416,7 +416,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202511.parquet",
       "positive_rows": 20898,
       "rows": 56497,
-      "sha256": "97d35be7f36cf012bb90d6ba9a716464a0ed3d8ba9c2330e4022b786d3723e4c",
+      "sha256": "afcd789556f028a2e26390a0b6c35e4e7313181add299a4cb0d2c590692a42d7",
       "start_trade_date": "20251103",
       "symbols": 1969,
       "trade_days": 20
@@ -428,7 +428,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202512.parquet",
       "positive_rows": 26401,
       "rows": 63785,
-      "sha256": "ae067512c59a480993da098af710f80d29567ac0c2ec201f567e427dd22e08d7",
+      "sha256": "445a5adf2b43bde3579f076a24bc4655335f48515f288c525e7e75d415d9c1ed",
       "start_trade_date": "20251201",
       "symbols": 1875,
       "trade_days": 23
@@ -440,7 +440,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202601.parquet",
       "positive_rows": 33406,
       "rows": 80405,
-      "sha256": "9298523f51573802f53cb1ef2bdd074193bdc19f0a09b612d937594fb1695d20",
+      "sha256": "17afcee41f837fe836ea9e94502457748d4c0750a16ed01426df45437c30c654",
       "start_trade_date": "20260105",
       "symbols": 2159,
       "trade_days": 20
@@ -452,7 +452,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202602.parquet",
       "positive_rows": 22204,
       "rows": 47983,
-      "sha256": "5b4ad41b58c804bb2e7a04831221be21655fdc86c85f4c431d9a6112bd332b31",
+      "sha256": "24f603ce9d76de75acc6a64a034709a7dc0ea4335bbe2a2ebcbbc873af470ecd",
       "start_trade_date": "20260202",
       "symbols": 1836,
       "trade_days": 14
@@ -464,7 +464,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202603.parquet",
       "positive_rows": 30156,
       "rows": 78604,
-      "sha256": "4561a61e08eaa6349cd0be975ec2d5beeef01847e2332351833da2a2ba733140",
+      "sha256": "703585e06188595d1b0bb2304bf5251638685437c8d3032056ac66951facc25c",
       "start_trade_date": "20260302",
       "symbols": 1906,
       "trade_days": 22
@@ -476,7 +476,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202604.parquet",
       "positive_rows": 28691,
       "rows": 65545,
-      "sha256": "2becc770e4e31c09a442e900e58e592b6b08034276647886b888f34a4ff5a476",
+      "sha256": "7747fcb67946aecca0d0fcd3d01f8b9f7a188ce7d25455c27e03709a3e0de175",
       "start_trade_date": "20260401",
       "symbols": 1825,
       "trade_days": 21
@@ -488,7 +488,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202605.parquet",
       "positive_rows": 26586,
       "rows": 68337,
-      "sha256": "aa04c17a730a95cd8813baf21b4d7367c867d95609457c0cb70e6dbcb09e60b7",
+      "sha256": "35c6e176ebc1dcadd464c3d54c2a04b49188acf6345f05560d78ee2ccce73321",
       "start_trade_date": "20260506",
       "symbols": 1840,
       "trade_days": 18
@@ -500,7 +500,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202606.parquet",
       "positive_rows": 30470,
       "rows": 71440,
-      "sha256": "9e878d57b30010761cb07c27725b8cd081a3aabd1b8a1fd5b3df0ae9aa295180",
+      "sha256": "da82024f32edbc10066e3eb14fb7c583640d3b2bf2fa491259b470ab47be3167",
       "start_trade_date": "20260601",
       "symbols": 1664,
       "trade_days": 21
@@ -512,7 +512,7 @@
       "path": "/home/runner/work/WP/WP/artifacts/wp_v3_history/panel/wp_v3_panel_202607.parquet",
       "positive_rows": 20183,
       "rows": 52392,
-      "sha256": "c6963e2fff640eb27fb8f58fefcc4671383c6a3802a2af167e61d071446a092d",
+      "sha256": "c80c587d0cf8e4a568ec8d97d7671da7ef62d9ecb7e03a6c71d19eaf2160dd54",
       "start_trade_date": "20260701",
       "symbols": 1482,
       "trade_days": 18
@@ -531,5 +531,5 @@
     "14:45",
     "14:50"
   ],
-  "strategy_id": "wp_t1_net_profit_v3"
+  "strategy_id": "wp_t1_net_profit_v4"
 }
