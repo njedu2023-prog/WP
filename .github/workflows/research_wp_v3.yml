@@ -18,6 +18,10 @@ on:
         required: false
         default: false
         type: boolean
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v3_research.txt
   schedule:
     # Monthly challenger research outside trading hours.
     - cron: "20 18 1 * *"
