@@ -46,7 +46,7 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 120
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -76,12 +76,22 @@ jobs:
             wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
             wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
       - name: Build five-year causal panel for a full three-year OOS audit
-        run: >-
-          python scripts/build_wp_v3_history.py
-          --start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.start_date || '20210726') }}"
-          --end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.end_date || '20260724') }}"
-          --evaluation-start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.evaluation_start_date || '20230727') }}"
-          --evaluation-end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.evaluation_end_date || '20260724') }}"
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/build_wp_v3_history.py \
+            --start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.start_date || '20210726') }}" \
+            --end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.end_date || '20260724') }}" \
+            --evaluation-start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.evaluation_start_date || '20230727') }}" \
+            --evaluation-end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.evaluation_end_date || '20260724') }}" &
+          builder_pid=$!
+          stop_builder() {
+            kill -TERM "$builder_pid" 2>/dev/null || true
+            wait "$builder_pid" || true
+          }
+          trap stop_builder TERM INT
+          wait "$builder_pid"
+          trap - TERM INT
         env:
           PYTHONPATH: src
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
