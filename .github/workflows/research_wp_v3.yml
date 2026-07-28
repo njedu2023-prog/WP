@@ -50,8 +50,33 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  route:
+    runs-on: ubuntu-latest
+    outputs:
+      source_run_id: ${{ steps.route.outputs.source_run_id }}
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve full-run or retained-fold route
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          source_run_id="$REQUESTED_SOURCE_RUN_ID"
+          if [[ -z "$source_run_id" && "$EVENT_NAME" == "push" ]]; then
+            source_run_id="$(
+              sed -n 's/^source_run_id=//p' scripts/trigger_wp_v5_research.txt \
+                | tail -n 1 \
+                | tr -cd '0-9'
+            )"
+          fi
+          echo "source_run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+
   prepare:
-    if: ${{ inputs.source_run_id == '' }}
+    needs: route
+    if: ${{ needs.route.outputs.source_run_id == '' }}
     runs-on: ubuntu-latest
     timeout-minutes: 240
     steps:
@@ -158,8 +183,8 @@ jobs:
           retention-days: 1
 
   aggregate:
-    needs: [prepare, folds]
-    if: ${{ always() && (inputs.source_run_id != '' || (needs.prepare.result == 'success' && needs.folds.result == 'success')) }}
+    needs: [route, prepare, folds]
+    if: ${{ always() && (needs.route.outputs.source_run_id != '' || (needs.prepare.result == 'success' && needs.folds.result == 'success')) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
     steps:
@@ -179,17 +204,17 @@ jobs:
             wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r10-
           fail-on-cache-miss: true
       - name: Download current-run walk-forward shards
-        if: ${{ inputs.source_run_id == '' }}
+        if: ${{ needs.route.outputs.source_run_id == '' }}
         uses: actions/download-artifact@v5
         with:
           pattern: wp-v5-fold-*
           path: artifacts/wp_v3_shards
           merge-multiple: false
       - name: Download retained walk-forward shards for recovery
-        if: ${{ inputs.source_run_id != '' }}
+        if: ${{ needs.route.outputs.source_run_id != '' }}
         uses: actions/download-artifact@v5
         with:
-          run-id: ${{ inputs.source_run_id }}
+          run-id: ${{ needs.route.outputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
           pattern: wp-v5-fold-*
           path: artifacts/wp_v3_shards
