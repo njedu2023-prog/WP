@@ -177,6 +177,9 @@ def run_v3() -> dict[str, Any]:
     assert_ledger_invariants(ledger, config)
     save_shadow_ledger(ledger, ledger_path)
     replay = _read_json(output / "json" / "wp_v3_historical_replay.json")
+    legacy_audit = _read_json(
+        output / "json" / "wp_legacy_history_audit.json"
+    )
     current_session = next(
         (
             session
@@ -311,6 +314,7 @@ def run_v3() -> dict[str, Any]:
         registry=registry,
         config=config,
         replay=replay,
+        legacy_audit=legacy_audit,
     )
     archive = (
         output
@@ -327,6 +331,7 @@ def run_v3() -> dict[str, Any]:
         registry=registry,
         config=config,
         replay=replay,
+        legacy_audit=legacy_audit,
     )
     return manifest
 
@@ -484,6 +489,9 @@ def _write_not_ready(
     }
     ledger = load_shadow_ledger(output / "json" / "wp_v3_candidate_ledger.json")
     replay = _read_json(output / "json" / "wp_v3_historical_replay.json")
+    legacy_audit = _read_json(
+        output / "json" / "wp_legacy_history_audit.json"
+    )
     write_json(output / "json" / "wp_manifest.json", manifest)
     render_v3_dashboard(
         output / "html_reports" / "latest.html",
@@ -493,6 +501,7 @@ def _write_not_ready(
         registry=registry,
         config=config,
         replay=replay,
+        legacy_audit=legacy_audit,
     )
     return manifest
 

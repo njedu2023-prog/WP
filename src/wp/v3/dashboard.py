@@ -20,6 +20,7 @@ def render_v3_dashboard(
     registry: dict[str, Any],
     config: V3Config,
     replay: dict[str, Any] | None = None,
+    legacy_audit: dict[str, Any] | None = None,
 ) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -71,6 +72,7 @@ def render_v3_dashboard(
     ]
     replay = replay or {}
     replay_candidates = replay.get("candidates", [])
+    legacy_audit = legacy_audit or {}
     backtest = model.get("backtest", {})
     shadow = model.get("shadow", {})
     live_visible = bool(manifest.get("live_display_allowed", phase == "SIGNAL"))
@@ -323,6 +325,7 @@ gap:16px;padding:2px 0;font-weight:700}}
   {_validation_summary(historical)}
   {_validation_table(historical)}
 </section>
+{_legacy_audit_section(legacy_audit)}
 <section class="band" id="research">
   <details class="disclosure">
     <summary>
@@ -699,6 +702,71 @@ def _validation_summary(records: list[dict[str, Any]]) -> str:
     if pending:
         summary += f"<p class='foot'>另有 {pending} 支待验证。</p>"
     return summary
+
+
+def _legacy_audit_section(audit: dict[str, Any]) -> str:
+    records = list(audit.get("records") or [])
+    if not records:
+        return ""
+    rows = []
+    cards = []
+    for row in sorted(
+        records,
+        key=lambda item: str(item.get("plan_trade_date") or ""),
+        reverse=True,
+    ):
+        status, tone = _legacy_audit_status(row)
+        rows.append(
+            "<tr>"
+            f"<td>{_format_trade_date(row.get('plan_trade_date'))}</td>"
+            f"<td class='num'>{int(row.get('valid_preclose_snapshot_count') or 0)}</td>"
+            f"<td class='num'>{int(row.get('invalid_late_snapshot_count') or 0)}</td>"
+            f"<td>{_e(row.get('earliest_snapshot_time') or '—')}</td>"
+            f"<td>{_e(row.get('latest_snapshot_time') or '—')}</td>"
+            f"<td class='{tone}'>{_e(status)}</td>"
+            f"<td>{_e(row.get('audit_reason') or '')}</td>"
+            "</tr>"
+        )
+        cards.append(
+            '<article class="validation-card">'
+            '<div class="validation-card-head"><div>'
+            f"<strong>{_format_trade_date(row.get('plan_trade_date'))}</strong>"
+            "<span class='code'>旧系统盘中证据</span></div>"
+            f"<span class='tag {tone}'>{_e(status)}</span></div>"
+            '<dl class="card-stats" style="margin-top:12px">'
+            f"<div><dt>合法盘中快照</dt><dd>{int(row.get('valid_preclose_snapshot_count') or 0)}</dd></div>"
+            f"<div><dt>盘后无效快照</dt><dd>{int(row.get('invalid_late_snapshot_count') or 0)}</dd></div>"
+            "</dl>"
+            f"<p class='foot'>{_e(row.get('audit_reason') or '')}</p>"
+            "</article>"
+        )
+    return (
+        '<section class="band"><details class="disclosure"><summary><span>'
+        '<span class="disclosure-title">7 月 21–24 日旧系统证据回补</span>'
+        '<span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入 V6 收益</span>'
+        '</span></summary><div class="disclosure-body">'
+        '<div class="table-wrap desktop-only"><table><thead><tr>'
+        "<th>交易日</th><th>合法盘中快照</th><th>盘后无效快照</th>"
+        "<th>最早快照</th><th>最晚快照</th><th>结论</th><th>说明</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + '</tbody></table></div><div class="mobile-list">'
+        + "".join(cards)
+        + "</div></div></details></section>"
+    )
+
+
+def _legacy_audit_status(row: dict[str, Any]) -> tuple[str, str]:
+    if int(row.get("valid_preclose_snapshot_count") or 0) > 0:
+        return "有盘中证据，无合格票", "good"
+    return "无合法盘中名单", "warn"
+
+
+def _format_trade_date(value: Any) -> str:
+    text = str(value or "")
+    if len(text) == 8 and text.isdigit():
+        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
+    return _e(text)
 
 
 def _promotion_checks(checks: dict[str, Any]) -> str:

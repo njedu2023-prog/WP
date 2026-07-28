@@ -139,3 +139,45 @@ def test_production_dashboard_makes_no_trade_decision_explicit(tmp_path):
     assert "不会为了产生名单而降低标准" in text
     assert "14:45 更新" in text
     assert "当前没有候选" in text
+
+
+def test_dashboard_discloses_legacy_backfill_without_counting_it_as_v6_truth(
+    tmp_path,
+):
+    path = tmp_path / "latest.html"
+    render_v3_dashboard(
+        path,
+        manifest={
+            "source_trade_date": "20260728",
+            "session_phase": "CLOSED",
+            "v3_state": "SHADOW",
+        },
+        predictions=pd.DataFrame(),
+        ledger=empty_shadow_ledger(),
+        registry=empty_registry(),
+        config=V3Config(),
+        legacy_audit={
+            "records": [
+                {
+                    "plan_trade_date": "20260721",
+                    "valid_preclose_snapshot_count": 2,
+                    "invalid_late_snapshot_count": 2,
+                    "audit_reason": "旧版盘中正式意见为空仓",
+                },
+                {
+                    "plan_trade_date": "20260723",
+                    "valid_preclose_snapshot_count": 0,
+                    "invalid_late_snapshot_count": 1,
+                    "audit_reason": "盘后名单无效",
+                },
+            ]
+        },
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert "7 月 21–24 日旧系统证据回补" in text
+    assert "2026-07-21" in text
+    assert "2026-07-23" in text
+    assert "有盘中证据，无合格票" in text
+    assert "无合法盘中名单" in text
+    assert "不计入 V6 收益" in text
