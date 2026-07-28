@@ -1,7 +1,7 @@
 {
   "schema_version": "wp_manifest_v3",
-  "latest_update": "2026-07-28 16:18:18",
-  "report_revision": "2026-07-28 16:18:18",
+  "latest_update": "2026-07-28 18:18:48",
+  "report_revision": "2026-07-28 18:18:48",
   "source_trade_date": "20260728",
   "market_data_time": null,
   "session_phase": "CLOSED",
@@ -9,5 +9,9 @@
   "shadow_qualified_count": 0,
   "health_status": "v3_input_not_ready",
   "v3_state": "MODEL_NOT_READY",
-  "v3_message": "V3 causal live input is missing: /home/runner/work/WP/WP/data/v3/latest/wp_v3_live_features.csv"
+  "v3_message": "V3 causal live input is missing: /home/runner/work/WP/WP/data/v3/latest/wp_v3_live_features.csv",
+  "validation_updated_at": "2026-07-28 18:18:48",
+  "pending_truth_count": 0,
+  "pending_due_truth_count": 0,
+  "verified_candidate_count": 0
 }

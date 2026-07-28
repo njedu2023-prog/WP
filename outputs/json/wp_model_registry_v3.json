@@ -1,7 +1,7 @@
 {
   "active_model_fingerprint": null,
   "active_policy_fingerprint": null,
-  "generated_at": "2026-07-28T10:01:39.945061+00:00",
+  "generated_at": "2026-07-28T10:18:48.153593+00:00",
   "models": [
     {
       "artifact_path": "artifacts/wp_v3_research/models/b5ec1c4c5980948d64e3.joblib",
@@ -6948,7 +6948,7 @@
         "mean_net_return_day_clustered_upper_pct": null,
         "mean_net_return_pct": null,
         "median_net_return_pct": null,
-        "policy_fingerprint": null,
+        "policy_fingerprint": "b77d4c3e3230a008691c",
         "profit_factor": null,
         "started_trade_date": null,
         "stress_50bps_positive_total_return": false,
@@ -10818,7 +10818,7 @@
         "mean_net_return_day_clustered_upper_pct": null,
         "mean_net_return_pct": null,
         "median_net_return_pct": null,
-        "policy_fingerprint": null,
+        "policy_fingerprint": "b77d4c3e3230a008691c",
         "profit_factor": null,
         "started_trade_date": null,
         "stress_50bps_positive_total_return": false,
