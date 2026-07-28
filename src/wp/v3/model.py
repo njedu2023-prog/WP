@@ -36,7 +36,7 @@ from .statistics import clustered_binary_lower
 
 
 TARGET_RANK_COLUMN = "_target_net_return_rank"
-MODEL_SCHEMA_VERSION = "wp_v5_multitask_bundle_1"
+MODEL_SCHEMA_VERSION = "wp_v5_multitask_bundle_2"
 
 
 @dataclass
@@ -756,8 +756,8 @@ def _fit_classifier(
     if lightgbm is not None:
         model = lightgbm.LGBMClassifier(
             objective="binary",
-            n_estimators=160 if compact else 240,
-            learning_rate=0.025 if compact else 0.035,
+            n_estimators=96 if compact else 160,
+            learning_rate=0.035 if compact else 0.04,
             num_leaves=7 if compact else 23,
             max_depth=3 if compact else -1,
             min_child_samples=max(20, _minimum_leaf(len(features))),
@@ -787,7 +787,7 @@ def _fit_classifier(
                 "model",
                 HistGradientBoostingClassifier(
                     learning_rate=0.04,
-                    max_iter=180 if compact else 260,
+                    max_iter=120 if compact else 180,
                     max_leaf_nodes=7 if compact else 23,
                     min_samples_leaf=_minimum_leaf(len(features)),
                     l2_regularization=5.0,
@@ -818,8 +818,8 @@ def _fit_ranker(
             metric="ndcg",
             eval_at=(1, 3, 5),
             label_gain=(0, 1, 3, 7, 15),
-            n_estimators=240,
-            learning_rate=0.035,
+            n_estimators=160,
+            learning_rate=0.04,
             num_leaves=23,
             min_child_samples=max(20, _minimum_leaf(len(features))),
             subsample=0.85,
@@ -854,7 +854,7 @@ def _fit_ranker(
                 HistGradientBoostingRegressor(
                     loss="squared_error",
                     learning_rate=0.04,
-                    max_iter=260,
+                    max_iter=180,
                     max_leaf_nodes=23,
                     min_samples_leaf=_minimum_leaf(len(features)),
                     l2_regularization=5.0,
@@ -885,8 +885,8 @@ def _fit_regressor(
             kwargs["alpha"] = alpha
         model = lightgbm.LGBMRegressor(
             objective=objective,
-            n_estimators=240,
-            learning_rate=0.035,
+            n_estimators=144,
+            learning_rate=0.04,
             num_leaves=23,
             min_child_samples=max(20, _minimum_leaf(len(features))),
             subsample=0.85,

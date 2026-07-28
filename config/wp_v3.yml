@@ -58,7 +58,7 @@ model:
   max_probability_model_spread: 0.15
   max_selection_rank_spread: 0.25
   min_train_rows: 20000
-  max_training_rows_per_slot: 500
+  max_training_rows_per_slot: 240
   random_seed: 20260727
 
 promotion:

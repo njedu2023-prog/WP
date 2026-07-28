@@ -92,7 +92,7 @@ class ModelContract:
     max_probability_model_spread: float = 0.15
     max_selection_rank_spread: float = 0.25
     min_train_rows: int = 20_000
-    max_training_rows_per_slot: int = 500
+    max_training_rows_per_slot: int = 240
     random_seed: int = 20_260_727
 
 
