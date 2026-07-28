@@ -366,11 +366,53 @@ def build_three_year_panel(
     return manifest
 
 
-def load_panel_partitions(path: str | Path) -> pd.DataFrame:
+def load_panel_partitions(
+    path: str | Path,
+    *,
+    columns: list[str] | tuple[str, ...] | None = None,
+    start_date: str | None = None,
+    end_date: str | None = None,
+) -> pd.DataFrame:
     files = sorted(Path(path).glob("wp_v3_panel_*.parquet"))
     if not files:
         raise FileNotFoundError(f"no WP V4 panel partitions under {path}")
-    return pd.concat([pd.read_parquet(file) for file in files], ignore_index=True)
+    start = str(start_date or "")
+    end = str(end_date or "")
+    if start:
+        files = [
+            file
+            for file in files
+            if file.stem.rsplit("_", 1)[-1] >= start[:6]
+        ]
+    if end:
+        files = [
+            file
+            for file in files
+            if file.stem.rsplit("_", 1)[-1] <= end[:6]
+        ]
+    if not files:
+        raise FileNotFoundError(
+            f"no WP panel partitions overlap {start_date or '*'}..{end_date or '*'}"
+        )
+    filters: list[tuple[str, str, str]] = []
+    if start:
+        filters.append(("trade_date", ">=", start))
+    if end:
+        filters.append(("trade_date", "<=", end))
+    frames = [
+        pd.read_parquet(
+            file,
+            columns=list(columns) if columns is not None else None,
+            filters=filters or None,
+        )
+        for file in files
+    ]
+    result = pd.concat(frames, ignore_index=True)
+    if result.empty:
+        raise RuntimeError(
+            f"WP panel is empty for {start_date or '*'}..{end_date or '*'}"
+        )
+    return result
 
 
 def _load_stock_basic(

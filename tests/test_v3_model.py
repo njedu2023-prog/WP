@@ -74,8 +74,10 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
     assert prediction["p_severe_loss"].between(0, 1).all()
     assert prediction["expected_net_return_pct"].notna().all()
     assert prediction["selection_rank_pct"].between(0, 1).all()
-    assert bundle.calibration_start <= bundle.calibration_fit_end
-    assert bundle.train_end == bundle.calibration_fit_end
+    assert bundle.calibration_fit_end < bundle.calibration_start
+    assert bundle.calibration_start <= bundle.calibration_end
+    assert bundle.calibration_end == bundle.train_end
+    assert bundle.calibration_rows <= bundle.eligible_calibration_rows
     assert bundle.candidate_policy.authorized is False
     assert prediction["passes_policy"].dtype == bool
 
@@ -102,6 +104,29 @@ def test_training_sample_is_capped_and_independent_of_target_values():
 
     assert len(first) == 7
     assert first["ts_code"].tolist() == second["ts_code"].tolist()
+
+
+def test_training_sample_filters_dates_without_changing_group_contract():
+    frame = pd.DataFrame(
+        [
+            {
+                "trade_date": trade_date,
+                "signal_slot": "14:20",
+                "ts_code": f"600{stock_index:03d}.SH",
+            }
+            for trade_date in ("20260105", "20260106")
+            for stock_index in range(20)
+        ]
+    )
+
+    sampled = _deterministic_training_sample(
+        frame,
+        rows_per_slot=7,
+        allowed_dates=np.array(["20260106"]),
+    )
+
+    assert sampled["trade_date"].unique().tolist() == ["20260106"]
+    assert len(sampled) == 7
 
 
 def test_rank_target_is_computed_on_full_slot_before_training_sample():

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 from dataclasses import asdict, dataclass, field
 from collections.abc import Collection
 from typing import Any
@@ -51,12 +52,18 @@ def walk_forward_backtest(
     *,
     max_folds: int | None = None,
     fold_numbers: Collection[int] | None = None,
+    calendar_dates: Collection[str] | None = None,
     evaluate: bool = True,
 ) -> BacktestResult:
-    ordered = panel.copy()
-    ordered["trade_date"] = ordered["trade_date"].astype(str)
-    ordered = ordered.sort_values(["trade_date", "signal_slot", "ts_code"], kind="stable")
-    dates = np.array(sorted(ordered["trade_date"].unique()))
+    ordered = panel
+    row_dates = ordered["trade_date"].astype(str)
+    dates = np.array(
+        sorted(
+            set(str(value) for value in calendar_dates)
+            if calendar_dates is not None
+            else row_dates.unique()
+        )
+    )
     test_starts = _walk_forward_test_starts(dates, config)
     schedule = list(enumerate(test_starts, start=1))
     total_folds = len(schedule)
@@ -89,11 +96,17 @@ def walk_forward_backtest(
         if len(test_dates) == 0:
             continue
         train_dates = dates[: test_start_index - config.model.purge_days]
-        training = ordered.loc[ordered["trade_date"].isin(train_dates)]
-        testing = ordered.loc[ordered["trade_date"].isin(test_dates)]
+        retained_train_days = (
+            max(config.model.ensemble_windows_days)
+            + config.model.calibration_days
+            + config.model.purge_days
+        )
+        model_train_dates = train_dates[-retained_train_days:]
+        training = ordered.loc[row_dates.isin(model_train_dates)]
+        testing = ordered.loc[row_dates.isin(test_dates)]
         print(
-            f"[wp-v4] walk-forward fold {fold_number}/{total_folds} "
-            f"train={train_dates[0]}..{train_dates[-1]} "
+            f"[wp-v5] walk-forward fold {fold_number}/{total_folds} "
+            f"train={model_train_dates[0]}..{model_train_dates[-1]} "
             f"test={test_dates[0]}..{test_dates[-1]}",
             flush=True,
         )
@@ -109,7 +122,7 @@ def walk_forward_backtest(
         prediction["test_end"] = str(test_dates[-1])
         fold_rows.append(prediction)
         print(
-            f"[wp-v4] completed fold {fold_number}/{total_folds} "
+            f"[wp-v5] completed fold {fold_number}/{total_folds} "
             f"prediction_rows={len(prediction):,}",
             flush=True,
         )
@@ -120,10 +133,14 @@ def walk_forward_backtest(
                 train_end=bundle.train_end,
                 test_start=str(test_dates[0]),
                 test_end=str(test_dates[-1]),
-                train_days=int(len(train_dates)),
+                train_days=int(len(model_train_dates)),
                 test_days=int(len(test_dates)),
             )
         )
+        del bundle
+        del testing
+        del training
+        gc.collect()
 
     predictions = pd.concat(fold_rows, ignore_index=True) if fold_rows else pd.DataFrame()
     policy_audit: list[dict[str, Any]] = []
@@ -156,6 +173,28 @@ def walk_forward_backtest(
 def walk_forward_fold_count(panel: pd.DataFrame, config: V3Config) -> int:
     dates = np.array(sorted(panel["trade_date"].astype(str).unique()))
     return len(_walk_forward_test_starts(dates, config))
+
+
+def walk_forward_fold_dates(
+    calendar_dates: Collection[str],
+    config: V3Config,
+    fold_number: int,
+) -> tuple[np.ndarray, np.ndarray]:
+    dates = np.array(sorted(set(str(value) for value in calendar_dates)))
+    starts = _walk_forward_test_starts(dates, config)
+    if not 1 <= int(fold_number) <= len(starts):
+        raise ValueError(
+            f"fold_number must be in 1..{len(starts)}; received {fold_number}"
+        )
+    test_start = starts[int(fold_number) - 1]
+    test_dates = dates[test_start : test_start + config.model.test_days]
+    train_dates = dates[: test_start - config.model.purge_days]
+    retained_train_days = (
+        max(config.model.ensemble_windows_days)
+        + config.model.calibration_days
+        + config.model.purge_days
+    )
+    return train_dates[-retained_train_days:], test_dates
 
 
 def _walk_forward_test_starts(

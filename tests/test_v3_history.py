@@ -17,6 +17,7 @@ from wp.v3.history import (
     _index_by_trade_date,
     _industry_at,
     _load_daily_history,
+    load_panel_partitions,
     _minute_universe_quality,
     _normalize_historical_minutes,
     _ordered_bounded_map,
@@ -376,3 +377,33 @@ def test_verified_panel_cache_is_reused_only_for_the_same_contract(tmp_path):
         )
         is None
     )
+
+
+def test_panel_loader_prunes_months_dates_and_columns(tmp_path):
+    first = pd.DataFrame(
+        {
+            "trade_date": ["20260130", "20260131"],
+            "ts_code": ["600001.SH", "600002.SH"],
+            "unused": [1.0, 2.0],
+        }
+    )
+    second = pd.DataFrame(
+        {
+            "trade_date": ["20260202", "20260203"],
+            "ts_code": ["600003.SH", "600004.SH"],
+            "unused": [3.0, 4.0],
+        }
+    )
+    first.to_parquet(tmp_path / "wp_v3_panel_202601.parquet", index=False)
+    second.to_parquet(tmp_path / "wp_v3_panel_202602.parquet", index=False)
+
+    loaded = load_panel_partitions(
+        tmp_path,
+        columns=["trade_date", "ts_code"],
+        start_date="20260202",
+        end_date="20260202",
+    )
+
+    assert loaded.to_dict(orient="records") == [
+        {"trade_date": "20260202", "ts_code": "600003.SH"}
+    ]

@@ -1,13 +1,18 @@
 from __future__ import annotations
 
 import argparse
+import gc
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
-from wp.v3.backtest import walk_forward_backtest, walk_forward_fold_count
+from wp.v3.backtest import (
+    walk_forward_backtest,
+    walk_forward_fold_count,
+    walk_forward_fold_dates,
+)
 from wp.v3.contracts import load_v3_config
-from wp.v3.dataset import audit_panel
 from wp.v3.history import load_panel_partitions
 from wp.v3.sharding import shard_fold_numbers, write_walk_forward_shard
 
@@ -42,9 +47,15 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     config = load_v3_config(args.config)
-    panel = load_panel_partitions(args.panel_dir)
-    _assert_three_year_panel(panel)
-    total_folds = walk_forward_fold_count(panel, config)
+    calendar = load_panel_partitions(
+        args.panel_dir,
+        columns=["trade_date"],
+    )
+    _assert_three_year_calendar(calendar)
+    calendar_dates = np.array(
+        sorted(calendar["trade_date"].astype(str).unique())
+    )
+    total_folds = walk_forward_fold_count(calendar, config)
     fold_numbers = shard_fold_numbers(
         total_folds,
         args.shard_index,
@@ -59,10 +70,29 @@ def main() -> int:
         f"folds={list(fold_numbers)} total_folds={total_folds}",
         flush=True,
     )
+    windows = [
+        walk_forward_fold_dates(calendar_dates, config, fold_number)
+        for fold_number in fold_numbers
+    ]
+    panel_start = min(str(train_dates[0]) for train_dates, _ in windows)
+    panel_end = max(str(test_dates[-1]) for _, test_dates in windows)
+    del calendar
+    gc.collect()
+    panel = load_panel_partitions(
+        args.panel_dir,
+        start_date=panel_start,
+        end_date=panel_end,
+    )
+    print(
+        f"[wp-v5] selective panel={panel_start}..{panel_end} "
+        f"rows={len(panel):,}",
+        flush=True,
+    )
     result = walk_forward_backtest(
         panel,
         config,
         fold_numbers=fold_numbers,
+        calendar_dates=calendar_dates,
         evaluate=False,
     )
     manifest = write_walk_forward_shard(
@@ -83,15 +113,16 @@ def main() -> int:
     return 0
 
 
-def _assert_three_year_panel(panel: pd.DataFrame) -> None:
-    audit = audit_panel(panel)
-    if audit.trade_days < 700:
+def _assert_three_year_calendar(calendar: pd.DataFrame) -> None:
+    trade_dates = calendar["trade_date"].astype(str)
+    trade_days = int(trade_dates.nunique())
+    if trade_days < 700:
         raise RuntimeError(
             f"three-year research contract requires at least 700 covered trade days; "
-            f"received {audit.trade_days}"
+            f"received {trade_days}"
         )
-    start = pd.Timestamp(str(panel["trade_date"].min()))
-    end = pd.Timestamp(str(panel["trade_date"].max()))
+    start = pd.Timestamp(str(trade_dates.min()))
+    end = pd.Timestamp(str(trade_dates.max()))
     if (end - start).days < 1_000:
         raise RuntimeError(
             f"dataset covers only {(end - start).days} calendar days; "

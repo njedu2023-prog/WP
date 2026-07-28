@@ -170,14 +170,20 @@ def feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     assert_feature_contract(FEATURE_COLUMNS)
     values = frame.reindex(columns=FEATURE_COLUMNS).copy()
     for column in FEATURE_COLUMNS:
-        values[column] = pd.to_numeric(values[column], errors="coerce")
+        values[column] = pd.to_numeric(
+            values[column],
+            errors="coerce",
+        ).astype("float32")
     return values.replace([np.inf, -np.inf], np.nan)
 
 
 def market_feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     values = frame.reindex(columns=MARKET_FEATURE_COLUMNS).copy()
     for column in MARKET_FEATURE_COLUMNS:
-        values[column] = pd.to_numeric(values[column], errors="coerce")
+        values[column] = pd.to_numeric(
+            values[column],
+            errors="coerce",
+        ).astype("float32")
     return values.replace([np.inf, -np.inf], np.nan)
 
 
@@ -190,9 +196,13 @@ def slot_to_minute(slot: pd.Series) -> pd.Series:
     return absolute - (14 * 60 + 20)
 
 
-def enrich_feature_frame(frame: pd.DataFrame) -> pd.DataFrame:
+def enrich_feature_frame(
+    frame: pd.DataFrame,
+    *,
+    copy: bool = True,
+) -> pd.DataFrame:
     """Derive stable transformations without consulting any future row."""
-    result = frame.copy()
+    result = frame.copy() if copy else frame
     if "slot_minute" not in result and "signal_slot" in result:
         result["slot_minute"] = slot_to_minute(result["signal_slot"])
 

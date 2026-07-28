@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import gc
 import hashlib
 import json
 from dataclasses import asdict, dataclass, replace
@@ -36,7 +37,7 @@ from .statistics import clustered_binary_lower
 
 
 TARGET_RANK_COLUMN = "_target_net_return_rank"
-MODEL_SCHEMA_VERSION = "wp_v5_multitask_bundle_2"
+MODEL_SCHEMA_VERSION = "wp_v5_multitask_bundle_3"
 
 
 @dataclass
@@ -120,6 +121,7 @@ class ModelBundle:
     training_rows: int
     eligible_fit_rows: int
     calibration_rows: int
+    eligible_calibration_rows: int
     evidence_rows: int
     training_data_digest: str
     positive_rate: float
@@ -146,19 +148,21 @@ def train_bundle(
     model_version: str | None = None,
     policy_selection: PolicySelection | None = None,
 ) -> ModelBundle:
-    enriched = enrich_feature_frame(panel)
-    eligible = enriched.loc[
+    eligible = panel.loc[
         panel["label_available"].fillna(False)
         & panel["execution_eligible"].fillna(False)
         & pd.to_numeric(panel["target_net_positive"], errors="coerce").notna()
     ].copy()
     eligible["trade_date"] = eligible["trade_date"].astype(str)
-    eligible = eligible.sort_values(
+    eligible.sort_values(
         ["trade_date", "signal_slot", "ts_code"],
         kind="stable",
+        inplace=True,
     )
-    eligible = _attach_full_universe_rank_target(eligible)
-    eligible = _ensure_multitask_targets(eligible, config)
+    eligible.reset_index(drop=True, inplace=True)
+    eligible = _attach_full_universe_rank_target(eligible, copy=False)
+    eligible = _ensure_multitask_targets(eligible, config, copy=False)
+    eligible_rows = int(len(eligible))
     if not allow_below_minimum and len(eligible) < config.model.min_train_rows:
         raise ValueError(
             f"V5 training requires {config.model.min_train_rows:,} eligible "
@@ -186,25 +190,32 @@ def train_bundle(
     fit_dates = unique_dates[:fit_end]
     if len(fit_dates) < 20:
         raise ValueError("V5 fit period is too short")
-    development_fit = eligible.loc[
-        eligible["trade_date"].isin(fit_dates)
-    ].copy()
-    calibration = eligible.loc[
-        eligible["trade_date"].isin(calibration_dates)
-    ].copy()
+    development_dates = fit_dates[-min(max(config.model.ensemble_windows_days), len(fit_dates)) :]
     sampled_development = _deterministic_training_sample(
-        development_fit,
+        eligible,
         rows_per_slot=config.model.max_training_rows_per_slot,
+        allowed_dates=development_dates,
     )
+    calibration = _deterministic_training_sample(
+        eligible,
+        rows_per_slot=config.model.max_training_rows_per_slot,
+        allowed_dates=calibration_dates,
+    )
+    eligible_calibration_rows = int(
+        eligible["trade_date"].isin(calibration_dates).sum()
+    )
+    sampled_development = enrich_feature_frame(sampled_development, copy=False)
+    calibration = enrich_feature_frame(calibration, copy=False)
     print(
         f"[wp-v5] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
         f"rows={len(sampled_development):,} "
-        f"calibration={calibration_dates[0]}..{calibration_dates[-1]}",
+        f"calibration={calibration_dates[0]}..{calibration_dates[-1]} "
+        f"rows={len(calibration):,}/{eligible_calibration_rows:,}",
         flush=True,
     )
     development_members = _fit_members(
         sampled_development,
-        fit_dates,
+        development_dates,
         config,
         seed_offset=0,
         allow_single=True,
@@ -244,6 +255,27 @@ def train_bundle(
         market_calibration["target_market_positive"].astype(int).to_numpy(),
         market_weight,
     )
+    calibration_table = _build_calibration_table(
+        positive_calibrator.predict(
+            calibration_raw["p_net_positive_raw"].to_numpy()
+        ),
+        calibration["target_net_positive"].astype(int).to_numpy(),
+        calibration["trade_date"].astype(str).to_numpy(),
+        seed=config.model.random_seed,
+    )
+    calibration_rows = int(len(calibration))
+
+    # Calibration models are only needed to freeze the mapping. Releasing them
+    # before the seven-task execution ensemble prevents late-fold memory peaks.
+    del calibration
+    del calibration_raw
+    del calibration_weight
+    del development_members
+    del market_calibration
+    del market_raw
+    del market_weight
+    del sampled_development
+    gc.collect()
 
     # After every calibration object is frozen on strictly earlier predictions,
     # refit the execution ensemble through the latest labelled date. The outer
@@ -252,6 +284,14 @@ def train_bundle(
         eligible,
         rows_per_slot=config.model.max_training_rows_per_slot,
     )
+    sampled_refit = enrich_feature_frame(sampled_refit, copy=False)
+    training_rows = int(len(sampled_refit))
+    positive_rate = float(
+        sampled_refit["target_net_positive"].astype(int).mean()
+    )
+    training_digest = _training_data_digest(sampled_refit)
+    del eligible
+    gc.collect()
     execution_members = _fit_members(
         sampled_refit,
         unique_dates,
@@ -260,6 +300,8 @@ def train_bundle(
         allow_single=False,
         calibration_only=False,
     )
+    del sampled_refit
+    gc.collect()
     candidate_policy = (
         policy_selection.policy
         if policy_selection is not None
@@ -273,16 +315,7 @@ def train_bundle(
         contract,
         candidate_policy,
     )
-    version = model_version or f"wpv5-{unique_dates[-1]}-{len(eligible)}"
-    training_digest = _training_data_digest(eligible)
-    calibration_table = _build_calibration_table(
-        positive_calibrator.predict(
-            calibration_raw["p_net_positive_raw"].to_numpy()
-        ),
-        calibration["target_net_positive"].astype(int).to_numpy(),
-        calibration["trade_date"].astype(str).to_numpy(),
-        seed=config.model.random_seed,
-    )
+    version = model_version or f"wpv5-{unique_dates[-1]}-{eligible_rows}"
     evidence = (
         dict(policy_selection.confirmation)
         if policy_selection is not None
@@ -303,9 +336,11 @@ def train_bundle(
         "train_end": str(unique_dates[-1]),
         "calibration_start": str(calibration_dates[0]),
         "calibration_end": str(calibration_dates[-1]),
-        "training_rows": int(len(sampled_refit)),
-        "eligible_fit_rows": int(len(eligible)),
-        "calibration_rows": int(len(calibration)),
+        "calibration_fit_end": str(fit_dates[-1]),
+        "training_rows": training_rows,
+        "eligible_fit_rows": eligible_rows,
+        "calibration_rows": calibration_rows,
+        "eligible_calibration_rows": eligible_calibration_rows,
         "training_data_digest": training_digest,
         "members": [member.name for member in execution_members],
         "features": FEATURE_COLUMNS,
@@ -326,18 +361,17 @@ def train_bundle(
         train_end=str(unique_dates[-1]),
         calibration_start=str(calibration_dates[0]),
         calibration_end=str(calibration_dates[-1]),
-        calibration_fit_end=str(calibration_dates[-1]),
+        calibration_fit_end=str(fit_dates[-1]),
         evidence_start=(
             str(selection_payload.get("confirmation", {}).get("period_start") or "")
         ),
-        training_rows=int(len(sampled_refit)),
-        eligible_fit_rows=int(len(eligible)),
-        calibration_rows=int(len(calibration)),
+        training_rows=training_rows,
+        eligible_fit_rows=eligible_rows,
+        calibration_rows=calibration_rows,
+        eligible_calibration_rows=eligible_calibration_rows,
         evidence_rows=int(evidence.get("events", 0) or 0),
         training_data_digest=training_digest,
-        positive_rate=float(
-            sampled_refit["target_net_positive"].astype(int).mean()
-        ),
+        positive_rate=positive_rate,
         feature_columns=FEATURE_COLUMNS,
         market_feature_columns=MARKET_FEATURE_COLUMNS,
         members=execution_members,
@@ -576,6 +610,15 @@ def _fit_members(
                 ),
             )
         )
+        del features
+        del market
+        del market_weights
+        del member_frame
+        del rank_groups
+        del rank_percentile
+        del rank_relevance
+        del weights
+        gc.collect()
         fitted_lengths.add(len(member_dates))
     required = 1 if allow_single else 2
     if len(members) < required:
@@ -608,11 +651,14 @@ def _raw_score_frame(
             for member in members
         ]
     )
-    result = frame.copy()
-    result["p_net_positive_raw"] = positive_members.mean(axis=1)
-    result["p_cross_section_top_raw"] = cross_members.mean(axis=1)
-    result["p_severe_loss_raw"] = severe_members.mean(axis=1)
-    return result
+    return pd.DataFrame(
+        {
+            "p_net_positive_raw": positive_members.mean(axis=1),
+            "p_cross_section_top_raw": cross_members.mean(axis=1),
+            "p_severe_loss_raw": severe_members.mean(axis=1),
+        },
+        index=frame.index,
+    )
 
 
 def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
@@ -767,7 +813,7 @@ def _fit_classifier(
             reg_alpha=0.5,
             reg_lambda=5.0,
             random_state=seed,
-            n_jobs=2,
+            n_jobs=1,
             verbosity=-1,
             deterministic=True,
             force_col_wise=True,
@@ -828,7 +874,7 @@ def _fit_ranker(
             reg_alpha=0.5,
             reg_lambda=5.0,
             random_state=seed,
-            n_jobs=2,
+            n_jobs=1,
             verbosity=-1,
             deterministic=True,
             force_col_wise=True,
@@ -895,7 +941,7 @@ def _fit_regressor(
             reg_alpha=0.5,
             reg_lambda=5.0,
             random_state=seed,
-            n_jobs=2,
+            n_jobs=1,
             verbosity=-1,
             deterministic=True,
             force_col_wise=True,
@@ -958,8 +1004,12 @@ def _ranking_target_and_groups(
     return percentile.fillna(0.0).to_numpy(dtype=float), groups
 
 
-def _attach_full_universe_rank_target(frame: pd.DataFrame) -> pd.DataFrame:
-    result = frame.copy()
+def _attach_full_universe_rank_target(
+    frame: pd.DataFrame,
+    *,
+    copy: bool = True,
+) -> pd.DataFrame:
+    result = frame.copy() if copy else frame
     if TARGET_RANK_COLUMN not in result:
         result[TARGET_RANK_COLUMN] = (
             pd.to_numeric(result["net_return_pct"], errors="coerce")
@@ -975,8 +1025,10 @@ def _attach_full_universe_rank_target(frame: pd.DataFrame) -> pd.DataFrame:
 def _ensure_multitask_targets(
     frame: pd.DataFrame,
     config: V3Config,
+    *,
+    copy: bool = True,
 ) -> pd.DataFrame:
-    result = frame.copy()
+    result = frame.copy() if copy else frame
     returns = pd.to_numeric(result["net_return_pct"], errors="coerce")
     if "target_severe_loss" not in result:
         result["target_severe_loss"] = returns.le(
@@ -1003,35 +1055,36 @@ def _deterministic_training_sample(
     frame: pd.DataFrame,
     *,
     rows_per_slot: int,
+    allowed_dates: np.ndarray | list[str] | tuple[str, ...] | None = None,
 ) -> pd.DataFrame:
     if frame.empty:
         return frame.copy()
-    sampled = frame.copy()
-    identity = (
-        sampled["trade_date"].astype(str)
-        + "|"
-        + sampled["signal_slot"].astype(str)
-        + "|"
-        + sampled["ts_code"].astype(str)
-    )
-    sampled["_sample_hash"] = pd.util.hash_pandas_object(
+    identity = frame.loc[:, ["trade_date", "signal_slot", "ts_code"]].copy()
+    identity["_sample_hash"] = pd.util.hash_pandas_object(
         identity,
         index=False,
         categorize=True,
     ).to_numpy(dtype=np.uint64)
-    sampled = sampled.sort_values(
+    identity["_row_position"] = np.arange(len(frame), dtype=np.int64)
+    if allowed_dates is not None:
+        allowed = {str(value) for value in allowed_dates}
+        identity = identity.loc[identity["trade_date"].astype(str).isin(allowed)]
+    identity.sort_values(
         ["trade_date", "signal_slot", "_sample_hash", "ts_code"],
         kind="stable",
+        inplace=True,
     )
-    sampled = (
-        sampled.groupby(
+    positions = (
+        identity.groupby(
             ["trade_date", "signal_slot"],
             sort=False,
             group_keys=False,
         )
         .head(rows_per_slot)
-        .drop(columns="_sample_hash")
+        ["_row_position"]
+        .to_numpy(dtype=np.int64)
     )
+    sampled = frame.iloc[positions].copy()
     return sampled.sort_values(
         ["trade_date", "signal_slot", "ts_code"],
         kind="stable",
@@ -1065,11 +1118,7 @@ def _temporal_weights(
 
 
 def _market_rows(frame: pd.DataFrame) -> pd.DataFrame:
-    ordered = frame.sort_values(
-        ["trade_date", "signal_slot", "ts_code"],
-        kind="stable",
-    )
-    return ordered.drop_duplicates(
+    return frame.drop_duplicates(
         ["trade_date", "signal_slot"],
         keep="first",
     ).reset_index(drop=True)
@@ -1150,32 +1199,35 @@ def _build_calibration_table(
 
 
 def _training_data_digest(frame: pd.DataFrame) -> str:
-    identity = frame.reindex(
-        columns=[
-            "trade_date",
-            "signal_slot",
-            "ts_code",
-            "signal_price",
-            "target_net_positive",
-            "target_cross_section_top",
-            "target_severe_loss",
-            "target_market_positive",
-            "net_return_pct",
-        ]
-    )
-    digest_frame = pd.concat(
-        [
-            identity.reset_index(drop=True),
-            feature_matrix(frame).reset_index(drop=True),
-        ],
-        axis=1,
-    )
-    row_hashes = pd.util.hash_pandas_object(
-        digest_frame,
-        index=False,
-        categorize=True,
-    ).to_numpy(dtype=np.uint64)
-    return hashlib.sha256(row_hashes.tobytes()).hexdigest()
+    identity_columns = [
+        "trade_date",
+        "signal_slot",
+        "ts_code",
+        "signal_price",
+        "target_net_positive",
+        "target_cross_section_top",
+        "target_severe_loss",
+        "target_market_positive",
+        "net_return_pct",
+    ]
+    digest = hashlib.sha256()
+    chunk_rows = 25_000
+    for start in range(0, len(frame), chunk_rows):
+        chunk = frame.iloc[start : start + chunk_rows]
+        digest_frame = pd.concat(
+            [
+                chunk.reindex(columns=identity_columns).reset_index(drop=True),
+                feature_matrix(chunk).reset_index(drop=True),
+            ],
+            axis=1,
+        )
+        row_hashes = pd.util.hash_pandas_object(
+            digest_frame,
+            index=False,
+            categorize=True,
+        ).to_numpy(dtype=np.uint64)
+        digest.update(row_hashes.tobytes())
+    return digest.hexdigest()
 
 
 def _learned_policy_fingerprint(

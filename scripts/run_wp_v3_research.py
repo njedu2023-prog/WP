@@ -12,7 +12,6 @@ import pandas as pd
 from wp.v3.backtest import walk_forward_backtest
 from wp.v3.contracts import load_v3_config
 from wp.v3.dashboard import render_v3_dashboard
-from wp.v3.dataset import audit_panel
 from wp.v3.diagnostics import diagnostics_tables
 from wp.v3.history import load_panel_partitions
 from wp.v3.ledger import empty_shadow_ledger
@@ -76,22 +75,21 @@ def parse_args() -> argparse.Namespace:
 def main() -> int:
     args = parse_args()
     config = load_v3_config(args.config)
-    panel = load_panel_partitions(args.panel_dir)
-    audit = audit_panel(panel)
-    if audit.trade_days < 700:
-        raise RuntimeError(
-            f"three-year research contract requires at least 700 covered trade days; "
-            f"received {audit.trade_days}"
-        )
-    start = pd.Timestamp(str(panel["trade_date"].min()))
-    end = pd.Timestamp(str(panel["trade_date"].max()))
-    if (end - start).days < 1_000:
-        raise RuntimeError(
-            f"dataset covers only {(end - start).days} calendar days; three years are required"
-        )
 
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
+    calendar = load_panel_partitions(
+        args.panel_dir,
+        columns=["trade_date"],
+    )
+    calendar_summary = _three_year_calendar_summary(calendar)
+    calendar_dates = sorted(calendar["trade_date"].astype(str).unique())
+    calendar_panel = pd.DataFrame({"trade_date": calendar_dates})
+    dataset_summary = _dataset_summary(
+        args.dataset_manifest,
+        calendar_summary=calendar_summary,
+    )
+    del calendar
     if args.shard_dir:
         if args.max_folds is not None:
             raise ValueError("--max-folds cannot be used with --shard-dir")
@@ -102,11 +100,31 @@ def main() -> int:
         )
         backtest = load_walk_forward_shards(
             args.shard_dir,
-            panel=panel,
+            panel=calendar_panel,
             config=config,
             dataset_manifest_path=args.dataset_manifest,
         )
+        retained_train_days = (
+            max(config.model.ensemble_windows_days)
+            + config.model.calibration_days
+            + config.model.purge_days
+        )
+        panel_start = str(calendar_dates[-retained_train_days])
+        panel_end = str(calendar_dates[-1])
+        del calendar_panel
+        panel = load_panel_partitions(
+            args.panel_dir,
+            start_date=panel_start,
+            end_date=panel_end,
+        )
+        print(
+            f"[wp-v5] final model panel={panel_start}..{panel_end} "
+            f"rows={len(panel):,}",
+            flush=True,
+        )
     else:
+        del calendar_panel
+        panel = load_panel_partitions(args.panel_dir)
         backtest = walk_forward_backtest(
             panel,
             config,
@@ -183,9 +201,9 @@ def main() -> int:
 
     summary = {
         "schema_version": "wp_v5_research_summary_1",
-        "dataset": asdict(audit),
-        "date_start": str(panel["trade_date"].min()),
-        "date_end": str(panel["trade_date"].max()),
+        "dataset": dataset_summary,
+        "date_start": calendar_summary["date_start"],
+        "date_end": calendar_summary["date_end"],
         "model": metadata,
         "backtest": backtest.metrics,
         "promotion": asdict(decision),
@@ -202,8 +220,8 @@ def main() -> int:
         registry=registry,
         model_fingerprint=bundle.fingerprint,
         deployment_state=str(registered.get("status") or "RESEARCH"),
-        research_start=str(panel["trade_date"].min()),
-        research_end=str(panel["trade_date"].max()),
+        research_start=calendar_summary["date_start"],
+        research_end=calendar_summary["date_end"],
     )
     print(_strict_json(summary))
     return 0
@@ -259,6 +277,68 @@ def _historical_replay(
         "days": days,
         "focus_20260721_20260724": focus,
         "candidates": candidate_records,
+    }
+
+
+def _three_year_calendar_summary(calendar: pd.DataFrame) -> dict[str, object]:
+    trade_dates = calendar["trade_date"].astype(str)
+    trade_days = int(trade_dates.nunique())
+    if trade_days < 700:
+        raise RuntimeError(
+            f"three-year research contract requires at least 700 covered trade days; "
+            f"received {trade_days}"
+        )
+    date_start = str(trade_dates.min())
+    date_end = str(trade_dates.max())
+    calendar_days = int((pd.Timestamp(date_end) - pd.Timestamp(date_start)).days)
+    if calendar_days < 1_000:
+        raise RuntimeError(
+            f"dataset covers only {calendar_days} calendar days; "
+            "three years are required"
+        )
+    return {
+        "trade_days": trade_days,
+        "date_start": date_start,
+        "date_end": date_end,
+        "calendar_days": calendar_days,
+    }
+
+
+def _dataset_summary(
+    manifest_path: str | Path,
+    *,
+    calendar_summary: dict[str, object],
+) -> dict[str, object]:
+    manifest = json.loads(Path(manifest_path).read_text(encoding="utf-8"))
+    partitions = manifest.get("partitions") or []
+    if not partitions:
+        raise RuntimeError("dataset manifest contains no audited panel partitions")
+    coverage = float(manifest.get("coverage", 0.0) or 0.0)
+    if coverage < 0.98:
+        raise RuntimeError(
+            f"three-year panel coverage {coverage:.2%} is below the 98% contract"
+        )
+    covered_days = int(manifest.get("covered_trade_days", 0) or 0)
+    if covered_days != int(calendar_summary["trade_days"]):
+        raise RuntimeError(
+            f"dataset manifest covers {covered_days} days but panel contains "
+            f"{calendar_summary['trade_days']}"
+        )
+    return {
+        **calendar_summary,
+        "rows": int(sum(int(item.get("rows", 0) or 0) for item in partitions)),
+        "eligible_rows": int(
+            sum(int(item.get("eligible_rows", 0) or 0) for item in partitions)
+        ),
+        "labelled_rows": int(
+            sum(int(item.get("labelled_rows", 0) or 0) for item in partitions)
+        ),
+        "positive_rows": int(
+            sum(int(item.get("positive_rows", 0) or 0) for item in partitions)
+        ),
+        "coverage": coverage,
+        "partition_count": int(len(partitions)),
+        "dataset_schema_version": str(manifest.get("schema_version") or ""),
     }
 
 

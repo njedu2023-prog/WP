@@ -5,7 +5,12 @@ from dataclasses import replace
 import pandas as pd
 import pytest
 
-from wp.v3.backtest import BacktestResult, WalkForwardFold, walk_forward_fold_count
+from wp.v3.backtest import (
+    BacktestResult,
+    WalkForwardFold,
+    walk_forward_fold_count,
+    walk_forward_fold_dates,
+)
 from wp.v3.contracts import V3Config
 from wp.v3.sharding import (
     load_walk_forward_shards,
@@ -29,6 +34,31 @@ def test_shard_fold_numbers_partition_every_fold_exactly_once():
     assert sorted(number for part in partitions for number in part) == list(
         range(1, 11)
     )
+
+
+def test_fold_date_window_retains_only_model_history_and_outer_purge():
+    base = V3Config()
+    config = replace(
+        base,
+        model=replace(
+            base.model,
+            minimum_train_days=10,
+            calibration_days=4,
+            purge_days=2,
+            test_days=3,
+            ensemble_windows_days=(8, 12),
+        ),
+    )
+    dates = [
+        date.strftime("%Y%m%d")
+        for date in pd.bdate_range("2026-01-01", periods=30)
+    ]
+
+    train_dates, test_dates = walk_forward_fold_dates(dates, config, 1)
+
+    assert len(train_dates) == 16
+    assert len(test_dates) == 3
+    assert dates.index(str(test_dates[0])) - dates.index(str(train_dates[-1])) == 3
 
 
 def test_shard_aggregation_rejects_missing_or_tampered_evidence(
