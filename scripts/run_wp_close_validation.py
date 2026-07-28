@@ -88,6 +88,19 @@ def main() -> None:
 
     interval = int(os.environ.get("WP_CLOSE_INTERVAL_SECONDS", "300"))
     end = datetime.combine(current.date(), time(16, 10), current.tzinfo)
+    if current > end:
+        pending = run_once()
+        if pending == 0:
+            print(
+                "WP close validation completed in delayed-start mode: "
+                "no due records remain."
+            )
+            return
+        raise SystemExit(
+            "WP close validation delayed-start run completed with "
+            f"{pending} due record(s) still pending."
+        )
+
     while now_cn() <= end:
         pending = run_once()
         if pending == 0:
