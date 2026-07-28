@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V4 尾盘 T+1 决策台</title>
+<title>WP V5 尾盘 T+1 决策台</title>
 <style>
 :root {
   --ink:#171a1f; --muted:#66707b; --line:#d9dee5; --paper:#ffffff;
@@ -52,7 +52,7 @@ details summary{cursor:pointer;font-weight:650;padding:8px 0}
 </head>
 <body>
 <header><div class="header-inner">
-  <div><h1>WP V4 尾盘 T+1 决策台</h1>
+  <div><h1>WP V5 尾盘 T+1 决策台</h1>
   <div class="sub">目标：14:20–14:50 可成交买入，固定 T+1 收盘卖出后净收益为正</div></div>
   <div class="run-state"><div>20260728 · </div>
   <strong class="warn">影子观察（回测未通过）</strong></div>
@@ -83,7 +83,7 @@ details summary{cursor:pointer;font-weight:650;padding:8px 0}
       <div class='metric'><span>按日聚类 95% 下界</span><strong class='bad'>0.00%</strong></div>
       <div class='metric'><span>平均净收益</span><strong class=''>—</strong></div>
       <div class='metric'><span>Profit Factor</span><strong class='bad'>0.00</strong></div>
-      <div class='metric'><span>校准误差 ECE</span><strong class='good'>4.40%</strong></div>
+      <div class='metric'><span>校准误差 ECE</span><strong class='good'>4.12%</strong></div>
       <div class='metric'><span>50bp 压力</span><strong class='bad'>未通过</strong></div>
     </div>
   </div>
@@ -94,7 +94,7 @@ details summary{cursor:pointer;font-weight:650;padding:8px 0}
     <div class="gate-list"><div class='gate'><span>backtest_gate</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_trading_days</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_candidate_days</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_candidates</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_win_rate</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_win_rate_lower</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_clustered_win_rate_lower</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_mean_net_return</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_clustered_mean_return_lower</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_median_net_return</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_profit_factor</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_ece</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_50bps_stress</span><strong class='no'>未通过</strong></div></div>
   </div>
 </section>
-<section class="band"><details><summary>样本外模型诊断（不改变交易门槛）</summary><div class="metrics" style="grid-template-columns:repeat(4,1fr)"><div class='metric'><span>概率 ROC AUC</span><strong class=''>0.506</strong></div><div class='metric'><span>概率-收益秩相关</span><strong class=''>-0.004</strong></div><div class='metric'><span>选择分 ROC AUC</span><strong class=''>0.521</strong></div><div class='metric'><span>选择分-收益秩相关</span><strong class=''>0.044</strong></div></div><h3 style="margin-top:16px">逐层淘汰漏斗</h3><div class="table-wrap"><table><thead><tr><th>门槛</th><th>单项通过</th><th>单项比例</th><th>累计通过</th><th>累计比例</th></tr></thead><tbody><tr><td>execution</td><td class='num'>1,202,850</td><td class='num'>100.00%</td><td class='num'>1,202,850</td><td class='num'>100.00%</td></tr><tr><td>prior_oos_policy_authorized</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>all_candidate_gates</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>final_policy</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr></tbody></table></div><h3 style="margin-top:16px">每时点 Top-N 诊断</h3><p class="foot">仅检验排序能力；这些诊断组合没有被用来回填或改写固定策略。</p><div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th><th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th></tr></thead><tbody><tr><td>probability</td><td class='num'>1</td><td class='num'>1,698</td><td class='num'>37.69%</td><td class='num'>35.42%</td><td class='num'>-1.12%</td></tr><tr><td>probability</td><td class='num'>3</td><td class='num'>4,640</td><td class='num'>39.29%</td><td class='num'>37.89%</td><td class='num'>-0.87%</td></tr><tr><td>probability</td><td class='num'>5</td><td class='num'>7,359</td><td class='num'>40.21%</td><td class='num'>39.09%</td><td class='num'>-0.77%</td></tr><tr><td>selection_score</td><td class='num'>1</td><td class='num'>1,390</td><td class='num'>44.17%</td><td class='num'>41.58%</td><td class='num'>-0.09%</td></tr><tr><td>selection_score</td><td class='num'>3</td><td class='num'>3,559</td><td class='num'>43.38%</td><td class='num'>41.76%</td><td class='num'>-0.17%</td></tr><tr><td>selection_score</td><td class='num'>5</td><td class='num'>5,626</td><td class='num'>43.21%</td><td class='num'>41.92%</td><td class='num'>-0.18%</td></tr></tbody></table></div></details></section>
+<section class="band"><details><summary>样本外模型诊断（不改变交易门槛）</summary><div class="metrics" style="grid-template-columns:repeat(4,1fr)"><div class='metric'><span>概率 ROC AUC</span><strong class=''>0.510</strong></div><div class='metric'><span>概率-收益秩相关</span><strong class=''>0.005</strong></div><div class='metric'><span>选择分 ROC AUC</span><strong class=''>0.521</strong></div><div class='metric'><span>选择分-收益秩相关</span><strong class=''>0.043</strong></div></div><h3 style="margin-top:16px">逐层淘汰漏斗</h3><div class="table-wrap"><table><thead><tr><th>门槛</th><th>单项通过</th><th>单项比例</th><th>累计通过</th><th>累计比例</th></tr></thead><tbody><tr><td>execution</td><td class='num'>1,551,890</td><td class='num'>100.00%</td><td class='num'>1,551,890</td><td class='num'>100.00%</td></tr><tr><td>prior_oos_policy_authorized</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>all_candidate_gates</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>final_policy</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr></tbody></table></div><h3 style="margin-top:16px">每时点 Top-N 诊断</h3><p class="foot">仅检验排序能力；这些诊断组合没有被用来回填或改写固定策略。</p><div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th><th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th></tr></thead><tbody><tr><td>probability</td><td class='num'>1</td><td class='num'>2,850</td><td class='num'>41.26%</td><td class='num'>39.47%</td><td class='num'>-0.87%</td></tr><tr><td>probability</td><td class='num'>3</td><td class='num'>7,724</td><td class='num'>41.57%</td><td class='num'>40.48%</td><td class='num'>-0.77%</td></tr><tr><td>probability</td><td class='num'>5</td><td class='num'>12,317</td><td class='num'>41.67%</td><td class='num'>40.80%</td><td class='num'>-0.69%</td></tr><tr><td>selection_score</td><td class='num'>1</td><td class='num'>2,311</td><td class='num'>44.66%</td><td class='num'>42.64%</td><td class='num'>-0.21%</td></tr><tr><td>selection_score</td><td class='num'>3</td><td class='num'>6,191</td><td class='num'>43.09%</td><td class='num'>41.87%</td><td class='num'>-0.29%</td></tr><tr><td>selection_score</td><td class='num'>5</td><td class='num'>9,894</td><td class='num'>42.73%</td><td class='num'>41.76%</td><td class='num'>-0.32%</td></tr></tbody></table></div></details></section>
 <section class="band"><div class="section-head"><h2>接近门槛但未通过</h2>
 <span class="tag">用于解释，不是候选名单</span></div><div class="empty">当前没有可解释的近门槛样本。</div></section>
 <section class="band"><h2>候选真值账本</h2><div class="empty">尚无完成 T+1 真值验证的候选。</div></section>
@@ -106,6 +106,6 @@ details summary{cursor:pointer;font-weight:650;padding:8px 0}
 	费用及退出影响：25bp；基准全成本：35bp；参考订单：100,000 元；
 退出：下一 A 股交易日收盘；同一股票当日首次通过即锁定首次信号价；人工实际成交与模型候选统计相互独立。</div>
 </details></section>
-<section class="band foot">报告版本 2026-07-28 10:05:30 · 政策指纹 b77d4c3e3230a008691c · 模型指纹 9e9bfb2adc7ba1fc76ae</section>
+<section class="band foot">报告版本 2026-07-28 18:01:39 · 政策指纹 b77d4c3e3230a008691c · 模型指纹 05928ce9adc35aa0c55d</section>
 </main>
 </body></html>

@@ -242,7 +242,7 @@
     "up_limit_distance_cs_rank"
   ],
   "feature_version": "wp_v5_causal_features_1",
-  "fingerprint": "9e9bfb2adc7ba1fc76ae",
+  "fingerprint": "05928ce9adc35aa0c55d",
   "market_feature_columns": [
     "slot_minute",
     "market_return_pct",
@@ -326,7 +326,7 @@
   "strategy_id": "wp_t1_net_profit_v5",
   "train_end": "20260724",
   "train_start": "20240422",
-  "trained_at": "2026-07-28T02:05:10.906549+00:00",
-  "training_data_digest": "4cb65278416664b5da6c4551832a2ce274f563b5096e24577edefd403ccd2cf1",
+  "trained_at": "2026-07-28T10:01:39.617389+00:00",
+  "training_data_digest": "f325734fff22d079e37b67202ca509d2ab915b4b344bdfbb865667e440bf4ffd",
   "training_rows": 817101
 }
