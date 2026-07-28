@@ -6,7 +6,7 @@ build-backend = "setuptools.build_meta"
 name = "wp-tail-t1-profit"
 version = "6.0.0"
 description = "WP A股尾盘买入后T+1净盈利概率决策系统"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 dependencies = [
   "pandas>=2.0,<3.0",
   "numpy>=1.24",
