@@ -78,7 +78,7 @@ jobs:
     needs: route
     if: ${{ needs.route.outputs.source_run_id == '' }}
     runs-on: ubuntu-latest
-    timeout-minutes: 240
+    timeout-minutes: 420
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
