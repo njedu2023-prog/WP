@@ -1,5 +1,8 @@
 import json
+from datetime import datetime
 from types import SimpleNamespace
+
+import pytest
 
 from scripts import run_wp_close_validation
 
@@ -46,3 +49,52 @@ def test_v3_close_validation_commits_only_when_truth_state_changes(
     assert run_wp_close_validation.run_once() == 0
     assert len(commands) == 2
     assert "Validate WP V5 next-day close" in commands[1]
+
+
+def test_delayed_scheduled_validation_still_runs_once(monkeypatch):
+    calls = []
+    current = datetime(
+        2026,
+        7,
+        28,
+        17,
+        43,
+        tzinfo=run_wp_close_validation.now_cn().tzinfo,
+    )
+    monkeypatch.setenv("WP_CLOSE_RUN_MODE", "session")
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(run_wp_close_validation, "now_cn", lambda: current)
+    monkeypatch.setattr(
+        run_wp_close_validation,
+        "run_once",
+        lambda: calls.append("run") or 0,
+    )
+
+    run_wp_close_validation.main()
+
+    assert calls == ["run"]
+
+
+def test_delayed_scheduled_validation_fails_only_after_attempt(monkeypatch):
+    calls = []
+    current = datetime(
+        2026,
+        7,
+        28,
+        17,
+        43,
+        tzinfo=run_wp_close_validation.now_cn().tzinfo,
+    )
+    monkeypatch.setenv("WP_CLOSE_RUN_MODE", "session")
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(run_wp_close_validation, "now_cn", lambda: current)
+    monkeypatch.setattr(
+        run_wp_close_validation,
+        "run_once",
+        lambda: calls.append("run") or 2,
+    )
+
+    with pytest.raises(SystemExit, match="2 due record"):
+        run_wp_close_validation.main()
+
+    assert calls == ["run"]
