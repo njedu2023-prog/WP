@@ -1,1 +1,1 @@
-2026-07-27 15:51:57 +08:00 target_slot=2026-07-27 15:00:00 reason=align_1450_full_minute_and_1500_execution
+2026-07-28 16:19:30 +08:00 target_slot=2026-07-28 16:19:30 self_heal=final-wp stale_report_after_data_refresh
