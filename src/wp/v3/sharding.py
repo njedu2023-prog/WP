@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
+import pyarrow.parquet as pq
 
 from .backtest import (
     BacktestResult,
@@ -24,6 +25,53 @@ from .policy import apply_nested_oos_policies
 SHARD_SCHEMA_VERSION = "wp_v5_walk_forward_shard_1"
 SHARD_MANIFEST_NAME = "wp_v5_fold_shard_manifest.json"
 SHARD_PREDICTIONS_NAME = "wp_v5_fold_predictions.parquet"
+
+# Fold workers need the full feature panel, but aggregation only needs immutable
+# identity, execution truth, model outputs, and audit metadata. Keeping this
+# boundary explicit prevents multi-gigabyte feature matrices from being loaded
+# again after every fold has already finished.
+AGGREGATE_PREDICTION_COLUMNS = (
+    *IDENTITY_COLUMNS,
+    "target_trade_date",
+    "name",
+    "board",
+    "signal_price",
+    "entry_price",
+    "t1_close",
+    "gross_return_pct",
+    "net_return_pct",
+    "ret_from_prev_close_pct",
+    "execution_eligible",
+    "entry_fillable",
+    "exit_fillable",
+    "execution_success",
+    "label_available",
+    "target_net_positive",
+    "target_cross_section_top",
+    "target_severe_loss",
+    "target_market_positive",
+    "data_age_seconds",
+    "p_net_positive_raw",
+    "p_net_positive",
+    "p_net_positive_lower",
+    "p_cross_section_top",
+    "p_severe_loss",
+    "p_market_positive",
+    "probability_model_spread",
+    "expected_net_return_pct",
+    "downside_q10_pct",
+    "ranking_score",
+    "selection_score",
+    "selection_rank_pct",
+    "selection_rank_spread",
+    "model_version",
+    "model_fingerprint",
+    "policy_fingerprint",
+    "fold",
+    "test_start",
+    "test_end",
+)
+SHARD_REQUIRED_COLUMNS = (*IDENTITY_COLUMNS, "fold")
 
 
 def shard_fold_numbers(
@@ -83,7 +131,20 @@ def write_walk_forward_shard(
         )
 
     prediction_path = output / SHARD_PREDICTIONS_NAME
-    ordered = result.predictions.sort_values(
+    missing_required = sorted(
+        set(SHARD_REQUIRED_COLUMNS) - set(result.predictions.columns)
+    )
+    if missing_required:
+        raise RuntimeError(
+            f"shard {shard_index} predictions missing required columns "
+            f"{missing_required}"
+        )
+    retained_columns = [
+        column
+        for column in AGGREGATE_PREDICTION_COLUMNS
+        if column in result.predictions.columns
+    ]
+    ordered = result.predictions.loc[:, retained_columns].sort_values(
         ["fold", "trade_date", "signal_slot", "ts_code"],
         kind="stable",
     ).reset_index(drop=True)
@@ -176,7 +237,26 @@ def load_walk_forward_shards(
         prediction_path = manifest_path.parent / SHARD_PREDICTIONS_NAME
         if _sha256_file(prediction_path) != manifest.get("prediction_sha256"):
             raise RuntimeError(f"prediction digest mismatch for shard {shard_index}")
-        frame = pd.read_parquet(prediction_path)
+        available_columns = set(
+            pq.ParquetFile(prediction_path).schema_arrow.names
+        )
+        missing_required = sorted(
+            set(SHARD_REQUIRED_COLUMNS) - available_columns
+        )
+        if missing_required:
+            raise RuntimeError(
+                f"prediction shard {shard_index} missing required columns "
+                f"{missing_required}"
+            )
+        retained_columns = [
+            column
+            for column in AGGREGATE_PREDICTION_COLUMNS
+            if column in available_columns
+        ]
+        frame = pd.read_parquet(
+            prediction_path,
+            columns=retained_columns,
+        )
         if int(manifest.get("prediction_rows", -1)) != len(frame):
             raise RuntimeError(f"prediction row count mismatch for shard {shard_index}")
         frame_folds = tuple(

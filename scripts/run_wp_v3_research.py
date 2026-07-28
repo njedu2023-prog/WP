@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import gc
 import json
 from dataclasses import asdict
 from datetime import datetime
@@ -112,16 +113,7 @@ def main() -> int:
         panel_start = str(calendar_dates[-retained_train_days])
         panel_end = str(calendar_dates[-1])
         del calendar_panel
-        panel = load_panel_partitions(
-            args.panel_dir,
-            start_date=panel_start,
-            end_date=panel_end,
-        )
-        print(
-            f"[wp-v5] final model panel={panel_start}..{panel_end} "
-            f"rows={len(panel):,}",
-            flush=True,
-        )
+        panel = None
     else:
         del calendar_panel
         panel = load_panel_partitions(args.panel_dir)
@@ -136,10 +128,32 @@ def main() -> int:
         f"candidates={len(backtest.candidates):,}",
         flush=True,
     )
+    backtest_summary = backtest.summary()
+    backtest_metrics = backtest.metrics
+    backtest_candidates = backtest.candidates.copy()
+    final_policy = backtest.final_policy
+    replay = _historical_replay(
+        backtest.predictions,
+        backtest_candidates,
+    )
+    del backtest
+    gc.collect()
+
+    if panel is None:
+        panel = load_panel_partitions(
+            args.panel_dir,
+            start_date=panel_start,
+            end_date=panel_end,
+        )
+        print(
+            f"[wp-v5] final model panel={panel_start}..{panel_end} "
+            f"rows={len(panel):,}",
+            flush=True,
+        )
     bundle = train_bundle(
         panel,
         config,
-        policy_selection=policy_selection_from_dict(backtest.final_policy),
+        policy_selection=policy_selection_from_dict(final_policy),
     )
     model_path = output / "models" / f"{bundle.fingerprint}.joblib"
     save_bundle(bundle, model_path)
@@ -147,7 +161,7 @@ def main() -> int:
 
     backtest_path = output / "wp_v3_backtest.json"
     backtest_path.write_text(
-        _strict_json(backtest.summary()) + "\n",
+        _strict_json(backtest_summary) + "\n",
         encoding="utf-8",
     )
     metadata_path = output / "wp_v3_model_metadata.json"
@@ -156,8 +170,12 @@ def main() -> int:
         encoding="utf-8",
     )
     candidate_path = output / "wp_v3_oos_candidates.csv"
-    backtest.candidates.to_csv(candidate_path, index=False, encoding="utf-8-sig")
-    diagnostics = backtest.metrics.get("diagnostics", {})
+    backtest_candidates.to_csv(
+        candidate_path,
+        index=False,
+        encoding="utf-8-sig",
+    )
+    diagnostics = backtest_metrics.get("diagnostics", {})
     (output / "wp_v3_prediction_diagnostics.json").write_text(
         _strict_json(diagnostics) + "\n",
         encoding="utf-8",
@@ -168,7 +186,6 @@ def main() -> int:
             index=False,
             encoding="utf-8-sig",
         )
-    replay = _historical_replay(backtest.predictions, backtest.candidates)
     replay_json_path = ROOT / "outputs" / "json" / "wp_v3_historical_replay.json"
     replay_csv_path = ROOT / "outputs" / "csv" / "wp_v3_historical_replay.csv"
     replay_json_path.parent.mkdir(parents=True, exist_ok=True)
@@ -187,7 +204,7 @@ def main() -> int:
     register_research_model(
         registry,
         metadata=metadata,
-        backtest=backtest.metrics,
+        backtest=backtest_metrics,
         artifact_path=str(model_path.relative_to(ROOT)),
     )
     decision = apply_promotion_decision(
@@ -215,7 +232,7 @@ def main() -> int:
             if key.startswith("panel_")
         },
         "model": metadata,
-        "backtest": backtest.metrics,
+        "backtest": backtest_metrics,
         "promotion": asdict(decision),
         "deployment_state": registered.get("status", "RESEARCH"),
         "minimum_shadow_trading_days": config.promotion.minimum_shadow_trading_days,

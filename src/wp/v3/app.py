@@ -11,7 +11,7 @@ import pandas as pd
 from wp.calendar import now_cn
 from wp.utils import ensure_dir, write_json
 
-from .contracts import V3Config, load_v3_config, policy_fingerprint, session_phase
+from .contracts import V3Config, load_v3_config, session_phase
 from .dashboard import render_v3_dashboard
 from .ledger import (
     assert_ledger_invariants,
@@ -68,10 +68,7 @@ def run_v3() -> dict[str, Any]:
     )
     registry_path = ROOT / "outputs" / "json" / "wp_model_registry_v3.json"
     registry = load_registry(registry_path)
-    model_path = _resolve_model_path(
-        registry,
-        expected_policy_fingerprint=policy_fingerprint(config),
-    )
+    model_path = _resolve_model_path(registry)
     explicit_model_path = os.environ.get("WP_V3_MODEL_PATH", "").strip()
     if explicit_model_path:
         model_path = Path(explicit_model_path)
@@ -309,21 +306,45 @@ def _write_not_ready(
     current: datetime,
     error: str,
 ) -> dict[str, Any]:
+    phase = session_phase(current, config)
+    registry = load_registry(output / "json" / "wp_model_registry_v3.json")
+    model_record = _resolve_model_record(registry)
+    model_path = _resolve_model_path(registry)
+    model_ready = bool(model_record and model_path.exists())
+    state, health_status, message = _missing_input_state(
+        phase=phase,
+        model_status=(
+            _live_state_from_registry(str(model_record.get("status") or ""))
+            if model_ready
+            else None
+        ),
+        error=error,
+    )
     manifest = {
         "schema_version": "wp_manifest_v3",
         "latest_update": current.strftime("%Y-%m-%d %H:%M:%S"),
         "report_revision": current.strftime("%Y-%m-%d %H:%M:%S"),
         "source_trade_date": current.strftime("%Y%m%d"),
         "market_data_time": None,
-        "session_phase": session_phase(current, config),
+        "session_phase": phase,
         "buy_plan_count": 0,
         "shadow_qualified_count": 0,
-        "health_status": "v3_input_not_ready",
-        "v3_state": "MODEL_NOT_READY",
-        "v3_message": error,
+        "live_display_allowed": False,
+        "health_status": health_status,
+        "v3_state": state,
+        "v3_model_version": (
+            model_record.get("model_version") if model_ready else None
+        ),
+        "v3_model_fingerprint": (
+            model_record.get("fingerprint") if model_ready else None
+        ),
+        "v3_policy_fingerprint": (
+            model_record.get("policy_fingerprint") if model_ready else None
+        ),
+        "v3_formal_authorization": state == "PRODUCTION",
+        "v3_message": message,
     }
     ledger = load_shadow_ledger(output / "json" / "wp_v3_candidate_ledger.json")
-    registry = load_registry(output / "json" / "wp_model_registry_v3.json")
     replay = _read_json(output / "json" / "wp_v3_historical_replay.json")
     write_json(output / "json" / "wp_manifest.json", manifest)
     render_v3_dashboard(
@@ -345,24 +366,58 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
-def _resolve_model_path(
-    registry: dict[str, Any],
-    *,
-    expected_policy_fingerprint: str,
-) -> Path:
-    fingerprint = None
-    if registry.get("active_policy_fingerprint") == expected_policy_fingerprint:
-        fingerprint = registry.get("active_model_fingerprint")
-    elif registry.get("shadow_policy_fingerprint") == expected_policy_fingerprint:
-        fingerprint = registry.get("shadow_model_fingerprint")
-    record = next(
+def _resolve_model_record(registry: dict[str, Any]) -> dict[str, Any]:
+    fingerprint = (
+        registry.get("active_model_fingerprint")
+        or registry.get("shadow_model_fingerprint")
+    )
+    return next(
         (
             model
             for model in registry.get("models", [])
             if model.get("fingerprint") == fingerprint
         ),
-        None,
+        {},
     )
+
+
+def _resolve_model_path(registry: dict[str, Any]) -> Path:
+    record = _resolve_model_record(registry)
     if not record or not record.get("artifact_path"):
         return ROOT / "artifacts" / "wp_v3_research" / "model_not_ready.joblib"
     return ROOT / str(record["artifact_path"])
+
+
+def _live_state_from_registry(status: str) -> str:
+    return {
+        "PROMOTED": "PRODUCTION",
+        "SHADOW": "SHADOW",
+        "SHADOW_OBSERVATION": "SHADOW_OBSERVATION",
+    }.get(status, "MODEL_NOT_DESIGNATED")
+
+
+def _missing_input_state(
+    *,
+    phase: str,
+    model_status: str | None,
+    error: str,
+) -> tuple[str, str, str]:
+    if model_status is None:
+        return (
+            "MODEL_NOT_READY",
+            "model_not_ready",
+            "V5 研究模型尚未发布，所有候选保持关闭。",
+        )
+    if phase == "PRE_SIGNAL":
+        return (
+            model_status,
+            "ok",
+            "模型已就绪，等待 14:20 开始采集当日合法尾盘快照。",
+        )
+    if phase == "CLOSED":
+        return (
+            model_status,
+            "ok",
+            "交易窗口已关闭；没有盘后补造候选，历史台账继续等待真值。",
+        )
+    return model_status, "v3_input_not_ready", error

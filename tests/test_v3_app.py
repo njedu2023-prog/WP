@@ -3,7 +3,12 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from wp.v3.app import _refresh_data_age, _source_signal_authorized
+from wp.v3.app import (
+    _missing_input_state,
+    _refresh_data_age,
+    _resolve_model_path,
+    _source_signal_authorized,
+)
 from wp.v3.contracts import V3Config
 
 
@@ -47,3 +52,46 @@ def test_post_deadline_capture_cannot_masquerade_as_the_1450_signal():
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is False
+
+
+def test_live_model_resolution_uses_designated_fingerprint_not_contract_fingerprint():
+    registry = {
+        "active_model_fingerprint": None,
+        "shadow_model_fingerprint": "model-123",
+        "shadow_policy_fingerprint": "learned-policy-456",
+        "models": [
+            {
+                "fingerprint": "model-123",
+                "policy_fingerprint": "learned-policy-456",
+                "artifact_path": "artifacts/wp_v3_research/wp_v3_model.joblib",
+            }
+        ],
+    }
+
+    assert _resolve_model_path(registry).as_posix().endswith(
+        "artifacts/wp_v3_research/wp_v3_model.joblib"
+    )
+
+
+def test_missing_input_is_normal_after_market_close_when_model_exists():
+    state, health, message = _missing_input_state(
+        phase="CLOSED",
+        model_status="SHADOW",
+        error="missing source",
+    )
+
+    assert state == "SHADOW"
+    assert health == "ok"
+    assert "盘后补造" in message
+
+
+def test_missing_input_remains_a_fault_during_signal_window():
+    state, health, message = _missing_input_state(
+        phase="SIGNAL",
+        model_status="SHADOW",
+        error="missing source",
+    )
+
+    assert state == "SHADOW"
+    assert health == "v3_input_not_ready"
+    assert message == "missing source"

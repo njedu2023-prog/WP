@@ -125,6 +125,7 @@ def test_shard_aggregation_rejects_missing_or_tampered_evidence(
                         "signal_price": [10.0] * len(test_dates),
                         "passes_policy": [True] * len(test_dates),
                         "fold": [fold_number] * len(test_dates),
+                        "unneeded_training_feature": [999.0] * len(test_dates),
                     }
                 )
             )
@@ -160,6 +161,7 @@ def test_shard_aggregation_rejects_missing_or_tampered_evidence(
     assert combined.metrics["rows"] == 7
     assert combined.metrics["candidates"] == 0
     assert combined.metrics["nested_policy"]["final"]["policy"]["authorized"] is False
+    assert "unneeded_training_feature" not in combined.predictions.columns
 
     (shard_root / "shard-1" / "wp_v5_fold_shard_manifest.json").unlink()
     with pytest.raises(RuntimeError, match="incomplete walk-forward shards"):

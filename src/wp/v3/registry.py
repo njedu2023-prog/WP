@@ -131,6 +131,7 @@ def register_research_model(
     record = {
         "model_version": metadata["model_version"],
         "fingerprint": fingerprint,
+        "contract_fingerprint": metadata.get("contract_fingerprint"),
         "policy_fingerprint": policy,
         "training_data_digest": metadata.get("training_data_digest"),
         "feature_version": metadata["feature_version"],

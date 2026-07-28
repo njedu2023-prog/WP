@@ -81,13 +81,27 @@ def render_v3_dashboard(
         "MODEL_NOT_DESIGNATED": "研究模型未指定",
     }.get(state, state)
     status_class = "good" if state == "PRODUCTION" else "warn"
-    live_message = (
-        f"当前共有 {len(passed)} 支通过全部门槛，最终买哪一支由人工决定。"
-        if live_visible and len(passed)
+    if live_visible and len(passed):
+        live_message = (
+            f"当前共有 {len(passed)} 支通过全部门槛，最终买哪一支由人工决定。"
+        )
+    elif live_visible:
+        live_message = "当前时点没有股票通过全部固定门槛，保持空仓是有效结果。"
+    elif phase == "PRE_SIGNAL":
+        live_message = "模型已就绪，等待 14:20 开始尾盘候选观察。"
+    elif manifest.get("health_status") == "v3_input_not_ready":
+        live_message = "交易窗口内缺少合法时点快照，候选输出已关闭并等待自愈。"
+    else:
+        live_message = (
+            "交易窗口已关闭。下方仅展示冻结台账和验证结果，不构成可买名单。"
+        )
+    alert_title = (
+        "交易窗口内"
+        if live_visible
         else (
-            "当前时点没有股票通过全部固定门槛，保持空仓是有效结果。"
-            if live_visible
-            else "交易窗口已关闭。下方仅展示冻结台账和验证结果，不构成可买名单。"
+            "数据完整性故障"
+            if manifest.get("health_status") == "v3_input_not_ready"
+            else ("等待尾盘窗口" if phase == "PRE_SIGNAL" else "仅供复盘")
         )
     )
     html_text = f"""<!doctype html>
@@ -150,7 +164,7 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
   <strong class="{status_class}">{_e(title_state)}</strong></div>
 </div></header>
 <main>
-<section class="band"><div class="alert"><div><strong>{_e('交易窗口内' if live_visible else '仅供复盘')}</strong>
+<section class="band"><div class="alert"><div><strong>{_e(alert_title)}</strong>
 {_e(live_message)}</div></div></section>
 <section class="band metrics">
   {_metric('模型状态', title_state, status_class)}
