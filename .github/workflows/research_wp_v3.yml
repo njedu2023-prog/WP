@@ -236,7 +236,7 @@ jobs:
           PYTHONUNBUFFERED: "1"
           LOKY_MAX_CPU_COUNT: "2"
       - name: Verify V5 contracts and tests
-        run: pytest tests/test_v3_*.py tests/test_v5_*.py -q
+        run: python -m pytest tests/test_v3_*.py tests/test_v5_*.py -q
         env:
           PYTHONPATH: src
           LOKY_MAX_CPU_COUNT: "2"
