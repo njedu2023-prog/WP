@@ -1,1 +1,1 @@
-2026-07-28 18:22:00 +08:00 target_slot=2026-07-28 18:22:00 mode=once reason=refresh_v5_post_close_state
+2026-07-28 21:28:30 +08:00 target_slot=2026-07-28 21:28:30 mode=once reason=refresh_human_friendly_dashboard
