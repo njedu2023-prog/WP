@@ -1,341 +1,111 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>WP 尾盘合格票 T+1 验证</title>
-  <style>
-    * { box-sizing: border-box; }
-    html, body { width: 100%; max-width: 100%; overflow-x: hidden; }
-    body { margin: 0; font-family: "SF Pro SC", "SF Pro Text", "SF Pro Display", "SF Pro Icons", -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #1d1d1f; background: #f5f5f7; letter-spacing: 0; }
-    header { padding: 30px 32px 22px; background: rgba(255, 255, 255, 0.92); border-bottom: 1px solid #d2d2d7; }
-    h1 { margin: 0 0 10px; font-size: 30px; line-height: 1.18; font-weight: 700; }
-    main { min-width: 0; max-width: 100%; padding: 24px 32px 40px; }
-    section { min-width: 0; max-width: 100%; margin-bottom: 22px; }
-    .summary-section { overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }
-    .summary-toggle { list-style: none; cursor: pointer; display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 18px 24px; user-select: none; }
-    .summary-toggle::-webkit-details-marker { display: none; }
-    .summary-toggle-title { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; min-width: 0; }
-    .summary-toggle-title strong { font-size: 16px; line-height: 1.25; font-weight: 700; color: #1d1d1f; }
-    .summary-toggle-meta { color: #6e6e73; font-size: 13px; line-height: 1.4; }
-    .summary-toggle-action { flex: 0 0 auto; width: 28px; height: 28px; border: 1px solid #d2d2d7; border-radius: 50%; background: #f5f5f7; color: #1d1d1f; display: inline-grid; place-items: center; font-size: 20px; line-height: 1; font-weight: 500; }
-    .summary-toggle-action::after { content: "+"; transform: translateY(-1px); }
-    .summary-details[open] .summary-toggle-action::after { content: "-"; transform: translateY(-2px); }
-    .summary-grid { border-top: 1px solid #f1f1f3; }
-    .summary-grid { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(320px, 0.84fr); }
-    .summary-pane { padding: 22px 24px; }
-    .summary-pane + .summary-pane { border-left: 1px solid #d2d2d7; }
-    .summary-title { margin: 0 0 12px; font-size: 18px; line-height: 1.25; font-weight: 700; }
-    .summary-table { width: 100%; border-collapse: collapse; font-size: 14px; }
-    .summary-table th, .summary-table td { padding: 10px 0; border-bottom: 1px solid #f1f1f3; vertical-align: middle; white-space: nowrap; }
-    .summary-table tr:last-child th, .summary-table tr:last-child td { border-bottom: 0; }
-    .summary-table th { width: 150px; color: #6e6e73; font-weight: 500; text-align: left; }
-    .summary-table td { color: #1d1d1f; font-weight: 600; text-align: left; }
-    .market-time { color: #d70015; font-weight: 700; }
-    .pct-up { color: #d70015; font-weight: 700; }
-    .pct-down { color: #008a00; font-weight: 700; }
-    .pct-flat, .pct-pending { color: #86868b; font-weight: 600; }
-    .sector-pane { display: flex; flex-direction: column; align-items: flex-start; }
-    .sector-table { width: auto; min-width: 260px; max-width: 360px; table-layout: auto; }
-    .sector-table th, .sector-table td { padding: 8px 18px 8px 0; text-align: left; }
-    .sector-table th:nth-child(1), .sector-table td:nth-child(1) { width: 48px; color: #86868b; font-variant-numeric: tabular-nums; }
-    .sector-table th:nth-child(2), .sector-table td:nth-child(2) { min-width: 112px; }
-    .sector-table th:nth-child(3), .sector-table td:nth-child(3) { width: 64px; padding-right: 0; text-align: left; font-weight: 600; }
-    .status.ok { color: #0b7a3b; font-weight: 700; }
-    .status.bad { color: #b42318; font-weight: 700; }
-    .table-wrap { display: block; width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; border: 1px solid #d2d2d7; background: white; border-radius: 8px; -webkit-overflow-scrolling: touch; }
-    .rank-table { border-collapse: collapse; min-width: 1680px; width: 100%; font-size: 13px; }
-    .rank-table th, .rank-table td { padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }
-    .rank-table th { background: #fbfbfd; color: #6e6e73; position: sticky; top: 0; font-weight: 600; }
-    .rank-table tbody tr:hover td { background: #f5f5f7; }
-    .rank-table tr.top10 td { background: #fff8dc; }
-    .rank-table tr.risk-high td { color: #9f1f1f; }
-    .buy-table { border-collapse: collapse; min-width: 1720px; width: 100%; font-size: 13px; }
-    .buy-table th, .buy-table td { padding: 10px 11px; border-bottom: 1px solid #f1f1f3; text-align: left; vertical-align: top; }
-    .buy-table th { background: #fbfbfd; color: #6e6e73; font-weight: 600; white-space: nowrap; }
-    .buy-table td:nth-child(14), .buy-table td:nth-child(15), .buy-table td:nth-child(16) { min-width: 150px; line-height: 1.45; }
-    .buy-table tr.current-primary td { background: #fff8dc; }
-    .buy-table tr.sealed td { background: #fff2f2; }
-    .buy-table tr.under-review td { color: #6e6e73; background: #fafafa; }
-    .observation-status { font-weight: 700; white-space: nowrap; }
-    .observation-status.current-primary { color: #9a5b00; }
-    .observation-status.sealed { color: #b42318; }
-    .observation-status.under-review { color: #6e6e73; }
-    .observation-status.observed { color: #0b7a3b; }
-    .stale-data-banner { margin-top: 10px; padding: 12px 14px; border: 1px solid #f1a7a7; border-radius: 6px; color: #b42318; background: #fff2f2; font-size: 13px; font-weight: 600; }
-    .stale-data-banner[hidden] { display: none; }
-    .v2-section, .exit-section { width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }
-    .v2-heading { padding: 16px 20px 12px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .v2-heading strong { font-size: 16px; line-height: 1.25; }
-    .v2-heading span { color: #6e6e73; font-size: 12px; }
-    .decision-line { padding: 16px 20px 10px; display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
-    .decision-line > strong { font-size: 17px; }
-    .decision-line > span:not(.decision-action) { color: #6e6e73; font-size: 13px; }
-    .decision-action { padding: 5px 9px; border-radius: 5px; font-size: 13px; font-weight: 700; }
-    .decision-action.buy { color: #9f1f1f; background: #fff2f2; }
-    .decision-action.wait { color: #7a4b00; background: #fff8e6; }
-    .decision-action.avoid { color: #0b6332; background: #edf8f1; }
-    .decision-reason, .model-warning, .regime-reason { margin: 0; padding: 0 20px 12px; color: #424245; font-size: 13px; line-height: 1.55; }
-    .model-warning { color: #8a4b08; }
-    .regime-reason { color: #6e6e73; padding-bottom: 16px; }
-    .forecast-grid { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); border-top: 1px solid #e5e5ea; border-bottom: 1px solid #e5e5ea; }
-    .forecast-metric { min-width: 0; padding: 13px 16px; }
-    .forecast-metric + .forecast-metric { border-left: 1px solid #e5e5ea; }
-    .forecast-metric span { display: block; color: #6e6e73; font-size: 11px; margin-bottom: 5px; }
-    .forecast-metric strong { display: block; font-size: 14px; white-space: nowrap; }
-    .probability-line { padding: 12px 20px; display: flex; gap: 22px; flex-wrap: wrap; font-size: 12px; color: #6e6e73; }
-    .probability-line strong { color: #1d1d1f; }
-    .exit-table { border-collapse: collapse; min-width: 1180px; width: 100%; font-size: 12px; }
-    .exit-table th, .exit-table td { padding: 10px 12px; border-top: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }
-    .exit-table th { color: #6e6e73; background: #fbfbfd; font-weight: 600; }
-    .backtest-section { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }
-    .backtest-scroll { width: 100%; overflow-x: auto; border-top: 1px solid #e5e5ea; -webkit-overflow-scrolling: touch; }
-    .backtest-table { border-collapse: collapse; min-width: 1480px; width: 100%; font-size: 13px; }
-    .backtest-table th, .backtest-table td { padding: 10px 12px; border-bottom: 1px solid #f1f1f3; text-align: left; white-space: nowrap; }
-    .backtest-table th { background: #fbfbfd; color: #6e6e73; font-weight: 600; }
-    .backtest-table a { color: #06c; text-decoration: none; }
-    .backtest-table a:hover { text-decoration: underline; }
-    .validation-section { width: 100%; min-width: 0; max-width: 100%; overflow: hidden; background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; }
-    .validation-heading { padding: 18px 20px 14px; display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
-    .validation-heading strong { font-size: 16px; }
-    .validation-heading span { color: #6e6e73; font-size: 12px; }
-    .validation-kpis { display: grid; grid-template-columns: repeat(8, minmax(120px, 1fr)); gap: 1px; background: #e5e5ea; border-top: 1px solid #e5e5ea; border-bottom: 1px solid #e5e5ea; }
-    .validation-kpi { min-width: 0; padding: 14px 16px; background: #fff; }
-    .validation-kpi > span { display: block; margin-bottom: 5px; color: #6e6e73; font-size: 12px; font-weight: 500; }
-    .validation-kpi > strong { display: flex; align-items: baseline; gap: 7px; color: #1d1d1f; font-size: 18px; line-height: 1.2; white-space: nowrap; }
-    .validation-kpi small { color: #6e6e73; font-size: 11px; font-weight: 500; }
-    .validation-days { width: 100%; min-width: 0; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
-    .validation-day-list { min-width: 1080px; }
-    .validation-grid { display: grid; grid-template-columns: 1.05fr 1.05fr 0.55fr 2.2fr 0.7fr 0.7fr 0.78fr 30px; align-items: center; column-gap: 12px; }
-    .validation-day-header { padding: 10px 16px; color: #6e6e73; background: #fbfbfd; border-bottom: 1px solid #e5e5ea; font-size: 12px; font-weight: 600; }
-    .validation-day-summary { list-style: none; min-height: 50px; padding: 10px 16px; border-bottom: 1px solid #f1f1f3; cursor: pointer; font-size: 13px; font-weight: 600; user-select: none; }
-    .validation-day-summary::-webkit-details-marker { display: none; }
-    .validation-day-summary:hover { background: #f5f5f7; }
-    .validation-day-action { width: 24px; height: 24px; border: 1px solid #d2d2d7; border-radius: 50%; display: inline-grid; place-items: center; color: #1d1d1f; font-size: 17px; font-weight: 500; }
-    .validation-day-action::after { content: "+"; transform: translateY(-1px); }
-    .validation-day-details[open] .validation-day-action::after { content: "-"; transform: translateY(-2px); }
-    .validation-status.verified { color: #0b7a3b; }
-    .validation-status.partial { color: #b26a00; }
-    .validation-status.pending { color: #86868b; }
-    .validation-status.missing { color: #b42318; }
-    .validation-day-missing { cursor: default; background: #fff8f7; }
-    .sampling-missing-note { color: #b42318; font-weight: 500; }
-    .validation-detail-wrap { padding: 0 16px 14px; background: #fbfbfd; border-bottom: 1px solid #e5e5ea; overflow-x: auto; }
-    .validation-return { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
-    .validation-detail-table { border-collapse: collapse; min-width: 1180px; width: 100%; font-size: 12px; }
-    .validation-detail-table th, .validation-detail-table td { padding: 9px 10px; border-bottom: 1px solid #e5e5ea; text-align: left; white-space: nowrap; }
-    .validation-detail-table th { color: #6e6e73; font-weight: 600; }
-    .validation-detail-table tr:last-child td { border-bottom: 0; }
-    .section-block { background: #fff; border: 1px solid #d2d2d7; border-radius: 8px; padding: 18px 20px; color: #424245; line-height: 1.65; }
-    .section-block > strong { font-size: 16px; line-height: 1.25; }
-    .section-block strong { display: block; color: #1d1d1f; margin-bottom: 6px; }
-    .section-block p { margin: 0 0 14px; }
-    .section-block p:last-child { margin-bottom: 0; }
-    .empty { text-align: center; color: #86868b; padding: 24px; }
-    @media (max-width: 820px) {
-      header { padding: 24px 18px 18px; }
-      h1 { font-size: 25px; }
-      main { padding: 18px 14px 30px; }
-      .summary-section { width: 100%; min-width: 0; max-width: 100%; }
-      .summary-toggle { align-items: flex-start; padding: 16px; }
-      .summary-toggle-title { flex-direction: column; gap: 4px; }
-      .summary-grid { grid-template-columns: 1fr; }
-      .summary-pane { padding: 18px 16px; }
-      .summary-pane + .summary-pane { border-left: 0; border-top: 1px solid #d2d2d7; }
-      .summary-table { font-size: 13px; }
-      .summary-table th { width: 128px; }
-      .sector-table { min-width: 236px; max-width: 100%; }
-      .sector-table th, .sector-table td { padding-top: 7px; padding-bottom: 7px; }
-      .validation-heading { padding: 16px; }
-      .validation-kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .validation-kpi { padding: 12px 14px; }
-      .validation-kpi > strong { font-size: 16px; }
-      .forecast-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-      .forecast-metric:nth-child(3) { border-left: 0; border-top: 1px solid #e5e5ea; }
-      .forecast-metric:nth-child(4) { border-top: 1px solid #e5e5ea; }
-      .decision-line { align-items: flex-start; }
-    }
-  </style>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WP V5 尾盘 T+1 决策台</title>
+<style>
+:root {
+  --ink:#171a1f; --muted:#66707b; --line:#d9dee5; --paper:#ffffff;
+  --soft:#f4f6f8; --green:#087a43; --green-bg:#e8f5ee;
+  --red:#c62828; --amber:#9a5b00; --amber-bg:#fff4dd; --blue:#145da0;
+}
+*{box-sizing:border-box} body{margin:0;background:var(--soft);color:var(--ink);
+font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
+font-size:14px;letter-spacing:0}
+header{background:#18212b;color:#fff;border-bottom:4px solid #2f9e62}
+.header-inner{max-width:1440px;margin:auto;padding:18px 24px;display:flex;gap:24px;
+align-items:flex-end;justify-content:space-between;flex-wrap:wrap}
+h1{font-size:24px;line-height:1.2;margin:0;font-weight:750} .sub{color:#bac5cf;margin-top:7px}
+.run-state{text-align:right} .run-state strong{font-size:18px}
+main{max-width:1440px;margin:auto;background:var(--paper);min-height:100vh}
+.band{padding:18px 24px;border-bottom:1px solid var(--line)}
+.alert{display:flex;gap:12px;align-items:flex-start;background:#fff4dd;
+border-left:5px solid #9a5b00;padding:13px 16px}
+.alert strong{display:block;margin-bottom:3px}
+.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--line);
+border-left:1px solid var(--line)}
+.metric{padding:14px 16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
+min-height:82px} .metric span{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
+.metric strong{font-size:21px;line-height:1.1} .good{color:var(--green)} .warn{color:var(--amber)}
+.bad{color:var(--red)} h2{font-size:18px;margin:0 0 12px} h3{font-size:15px;margin:0 0 9px}
+.section-head{display:flex;justify-content:space-between;gap:14px;align-items:center;flex-wrap:wrap}
+.tag{display:inline-flex;align-items:center;border:1px solid var(--line);padding:3px 7px;border-radius:4px;
+font-size:12px;background:#fff} .tag.good{border-color:#9bcdb3;background:var(--green-bg)}
+.tag.warn{border-color:#e3bd75;background:var(--amber-bg)}
+.table-wrap{overflow:auto;border:1px solid var(--line)} table{border-collapse:collapse;width:100%;min-width:920px}
+th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
+th{position:sticky;top:0;background:#f0f2f4;color:#48515b;font-size:12px;z-index:1}
+tbody tr:hover{background:#f7faf8} td.num{font-variant-numeric:tabular-nums;text-align:right}
+.empty{padding:24px;border:1px dashed #b8c0c8;color:var(--muted);text-align:center}
+.two-col{display:grid;grid-template-columns:1.25fr .75fr;gap:24px}
+.gate-list{display:grid;grid-template-columns:repeat(2,minmax(160px,1fr));gap:1px;background:var(--line);
+border:1px solid var(--line)} .gate{padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:8px}
+.gate .yes{color:var(--green)} .gate .no{color:var(--red)}
+.progress{height:10px;background:#e3e7eb;overflow:hidden;border-radius:4px;margin-top:8px}
+.progress div{height:100%;background:#2f9e62;width:0.0%}
+.foot{font-size:12px;color:var(--muted);line-height:1.7}
+details summary{cursor:pointer;font-weight:650;padding:8px 0}
+@media(max-width:980px){.metrics{grid-template-columns:repeat(2,1fr)}.two-col{grid-template-columns:1fr}
+.header-inner{padding:16px}.band{padding:16px}.run-state{text-align:left}}
+</style>
 </head>
 <body>
-  <header>
-    <h1>WP 尾盘合格票 T+1 验证</h1>
-  </header>
-  <main>
-    <details class="summary-section summary-details" aria-label="运行状态与板块热度">
-      <summary class="summary-toggle">
-        <span class="summary-toggle-title">
-          <strong>运行状态与板块热度</strong>
-          <span class="summary-toggle-meta">状态：<span class="status ok">ok</span>；市场数据：<span class="market-time">2026-07-27 15:35:45</span>；报告更新：2026-07-27 15:59:10<span id="live-freshness"></span></span>
-        </span>
-        <span class="summary-toggle-action" aria-hidden="true"></span>
-      </summary>
-      <div class="summary-grid">
-        <div class="summary-pane">
-          <h2 class="summary-title">今日运行状态</h2>
-          <table class="summary-table">
-            <tbody><tr><th>运行状态</th><td><span class="status ok">ok</span></td></tr><tr><th>市场数据时间</th><td><span class="market-time">2026-07-27 15:35:45</span></td></tr><tr><th>上游生成时间</th><td>2026-07-27 15:59:10</td></tr><tr><th>报告更新时间</th><td>2026-07-27 15:59:10</td></tr><tr><th>行情日期</th><td>20260727</td></tr><tr><th>期望交易日</th><td>20260727</td></tr><tr><th>候选池数量</th><td>7</td></tr><tr><th>入选 Top50 数量</th><td>7</td></tr><tr><th>当前合格票数量</th><td>0</td></tr><tr><th>基础观察池数量</th><td>0</td></tr><tr><th>原始数据量</th><td>129</td></tr><tr><th>缺失字段</th><td>无</td></tr><tr><th>读取缓存 fallback</th><td>False</td></tr><tr><th>实时行情来源</th><td>realtime_quote_fallback</td></tr><tr><th>实时 fallback</th><td>True</td></tr></tbody>
-          </table>
-        </div>
-        <div class="summary-pane sector-pane">
-          <h2 class="summary-title">板块热度 Top10</h2>
-          <table class="summary-table sector-table">
-            <thead><tr><th>序号</th><th>板块</th><th>数量</th></tr></thead>
-            <tbody><tr><td>1</td><td>元器件</td><td>1 只</td></tr><tr><td>2</td><td>化工原料</td><td>1 只</td></tr><tr><td>3</td><td>医疗保健</td><td>1 只</td></tr><tr><td>4</td><td>日用化工</td><td>1 只</td></tr><tr><td>5</td><td>汽车配件</td><td>1 只</td></tr><tr><td>6</td><td>环境保护</td><td>1 只</td></tr><tr><td>7</td><td>综合类</td><td>1 只</td></tr></tbody>
-          </table>
-        </div>
-      </div>
-    </details>
-    <section class="v2-section"><div class="v2-heading"><strong>14:20–14:50 合格票</strong><span>逐票通过固定门槛即锁定首次信号；系统发布全部合格票，由人工决定买哪一支</span></div><div class="decision-line"><span class="decision-action avoid">已收盘</span><strong>当前合格 0 支 / 观察 0 支</strong><span>市场：允许寻找机会 · 100.00分</span><span>模型：样本不足 · 样本就绪度-</span></div><p class="decision-reason">15:00已收盘，不再生成可买候选；历史信号继续等待T+1真值</p><div class="probability-line"><span>真实样本 <strong>8</strong></span><span>独立交易日 <strong>6</strong></span><span>候选截止 <strong>14:50</strong></span><span>人工买入截止 <strong>15:00</strong></span><span>卖出合同 <strong>T+1收盘卖出</strong></span><span>下一检查 <strong>下一交易日14:20</strong></span></div><p class="regime-reason">市场依据：主板上涨93.0%；强势36.8%；涨停110只/跌停5只；尾盘候选7只</p></section>
-    <section id="buy-plan-section">
-      <div class="section-block">
-        <strong>当前合格票（人工选择）</strong>
-        <div id="stale-data-banner" class="stale-data-banner" role="alert" hidden>市场数据已超过20分钟，名单仍显示，请核对数据时间。</div>
-      </div>
-      <div id="buy-plan-table-wrap" class="backtest-scroll">
-        <table class="buy-table">
-          <thead><tr><th>质量排名</th><th>状态</th><th>排名变化</th><th>首次出现</th><th>代码</th><th>名称</th><th>涨幅</th><th>板块</th><th>研究分</th><th>风险分</th><th>5日量能比</th><th>涨跌停规则</th><th>最近确认</th><th>14:50前确认</th><th>放弃</th><th>理由</th></tr></thead>
-          <tbody><tr><td colspan="16" class="empty">15:00已收盘，停止展示可买名单；已出现合格票仍在下方逐票验证</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-    <section class="exit-section"><div class="v2-heading"><strong>T+1 候选验证合同</strong><span>验证统一使用T+1收盘价；只有人工实际买入的股票才涉及真实卖出</span></div><div class="backtest-scroll"><table class="exit-table"><thead><tr><th>代码</th><th>名称</th><th>开盘收益</th><th>最高收益</th><th>最低收益</th><th>当前收益</th><th>建议</th><th>依据</th><th>下一检查</th></tr></thead><tbody><tr><td colspan="9" class="empty">今天没有需要复核的T+1系统观察记录；实际持仓始终以人工确认为准。</td></tr></tbody></table></div></section>
-    <section>
-      <div class="table-wrap">
-        <table class="rank-table">
-          <thead><tr><th>排名</th><th>代码</th><th>名称</th><th>当前价/收盘价</th><th>今日涨幅</th><th>所属板块</th><th>尾盘收益分</th><th>观察资格</th><th>板块强度</th><th>个股强度</th><th>承接分</th><th>次日涨停概率</th><th>WP评分</th><th>模型置信度</th><th>信号等级</th><th>核心理由</th><th>风险提示</th><th>更新时间</th></tr></thead>
-          <tbody><tr class="top10 risk-high"><td>1</td><td>002326.SZ</td><td>永太科技</td><td>19.44</td><td>8.18%</td><td>化工原料</td><td>76.43</td><td>仅排名</td><td>63.63</td><td>31.61</td><td>0.00</td><td>1.07%</td><td>19.09</td><td>47.89</td><td>D级</td><td>量价齐、均价上、竞价强</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr><tr class="top10 risk-high"><td>2</td><td>000967.SZ</td><td>盈峰环境</td><td>7.39</td><td>8.04%</td><td>环境保护</td><td>61.43</td><td>仅排名</td><td>30.90</td><td>40.48</td><td>0.00</td><td>0.29%</td><td>6.39</td><td>47.89</td><td>D级</td><td>均价上</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr><tr class="top10 risk-high"><td>3</td><td>603186.SH</td><td>华正新材</td><td>135.20</td><td>8.59%</td><td>元器件</td><td>61.43</td><td>仅排名</td><td>77.50</td><td>29.88</td><td>0.00</td><td>0.57%</td><td>14.92</td><td>47.89</td><td>D级</td><td>板块强、均价上</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr><tr class="top10 risk-high"><td>4</td><td>603950.SH</td><td>长源东谷</td><td>64.88</td><td>8.49%</td><td>汽车配件</td><td>45.71</td><td>仅排名</td><td>49.21</td><td>28.34</td><td>0.00</td><td>0.24%</td><td>8.74</td><td>47.89</td><td>D级</td><td>均价上</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr><tr class="top10 risk-high"><td>5</td><td>603127.SH</td><td>昭衍新药</td><td>49.70</td><td>9.81%</td><td>医疗保健</td><td>41.43</td><td>仅排名</td><td>58.67</td><td>81.76</td><td>0.00</td><td>1.41%</td><td>34.83</td><td>47.89</td><td>D级</td><td>个股强、动量上、量价齐</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr><tr class="top10 risk-high"><td>6</td><td>600673.SH</td><td>东阳光</td><td>30.75</td><td>8.62%</td><td>综合类</td><td>33.57</td><td>仅排名</td><td>22.62</td><td>40.22</td><td>0.00</td><td>0.44%</td><td>4.94</td><td>47.89</td><td>D级</td><td>均价上</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr><tr class="top10 risk-high"><td>7</td><td>603983.SH</td><td>丸美生物</td><td>34.78</td><td>9.44%</td><td>日用化工</td><td>25.00</td><td>仅排名</td><td>32.86</td><td>70.99</td><td>0.00</td><td>0.33%</td><td>19.95</td><td>47.89</td><td>D级</td><td>个股强、动量上、量价齐</td><td>分钟缺、风险高、放量急</td><td>2026-07-27 15:59:10</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-    <section class="validation-section">
-      <div class="validation-heading">
-        <strong>全部合格票 T+1 净收益验证</strong>
-        <span>每支首次合格信号逐票验证；候选统计与人工实际成交分离</span>
-      </div>
-      <div class="validation-kpis"><div class="validation-kpi"><span>候选日</span><strong>0</strong></div><div class="validation-kpi"><span>合格信号</span><strong>0</strong></div><div class="validation-kpi"><span>无合格票日</span><strong>1</strong></div><div class="validation-kpi"><span>已验证票</span><strong>0</strong></div><div class="validation-kpi"><span>净盈利</span><strong>0 / 0<small>0.00%</small></strong></div><div class="validation-kpi"><span>平均逐票净收益</span><strong><span class="pct-pending">待验证</span></strong></div><div class="validation-kpi"><span>等权日均净收益</span><strong><span class="pct-pending">待验证</span></strong></div><div class="validation-kpi"><span>等权日累计</span><strong><span class="pct-pending">待验证</span></strong></div></div>
-      <div class="validation-days">
-        <div class="validation-day-list">
-          <div class="validation-day-header validation-grid"><span>信号日</span><span>T+1日</span><span>类型</span><span>净收益</span><span>标的</span><span>首次合格</span><span>状态</span><span></span></div>
-          <div class="validation-day-summary validation-grid"><span>2026-07-27</span><span>-</span><span>当日无合格票</span><span><span>14:20–14:50没有股票通过全部固定门槛</span></span><span>-</span><span>15:35</span><span class="validation-status pending">不适用</span><span></span></div>
-        </div>
-      </div>
-    </section>
-    <section class="backtest-section">
-      <div class="validation-heading">
-        <strong>2026-07-21 至 2026-07-24 历史完整性审计</strong>
-        <span>盘后生成的名单不回填为盘中交易；新策略绩效从不可变正式账本重新开始</span>
-      </div>
-      <div class="backtest-scroll">
-        <table class="backtest-table">
-          <thead><tr><th>计划日</th><th>快照</th><th>有效盘中快照</th><th>审计动作</th><th>快照时间范围</th><th>状态</th><th>原因</th></tr></thead>
-          <tbody><tr><td>2026-07-21</td><td>4</td><td>2</td><td>NO_TRADE</td><td>14:30 - 15:16</td><td class="validation-status verified">旧版盘中记录可审计</td><td>旧版盘中正式意见为空仓；只保留为研究历史</td></tr><tr><td>2026-07-22</td><td>2</td><td>0</td><td>NO_TRADE</td><td>15:34 - 15:36</td><td class="validation-status missing">缺少有效盘中快照</td><td>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</td></tr><tr><td>2026-07-23</td><td>1</td><td>0</td><td>NO_TRADE</td><td>15:31 - 15:31</td><td class="validation-status missing">缺少有效盘中快照</td><td>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</td></tr><tr><td>2026-07-24</td><td>1</td><td>0</td><td>NO_TRADE</td><td>15:30 - 15:30</td><td class="validation-status missing">缺少有效盘中快照</td><td>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</td></tr></tbody>
-        </table>
-      </div>
-    </section>
-    <section class="backtest-section">
-      <div class="validation-heading">
-        <strong>研究回测（不授权交易）</strong>
-        <span>收盘日线代理不具备14:20–14:50因果性，只用于诊断数据与特征</span>
-      </div>
-      <div class="table-wrap">
-        <table class="backtest-table">
-          <thead><tr><th>区间</th><th>交易日</th><th>观察日</th><th>样本</th><th>上涨率</th><th>触及涨停</th><th>次日开盘</th><th>次日最高</th><th>次日收盘</th><th>累计收盘</th><th>AUC</th><th>原始数据</th></tr></thead>
-          <tbody><tr><td>2026-03-13 至 2026-07-09</td><td>80</td><td>80</td><td>80</td><td>46.25%</td><td>11.25%</td><td><span class="pct-down">-0.50%</span></td><td><span class="pct-up">+3.89%</span></td><td><span class="pct-up">+0.17%</span></td><td><span class="pct-up">+0.31%</span></td><td>0.5617</td><td><a href="../backtests/20260313_20260709/summary.json">汇总</a> · <a href="../backtests/20260313_20260709/buy_trades.csv">主票明细</a> · <a href="../backtests/20260313_20260709/monthly_summary.csv">分月</a></td></tr></tbody>
-        </table>
-      </div>
-    </section>
-  </main>
-  <script>
-    (() => {
-      const MANIFEST_URL = "/WP/outputs/json/wp_manifest.json";
-      const INITIAL_REPORT_REVISION = "2026-07-27 15:59:10";
-      const INITIAL_DATA_REVISION = "2026-07-27 15:35:45";
-      const EMBEDDED_MARKET_TIME = "2026-07-27 15:35:45";
-      const STALE_AFTER_MINUTES = 20;
-      const POLL_INTERVAL_MS = 60_000;
+<header><div class="header-inner">
+  <div><h1>WP V5 尾盘 T+1 决策台</h1>
+  <div class="sub">目标：14:20–14:50 可成交买入，固定 T+1 收盘卖出后净收益为正</div></div>
+  <div class="run-state"><div>20260728 · </div>
+  <strong class="warn">模型尚未就绪</strong></div>
+</div></header>
+<main>
+<section class="band"><div class="alert"><div><strong>仅供复盘</strong>
+交易窗口已关闭。下方仅展示冻结台账和验证结果，不构成可买名单。</div></div></section>
+<section class="band metrics">
+  <div class='metric'><span>模型状态</span><strong class='warn'>模型尚未就绪</strong></div>
+  <div class='metric'><span>当前合格</span><strong class=''>0</strong></div>
+  <div class='metric'><span>今日累计入账</span><strong class=''>0</strong></div>
+  <div class='metric'><span>时点完整性</span><strong class=''>0/7 收集中</strong></div>
+  <div class='metric'><span>影子交易日</span><strong class='warn'>0 / 150</strong></div>
+  <div class='metric'><span>三年 OOS 候选</span><strong class=''>—</strong></div>
+  <div class='metric'><span>尾盘覆盖率</span><strong class=''>—</strong></div>
+  <div class='metric'><span>行情 P95 年龄</span><strong class=''>—</strong></div>
+</section>
+<section class="band">
+  <div class="section-head"><h2>当日冻结候选台账</h2>
+	  <span class="tag warn">研究观察，不授权实盘</span></div>
+  <div class="empty">没有通过全部固定门槛的候选。</div>
+</section>
 
-      function beijingParts(now) {
-        const parts = new Intl.DateTimeFormat("en-US", {
-          timeZone: "Asia/Shanghai",
-          weekday: "short",
-          hour: "2-digit",
-          minute: "2-digit",
-          hour12: false,
-        }).formatToParts(now);
-        return Object.fromEntries(parts.map((part) => [part.type, part.value]));
-      }
+<section class="band two-col">
+  <div><h2>模型证据与晋级门槛</h2>
+    <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
+      <div class='metric'><span>OOS 胜率</span><strong class=''>—</strong></div>
+      <div class='metric'><span>按日聚类 95% 下界</span><strong class=''>—</strong></div>
+      <div class='metric'><span>平均净收益</span><strong class=''>—</strong></div>
+      <div class='metric'><span>Profit Factor</span><strong class=''>—</strong></div>
+      <div class='metric'><span>校准误差 ECE</span><strong class=''>—</strong></div>
+      <div class='metric'><span>50bp 压力</span><strong class='bad'>未通过</strong></div>
+    </div>
+  </div>
+  <div><h2>150 日影子进度</h2>
+    <strong>0 / 150 个交易日</strong>
+    <div class="progress"><div></div></div>
+    <p class="foot">即使三年回测通过，也必须完成至少 150 个交易日的前瞻影子运行。同一政策下允许按固定协议滚动重训；特征、门槛、成本、样本或交易合同发生实质变化后重新计时。</p>
+    <p class="foot">尚未形成可评估的晋级记录。</p>
+  </div>
+</section>
 
-      function isTradingWindow(now) {
-        const parts = beijingParts(now);
-        if (!["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday)) return false;
-        const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
-        return (minuteOfDay >= 565 && minuteOfDay <= 695) || (minuteOfDay >= 775 && minuteOfDay <= 910);
-      }
-
-      function applyTailWindowVisibility(now) {
-        const parts = beijingParts(now);
-        const minuteOfDay = Number(parts.hour) * 60 + Number(parts.minute);
-        const visible = ["Mon", "Tue", "Wed", "Thu", "Fri"].includes(parts.weekday)
-          && minuteOfDay >= 860
-          && minuteOfDay < 900;
-        const section = document.getElementById("buy-plan-section");
-        if (section) section.hidden = !visible;
-      }
-
-      function parseBeijingTime(value) {
-        const match = String(value || "").match(/^(\d{4})-(\d{2})-(\d{2})[ T](\d{2}):(\d{2}):(\d{2})/);
-        if (!match) return null;
-        return new Date(`${match[1]}-${match[2]}-${match[3]}T${match[4]}:${match[5]}:${match[6]}+08:00`);
-      }
-
-      function applyFreshness(marketDataTime) {
-        const now = new Date();
-        applyTailWindowVisibility(now);
-        const dataTime = parseBeijingTime(marketDataTime);
-        const ageMinutes = dataTime ? (now.getTime() - dataTime.getTime()) / 60_000 : Infinity;
-        const stale = isTradingWindow(now) && (!dataTime || ageMinutes > STALE_AFTER_MINUTES || ageMinutes < -5);
-        const banner = document.getElementById("stale-data-banner");
-        const freshness = document.getElementById("live-freshness");
-        document.body.classList.toggle("data-stale", stale);
-        if (banner) banner.hidden = !stale;
-        if (freshness) {
-          freshness.textContent = stale ? "；数据过期" : "";
-          freshness.className = stale ? "status bad" : "";
-        }
-      }
-
-      async function checkManifest() {
-        try {
-          const url = `${MANIFEST_URL}?v=${Date.now()}`;
-          const response = await fetch(url, { cache: "no-store" });
-          if (!response.ok) throw new Error(`manifest HTTP ${response.status}`);
-          const manifest = await response.json();
-          const nextDataRevision = String(manifest.data_revision || manifest.market_data_time || "");
-          const nextReportRevision = String(manifest.report_revision || manifest.wp_run_time || manifest.latest_update || "");
-          applyFreshness(manifest.market_data_time || EMBEDDED_MARKET_TIME);
-          const dataChanged = nextDataRevision && nextDataRevision !== INITIAL_DATA_REVISION;
-          const reportChanged = nextReportRevision && nextReportRevision !== INITIAL_REPORT_REVISION;
-          if (dataChanged || reportChanged) {
-            const reportKey = `${nextDataRevision}-${nextReportRevision}`.replace(/\D/g, "");
-            const currentUrl = new URL(window.location.href);
-            if (currentUrl.searchParams.get("report") !== reportKey) {
-              currentUrl.searchParams.set("report", reportKey);
-              window.location.replace(currentUrl.toString());
-            }
-          }
-        } catch (_error) {
-          applyFreshness(EMBEDDED_MARKET_TIME);
-        }
-      }
-
-      applyFreshness(EMBEDDED_MARKET_TIME);
-      checkManifest();
-      window.setInterval(checkManifest, POLL_INTERVAL_MS);
-      document.addEventListener("visibilitychange", () => {
-        if (!document.hidden) checkManifest();
-      });
-    })();
-  </script>
-</body>
-</html>
+<section class="band"><div class="section-head"><h2>接近门槛但未通过</h2>
+<span class="tag">用于解释，不是候选名单</span></div><div class="empty">当前没有可解释的近门槛样本。</div></section>
+<section class="band"><h2>候选真值账本</h2><div class="empty">尚无完成 T+1 真值验证的候选。</div></section>
+<section class="band"><div class="section-head"><h2>历史因果回放</h2>
+<span class="tag warn">RECONSTRUCTED_OOS，不冒充实时信号</span></div>
+<div class="empty">尚无完成 T+1 真值验证的候选。</div></section>
+<section class="band"><details><summary>固定交易与统计合同</summary>
+	<div class="foot">信号时点：14:20, 14:25, 14:30, 14:35, 14:40, 14:45, 14:50；入场冲击：10bp；
+	费用及退出影响：25bp；基准全成本：35bp；参考订单：100,000 元；
+退出：下一 A 股交易日收盘；同一股票当日首次通过即锁定首次信号价；人工实际成交与模型候选统计相互独立。</div>
+</details></section>
+<section class="band foot">报告版本 2026-07-28 16:18:18 · 政策指纹 无 · 模型指纹 无</section>
+</main>
+</body></html>
