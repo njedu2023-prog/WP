@@ -1,4 +1,4 @@
-# WP V5 字段合同
+# WP V6 字段合同
 
 字段按用途分层。`v3` 仅是既有文件路径和 JSON schema 的兼容名称，不代表仍在运行旧模型。
 
@@ -17,7 +17,10 @@
 
 - `signal_price`：合法时点可见的信号价。
 - `first_signal_price`：同一股票当日第一次通过门槛时锁定的不可变信号价。
-- `entry_price`：`first_signal_price` 加声明的入场滑点。
+- `entry_benchmark_slot`：首次信号后 5 分钟的固定结算时点。
+- `entry_benchmark_price`：结算时点真实 5 分钟线的收盘价。
+- `entry_benchmark_status`：`PENDING`、`SETTLED` 或 `NON_FILL`。
+- `entry_price`：`entry_benchmark_price` 加声明的入场滑点；不得从信号价回退。
 - `entry_slippage_bps`：入场滑点，当前合同为 10 bps。
 - `round_trip_cost_bps`：除入场滑点外的往返成本，当前合同为 25 bps。
 - `baseline_all_in_cost_bps`：基准总摩擦，当前为 35 bps。
@@ -60,7 +63,8 @@
 - `first_signal_features`：首次信号时冻结的因果特征。
 - `qualification_evidence`：首次通过每项门槛的证据。
 - `covered_slots` / `missing_slots`：当日七个信号时点的覆盖和缺失集合。
-- `integrity_status`：`COLLECTING`、`COMPLETE` 或 `INCOMPLETE`。
+- `integrity_status`：`COLLECTING`、`COMPLETE`、`INCOMPLETE` 或
+  `INCOMPLETE_ENTRY`。
 - `NO_SIGNAL`：七个时点没有任何合格票的正式日摘要，不参与收益统计。
 
 ## T+1 真值
@@ -70,6 +74,6 @@
 - `net_return_pct`：毛收益扣除合同往返成本后的净收益。
 - `net_positive`：`net_return_pct > 0`。
 - `t1_open` / `t1_high` / `t1_low` / `t1_close`：T+1 日真实四价，仅用于事后验证。
-- `truth_contract`：固定为首次信号价到 T+1 收盘、扣声明成本。
+- `truth_contract`：固定为下一根 5 分钟线参考成交价到 T+1 收盘、扣声明成本。
 
 模型候选统计和用户真实成交记录必须分离；人工是否买入、实际成交价和仓位不属于这些字段。

@@ -63,30 +63,41 @@ def execution_eligibility(frame: pd.DataFrame, config: V3Config) -> pd.Series:
 
 
 def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFrame:
-    missing = sorted(set(IDENTITY_COLUMNS + ("signal_price", "t1_close")) - set(frame.columns))
+    missing = sorted(
+        set(
+            IDENTITY_COLUMNS
+            + (
+                "signal_price",
+                "entry_benchmark_price",
+                "entry_fillable",
+                "exit_fillable",
+                "adj_factor",
+                "t1_close",
+                "t1_total_return_close",
+            )
+        )
+        - set(frame.columns)
+    )
     if missing:
         raise ValueError(f"cannot build labels; missing columns: {missing}")
 
     panel = enrich_feature_frame(frame)
     panel["execution_eligible"] = execution_eligibility(panel, config)
-    panel["entry_fillable"] = _optional_bool(panel, "entry_fillable", True)
-    panel["exit_fillable"] = _optional_bool(panel, "exit_fillable", True)
+    panel["entry_fillable"] = _boolean(panel["entry_fillable"])
+    panel["exit_fillable"] = _boolean(panel["exit_fillable"])
 
     signal_price = _numeric(panel, "signal_price")
-    t1_close = _numeric(panel, "t1_close")
-    exit_price = (
-        _numeric(panel, "t1_total_return_close")
-        if "t1_total_return_close" in panel
-        else t1_close
-    )
+    entry_reference = _numeric(panel, "entry_benchmark_price")
+    exit_price = _numeric(panel, "t1_total_return_close")
     slippage = config.execution.entry_slippage_bps / 10_000.0
     cost_pct = config.execution.round_trip_cost_bps / 100.0
-    panel["entry_price"] = signal_price * (1.0 + slippage)
+    panel["entry_price"] = entry_reference * (1.0 + slippage)
     panel["gross_return_pct"] = (exit_price / panel["entry_price"] - 1.0) * 100.0
     panel["net_return_pct"] = panel["gross_return_pct"] - cost_pct
 
-    truth_known = exit_price.gt(0) | ~panel["exit_fillable"]
-    observable = signal_price.gt(0) & truth_known
+    entry_truth_known = entry_reference.gt(0) | ~panel["entry_fillable"]
+    exit_truth_known = exit_price.gt(0) | ~panel["exit_fillable"]
+    observable = signal_price.gt(0) & entry_truth_known & exit_truth_known
     executable = (
         panel["execution_eligible"]
         & panel["entry_fillable"]
@@ -102,7 +113,7 @@ def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFram
         panel.loc[observable & ~executable, "net_return_pct"].fillna(
             config.execution.non_fill_penalty_pct
         ),
-        -0.01,
+        config.execution.non_fill_penalty_pct,
     )
     panel["target_net_positive"] = np.where(
         observable,

@@ -80,8 +80,20 @@ def apply_candidate_policy(
     policy: CandidatePolicy,
     config: V3Config,
 ) -> pd.Series:
-    if frame.empty or not policy.authorized:
-        return pd.Series(False, index=frame.index, dtype=bool)
+    diagnostics = candidate_policy_diagnostics(frame, policy, config)
+    return diagnostics["passes_policy"]
+
+
+def candidate_policy_diagnostics(
+    frame: pd.DataFrame,
+    policy: CandidatePolicy,
+    config: V3Config,
+) -> pd.DataFrame:
+    result = pd.DataFrame(index=frame.index)
+    if frame.empty:
+        result["passes_policy"] = pd.Series(False, index=frame.index, dtype=bool)
+        result["rejection_reasons"] = pd.Series("", index=frame.index, dtype=str)
+        return result
 
     probability = _numeric(frame, "p_net_positive")
     probability_lower = _numeric(frame, "p_net_positive_lower")
@@ -99,21 +111,80 @@ def apply_candidate_policy(
     freshness = _numeric_default(frame, "data_age_seconds", 0.0).le(
         config.execution.max_market_data_age_seconds
     )
+    result["passes_execution"] = execution
+    result["passes_freshness"] = freshness
+    result["passes_probability"] = probability.ge(policy.probability_min)
+    result["passes_probability_lower"] = probability_lower.ge(
+        policy.probability_lower_min
+    )
+    result["passes_market_probability"] = market_probability.ge(
+        policy.market_probability_min
+    )
+    result["passes_cross_section_probability"] = cross_probability.ge(
+        policy.cross_section_probability_min
+    )
+    result["passes_severe_loss"] = severe_probability.le(
+        policy.severe_loss_probability_max
+    )
+    result["passes_selection_rank"] = selection_rank.ge(policy.selection_rank_min)
+    result["passes_expected_return"] = expected_return.ge(
+        policy.expected_return_min_pct
+    )
+    result["passes_downside"] = downside.ge(policy.downside_min_pct)
+    result["passes_stability"] = probability_spread.le(
+        config.model.max_probability_model_spread
+    ) & rank_spread.le(config.model.max_selection_rank_spread)
+    result["passes_sample"] = bool(policy.authorized)
+    result["passes_empirical_lower"] = bool(policy.authorized)
 
-    return (
-        execution
-        & freshness
-        & probability.ge(policy.probability_min)
-        & probability_lower.ge(policy.probability_lower_min)
-        & market_probability.ge(policy.market_probability_min)
-        & cross_probability.ge(policy.cross_section_probability_min)
-        & severe_probability.le(policy.severe_loss_probability_max)
-        & selection_rank.ge(policy.selection_rank_min)
-        & expected_return.ge(policy.expected_return_min_pct)
-        & downside.ge(policy.downside_min_pct)
-        & probability_spread.le(config.model.max_probability_model_spread)
-        & rank_spread.le(config.model.max_selection_rank_spread)
-    ).fillna(False)
+    gate_columns = [
+        "passes_execution",
+        "passes_freshness",
+        "passes_probability",
+        "passes_probability_lower",
+        "passes_market_probability",
+        "passes_cross_section_probability",
+        "passes_severe_loss",
+        "passes_selection_rank",
+        "passes_expected_return",
+        "passes_downside",
+        "passes_stability",
+        "passes_sample",
+        "passes_empirical_lower",
+    ]
+    for column in gate_columns:
+        result[column] = result[column].fillna(False).astype(bool)
+    result["passes_policy"] = result[gate_columns].all(axis=1)
+    reason_names = {
+        "passes_execution": "execution",
+        "passes_freshness": "freshness",
+        "passes_probability": "probability",
+        "passes_probability_lower": "probability_lower",
+        "passes_market_probability": "market_regime",
+        "passes_cross_section_probability": "cross_section",
+        "passes_severe_loss": "severe_loss",
+        "passes_selection_rank": "selection_rank",
+        "passes_expected_return": "expected_return",
+        "passes_downside": "downside",
+        "passes_stability": "model_stability",
+        "passes_sample": "policy_sample",
+        "passes_empirical_lower": "empirical_lower_bound",
+    }
+    result["rejection_reasons"] = [
+        "|".join(
+            reason_names[column]
+            for column in gate_columns
+            if not bool(row[column])
+        )
+        for _, row in result[gate_columns].iterrows()
+    ]
+    if not policy.authorized:
+        suffix = str(policy.reason or "not_authorized")
+        result["rejection_reasons"] = result["rejection_reasons"].map(
+            lambda value: f"policy_not_authorized:{suffix}"
+            + (f"|{value}" if value else "")
+        )
+    return result
 
 
 def select_candidate_policy(
@@ -155,6 +226,9 @@ def select_candidate_policy(
     )
 
     reviewed: list[dict[str, Any]] = []
+    design_finalists: list[
+        tuple[CandidatePolicy, dict[str, Any], int]
+    ] = []
     for rank, (policy, _) in enumerate(quick[:20], start=1):
         design_metrics = _candidate_metrics(
             design_frame,
@@ -162,65 +236,92 @@ def select_candidate_policy(
             clustered=True,
             seed=config.model.random_seed + rank,
         )
-        confirmation_metrics = _candidate_metrics(
-            confirmation_frame,
-            apply_candidate_policy(confirmation_frame, policy, config),
-            clustered=True,
-            seed=config.model.random_seed + 10_000 + rank,
-        )
         design_pass = _passes_full(
             design_metrics,
             config,
             design_period=True,
-        )
-        confirmation_pass = _passes_full(
-            confirmation_metrics,
-            config,
-            design_period=False,
         )
         reviewed.append(
             {
                 "rank": rank,
                 "policy_id": policy.policy_id,
                 "design_pass": design_pass,
-                "confirmation_pass": confirmation_pass,
                 "design": design_metrics,
-                "confirmation": confirmation_metrics,
             }
         )
-        if design_pass and confirmation_pass:
-            authorized = CandidatePolicy(
-                **{
-                    **asdict(policy),
-                    "authorized": True,
-                    "reason": "design_and_confirmation_passed",
-                }
-            )
-            return PolicySelection(
-                policy=authorized,
-                design=design_metrics,
-                confirmation=confirmation_metrics,
-                search={
-                    "tested": len(grid),
-                    "design_eligible": len(quick),
-                    "reviewed": reviewed,
-                    "reason": "authorized",
-                },
-            )
+        if design_pass:
+            design_finalists.append((policy, design_metrics, rank))
 
-    reason = (
-        "no_design_policy_passed"
-        if not quick
-        else "no_policy_confirmed"
+    if not design_finalists:
+        reason = "no_design_policy_passed"
+        best = reviewed[0] if reviewed else {}
+        return PolicySelection(
+            policy=no_signal_policy(reason),
+            design=best.get("design", _empty_metrics()),
+            confirmation=_empty_metrics(),
+            search={
+                "tested": len(grid),
+                "design_eligible": len(quick),
+                "design_finalists": 0,
+                "confirmation_policies_evaluated": 0,
+                "reviewed": reviewed,
+                "reason": reason,
+            },
+        )
+
+    # The confirmation period is a one-shot holdout. Pick exactly one policy
+    # using design data, then expose that single frozen policy to confirmation.
+    # Trying alternatives after seeing confirmation outcomes would turn the
+    # holdout into another search set and materially overstate live evidence.
+    champion, design_metrics, champion_rank = design_finalists[0]
+    confirmation_metrics = _candidate_metrics(
+        confirmation_frame,
+        apply_candidate_policy(confirmation_frame, champion, config),
+        clustered=True,
+        seed=config.model.random_seed + 10_000 + champion_rank,
     )
-    best = reviewed[0] if reviewed else {}
+    confirmation_pass = _passes_full(
+        confirmation_metrics,
+        config,
+        design_period=False,
+    )
+    reviewed[champion_rank - 1]["selected_for_confirmation"] = True
+    reviewed[champion_rank - 1]["confirmation_pass"] = confirmation_pass
+    reviewed[champion_rank - 1]["confirmation"] = confirmation_metrics
+    if confirmation_pass:
+        authorized = CandidatePolicy(
+            **{
+                **asdict(champion),
+                "authorized": True,
+                "reason": "design_champion_confirmed_once",
+            }
+        )
+        return PolicySelection(
+            policy=authorized,
+            design=design_metrics,
+            confirmation=confirmation_metrics,
+            search={
+                "tested": len(grid),
+                "design_eligible": len(quick),
+                "design_finalists": len(design_finalists),
+                "confirmation_policies_evaluated": 1,
+                "selected_design_rank": champion_rank,
+                "reviewed": reviewed,
+                "reason": "authorized",
+            },
+        )
+
+    reason = "design_champion_failed_confirmation"
     return PolicySelection(
         policy=no_signal_policy(reason),
-        design=best.get("design", _empty_metrics()),
-        confirmation=best.get("confirmation", _empty_metrics()),
+        design=design_metrics,
+        confirmation=confirmation_metrics,
         search={
             "tested": len(grid),
             "design_eligible": len(quick),
+            "design_finalists": len(design_finalists),
+            "confirmation_policies_evaluated": 1,
+            "selected_design_rank": champion_rank,
             "reviewed": reviewed,
             "reason": reason,
         },
@@ -361,7 +462,7 @@ def _policy_grid(config: V3Config):
             "downside_min_pct": float(downside),
         }
         yield CandidatePolicy(
-            policy_id="wpv5-" + _digest(payload),
+            policy_id="wpv6-" + _digest(payload),
             authorized=True,
             reason="under_evaluation",
             **payload,

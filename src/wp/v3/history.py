@@ -17,8 +17,9 @@ import pandas as pd
 import pyarrow as pa
 import pyarrow.parquet as pq
 
-from .contracts import V3Config
+from .contracts import V3Config, entry_benchmark_slot
 from .dataset import audit_panel, build_supervised_panel
+from .io import atomic_write_json, canonical_digest, file_sha256
 
 
 DAILY_FIELDS = (
@@ -50,6 +51,9 @@ INDUSTRY_FIELDS = (
 )
 T = TypeVar("T")
 R = TypeVar("R")
+TUSHARE_CACHE_SCHEMA_VERSION = "wp_tushare_query_cache_2"
+PANEL_SCHEMA_VERSION = "wp_point_in_time_panel_3"
+MINUTE_SCHEMA_VERSION = "wp_historical_minutes_3"
 
 
 class _RequestStartLimiter:
@@ -97,9 +101,28 @@ class TushareHistoryClient:
         fields: str = "",
         **params: Any,
     ) -> pd.DataFrame:
-        cache_path = self.cache_dir / api_name / f"{cache_key}.parquet"
+        cache_contract = canonical_digest(
+            {
+                "schema_version": TUSHARE_CACHE_SCHEMA_VERSION,
+                "api_name": api_name,
+                "fields": fields,
+                "paged": paged,
+                "page_size": self.page_size if paged else None,
+                "params": params,
+            }
+        )[:16]
+        cache_path = (
+            self.cache_dir
+            / api_name
+            / f"{cache_key}__{cache_contract}.parquet"
+        )
         if cache_path.exists() and not refresh:
-            return pd.read_parquet(cache_path)
+            cached = pd.read_parquet(cache_path)
+            required_columns = {
+                column for column in fields.split(",") if column
+            }
+            if required_columns.issubset(cached.columns):
+                return cached
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         if paged:
             frame = self._paged_query(api_name, fields=fields, **params)
@@ -175,7 +198,7 @@ def build_three_year_panel(
     )
     if existing_manifest is not None:
         print(
-            "reusing verified WP V5 causal panel "
+            "reusing verified WP V6 causal panel "
             f"{config.history.start_date}-{config.history.end_date}",
             flush=True,
         )
@@ -309,10 +332,13 @@ def build_three_year_panel(
             f"failed dates: {failures[:8]}"
         )
     manifest = {
-        "schema_version": "wp_point_in_time_panel_2",
+        "schema_version": PANEL_SCHEMA_VERSION,
         "generated_at": datetime.now(timezone.utc).isoformat(),
         "strategy_id": config.strategy.strategy_id,
         "feature_version": config.model.feature_version,
+        "panel_builder_fingerprint": _panel_builder_fingerprint(),
+        "minute_normalizer_fingerprint": _minute_normalizer_fingerprint(),
+        "tushare_cache_schema_version": TUSHARE_CACHE_SCHEMA_VERSION,
         "requested_start": config.history.start_date,
         "requested_end": config.history.end_date,
         "requested_trade_days": len(target_dates),
@@ -360,10 +386,7 @@ def build_three_year_panel(
         "exit_contract": config.strategy.exit_contract,
     }
     manifest_path = output / "wp_v3_dataset_manifest.json"
-    manifest_path.write_text(
-        json.dumps(manifest, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(manifest_path, manifest)
     return manifest
 
 
@@ -376,7 +399,7 @@ def load_panel_partitions(
 ) -> pd.DataFrame:
     files = sorted(Path(path).glob("wp_v3_panel_*.parquet"))
     if not files:
-        raise FileNotFoundError(f"no WP V5 panel partitions under {path}")
+        raise FileNotFoundError(f"no WP V6 panel partitions under {path}")
     start = str(start_date or "")
     end = str(end_date or "")
     if start:
@@ -866,14 +889,22 @@ def _build_day_panel(
         tail,
         config.strategy.signal_slots,
     )
+    entry_benchmarks = _entry_benchmark_frame(
+        bars,
+        config=config,
+    )
     rows: list[pd.DataFrame] = []
     for slot in config.strategy.signal_slots:
         snapshots = all_snapshots.loc[
             all_snapshots["signal_slot"].eq(slot)
         ].copy()
+        benchmark = entry_benchmarks.loc[
+            entry_benchmarks["signal_slot"].eq(slot)
+        ].drop(columns="signal_slot")
         snapshots = snapshots.merge(open_price, on="ts_code", how="left").merge(
             base, on="ts_code", how="inner"
         )
+        snapshots = snapshots.merge(benchmark, on="ts_code", how="left")
         snapshots["signal_price"] = snapshots["slot_close"]
         snapshots["ret_from_prev_close_pct"] = (
             snapshots["signal_price"] / snapshots["pre_close"] - 1.0
@@ -890,12 +921,27 @@ def _build_day_panel(
         snapshots["distance_to_down_limit_pct"] = (
             snapshots["signal_price"] / snapshots["down_limit"] - 1.0
         ) * 100.0
+        snapshots["entry_benchmark_distance_to_up_limit_pct"] = (
+            snapshots["up_limit"]
+            / snapshots["entry_benchmark_price"].replace(0, np.nan)
+            - 1.0
+        ) * 100.0
         snapshots["entry_fillable"] = (
-            snapshots["slot_amount"].ge(config.execution.min_slot_amount)
-            & snapshots["distance_to_up_limit_pct"].ge(
+            snapshots["entry_benchmark_price"].gt(0)
+            & snapshots["entry_benchmark_amount"].ge(
+                config.execution.min_slot_amount
+            )
+            & snapshots["entry_benchmark_amount"]
+            .mul(config.execution.max_entry_pct_of_slot_amount)
+            .ge(config.execution.reference_order_notional)
+            & snapshots["entry_benchmark_distance_to_up_limit_pct"].ge(
                 config.execution.min_distance_to_up_limit_pct
             )
-            & snapshots["slot_bar_lag_minutes"].between(0, 5, inclusive="both")
+            & snapshots["entry_benchmark_bar_lag_minutes"].between(
+                0,
+                0,
+                inclusive="both",
+            )
         )
         rows.append(snapshots)
     panel = pd.concat(rows, ignore_index=True)
@@ -933,18 +979,29 @@ def _build_historical_minute_partitions(
     )
     manifest_path = output_dir / "manifest.json"
     existing = _read_json(manifest_path)
+    normalizer_fingerprint = _minute_normalizer_fingerprint()
     if (
-        existing.get("start_date") == start_date
+        existing.get("schema_version") == MINUTE_SCHEMA_VERSION
+        and existing.get("start_date") == start_date
         and existing.get("end_date") == end_date
         and existing.get("signal_slots") == list(config.strategy.signal_slots)
         and existing.get("observation_slots")
         == list(_observation_slots(config.strategy.signal_slots))
+        and existing.get("normalizer_fingerprint") == normalizer_fingerprint
+        and existing.get("feature_version") == config.model.feature_version
     ):
         paths = {
             month: output_dir / f"wp_v3_minutes_{month}.parquet"
             for month in months
         }
-        if all(path.exists() for path in paths.values()):
+        partitions = existing.get("partitions") or {}
+        if all(
+            path.exists()
+            and isinstance(partitions.get(month), dict)
+            and file_sha256(path)
+            == str(partitions[month].get("sha256") or "")
+            for month, path in paths.items()
+        ):
             return paths
 
     building = output_dir / "_building"
@@ -1047,29 +1104,29 @@ def _build_historical_minute_partitions(
         raise RuntimeError(f"historical minute months are missing: {missing_months}")
     for month, temporary in temporary_paths.items():
         temporary.replace(paths[month])
-    manifest_path.write_text(
-        json.dumps(
-            {
-                "schema_version": "wp_v3_historical_minutes_2",
-                "start_date": start_date,
-                "end_date": end_date,
-                "signal_slots": list(config.strategy.signal_slots),
-                "observation_slots": list(
-                    _observation_slots(config.strategy.signal_slots)
-                ),
-                "symbol_count": len(codes),
-                "failed_symbols": query_failures,
-                "partitions": {
-                    month: str(path.as_posix())
-                    for month, path in paths.items()
-                },
+    atomic_write_json(
+        manifest_path,
+        {
+            "schema_version": MINUTE_SCHEMA_VERSION,
+            "start_date": start_date,
+            "end_date": end_date,
+            "signal_slots": list(config.strategy.signal_slots),
+            "observation_slots": list(
+                _observation_slots(config.strategy.signal_slots)
+            ),
+            "normalizer_fingerprint": normalizer_fingerprint,
+            "feature_version": config.model.feature_version,
+            "symbol_count": len(codes),
+            "failed_symbols": query_failures,
+            "partitions": {
+                month: {
+                    "path": str(path.as_posix()),
+                    "sha256": file_sha256(path),
+                    "bytes": path.stat().st_size,
+                }
+                for month, path in paths.items()
             },
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-        )
-        + "\n",
-        encoding="utf-8",
+        },
     )
     shutil.rmtree(building)
     return paths
@@ -1087,7 +1144,9 @@ def _query_historical_minutes_incremental(
     prefix = ts_code.replace(".", "_")
     exact_path = cache_dir / f"{prefix}_{start_date}_{end_date}_5min.parquet"
     if exact_path.exists():
-        return pd.read_parquet(exact_path)
+        exact = pd.read_parquet(exact_path)
+        if set(MINUTE_FIELDS.split(",")).issubset(exact.columns):
+            return exact
 
     pattern = re.compile(
         rf"^{re.escape(prefix)}_(\d{{8}})_(\d{{8}})_5min\.parquet$"
@@ -1109,7 +1168,11 @@ def _query_historical_minutes_incremental(
         ]
     )
     missing = _missing_date_intervals(start_date, end_date, coverage)
-    pieces = [pd.read_parquet(path) for _, _, path in cached]
+    pieces = []
+    for _, _, path in cached:
+        cached_frame = pd.read_parquet(path)
+        if set(MINUTE_FIELDS.split(",")).issubset(cached_frame.columns):
+            pieces.append(cached_frame)
     for gap_start, gap_end in missing:
         pieces.append(
             client.query(
@@ -1253,6 +1316,65 @@ def _normalize_historical_minutes(
         _observation_slots(signal_slots)
     )
     return result.loc[selected, MINUTE_STORE_COLUMNS].reset_index(drop=True)
+
+
+def _entry_benchmark_frame(
+    bars: pd.DataFrame,
+    *,
+    config: V3Config,
+) -> pd.DataFrame:
+    columns = [
+        "ts_code",
+        "signal_slot",
+        "entry_benchmark_slot",
+        "entry_benchmark_price",
+        "entry_benchmark_open",
+        "entry_benchmark_high",
+        "entry_benchmark_low",
+        "entry_benchmark_amount",
+        "entry_benchmark_volume",
+        "entry_benchmark_bar_time",
+        "entry_benchmark_bar_lag_minutes",
+    ]
+    if bars.empty:
+        return pd.DataFrame(columns=columns)
+
+    slot_to_signal = {
+        entry_benchmark_slot(signal_slot, config): signal_slot
+        for signal_slot in config.strategy.signal_slots
+    }
+    frame = bars.copy()
+    frame["trade_time"] = pd.to_datetime(frame["trade_time"], errors="coerce")
+    frame = frame.dropna(subset=["trade_time", "ts_code"])
+    frame["entry_benchmark_slot"] = frame["trade_time"].dt.strftime("%H:%M")
+    frame = frame.loc[
+        frame["entry_benchmark_slot"].isin(slot_to_signal)
+    ].copy()
+    if frame.empty:
+        return pd.DataFrame(columns=columns)
+    frame["signal_slot"] = frame["entry_benchmark_slot"].map(slot_to_signal)
+    for column in ("open", "high", "low", "close", "amount", "vol"):
+        frame[column] = pd.to_numeric(frame.get(column), errors="coerce")
+    frame["entry_benchmark_bar_time"] = frame["trade_time"].dt.strftime(
+        "%Y-%m-%d %H:%M:%S"
+    )
+    frame["entry_benchmark_bar_lag_minutes"] = 0.0
+    frame = frame.rename(
+        columns={
+            "close": "entry_benchmark_price",
+            "open": "entry_benchmark_open",
+            "high": "entry_benchmark_high",
+            "low": "entry_benchmark_low",
+            "amount": "entry_benchmark_amount",
+            "vol": "entry_benchmark_volume",
+        }
+    )
+    return (
+        frame.sort_values(["ts_code", "signal_slot", "trade_time"], kind="stable")
+        .drop_duplicates(["ts_code", "signal_slot"], keep="last")
+        .reindex(columns=columns)
+        .reset_index(drop=True)
+    )
 
 
 def _slot_features(bars: pd.DataFrame, slot: str) -> pd.DataFrame:
@@ -1745,7 +1867,15 @@ def _minute_value(value: str) -> int:
 
 
 def _observation_slots(signal_slots: tuple[str, ...]) -> tuple[str, ...]:
-    return tuple(dict.fromkeys((*WARMUP_SLOTS, *signal_slots)))
+    execution_slots = tuple(
+        (
+            datetime.strptime(slot, "%H:%M") + timedelta(minutes=5)
+        ).strftime("%H:%M")
+        for slot in signal_slots
+    )
+    return tuple(
+        dict.fromkeys((*WARMUP_SLOTS, *signal_slots, *execution_slots))
+    )
 
 
 def _date_field(value: Any, default: str) -> str:
@@ -1778,12 +1908,14 @@ def _reusable_panel_manifest(
     config: V3Config,
 ) -> dict[str, Any] | None:
     manifest = _read_json(manifest_path)
-    if manifest.get("schema_version") not in {
-        "wp_v3_causal_panel_1",
-        "wp_point_in_time_panel_2",
-    }:
+    if manifest.get("schema_version") != PANEL_SCHEMA_VERSION:
         return None
     expected = {
+        "strategy_id": config.strategy.strategy_id,
+        "feature_version": config.model.feature_version,
+        "panel_builder_fingerprint": _panel_builder_fingerprint(),
+        "minute_normalizer_fingerprint": _minute_normalizer_fingerprint(),
+        "tushare_cache_schema_version": TUSHARE_CACHE_SCHEMA_VERSION,
         "requested_start": config.history.start_date,
         "requested_end": config.history.end_date,
         "execution_contract": json.loads(json.dumps(asdict(config.execution))),
@@ -1818,8 +1950,36 @@ def _reusable_panel_manifest(
 
 
 def _file_sha256(path: Path) -> str:
+    return file_sha256(path)
+
+
+def _panel_builder_fingerprint() -> str:
+    source_dir = Path(__file__).resolve().parent
+    paths = [
+        source_dir / "contracts.py",
+        source_dir / "dataset.py",
+        source_dir / "features.py",
+        source_dir / "history.py",
+    ]
     digest = hashlib.sha256()
-    with path.open("rb") as source:
-        for block in iter(lambda: source.read(1024 * 1024), b""):
-            digest.update(block)
-    return digest.hexdigest()
+    for path in paths:
+        digest.update(path.name.encode("ascii"))
+        digest.update(b"\0")
+        digest.update(path.read_bytes())
+        digest.update(b"\0")
+    return digest.hexdigest()[:24]
+
+
+def _minute_normalizer_fingerprint() -> str:
+    return canonical_digest(
+        {
+            "schema_version": MINUTE_SCHEMA_VERSION,
+            "source_fields": MINUTE_FIELDS,
+            "store_columns": MINUTE_STORE_COLUMNS,
+            "warmup_slots": WARMUP_SLOTS,
+            "normalization_contract": (
+                "provider_ohlcv_preserved; day_open=first_bar_open; "
+                "slot_amount=provider_amount"
+            ),
+        }
+    )[:24]

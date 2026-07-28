@@ -8,6 +8,7 @@ from typing import Any
 import pandas as pd
 
 from .contracts import V3Config
+from .io import atomic_write_text
 
 
 def render_v3_dashboard(
@@ -79,6 +80,7 @@ def render_v3_dashboard(
         "SHADOW_OBSERVATION": "影子观察（回测未通过）",
         "MODEL_NOT_READY": "模型尚未就绪",
         "MODEL_NOT_DESIGNATED": "研究模型未指定",
+        "MODEL_ARTIFACT_INVALID": "模型文件无效",
     }.get(state, state)
     status_class = "good" if state == "PRODUCTION" else "warn"
     decision = _decision_presentation(
@@ -123,7 +125,7 @@ def render_v3_dashboard(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V5 尾盘候选助手</title>
+<title>WP V6 尾盘候选助手</title>
 <style>
 :root {{
   --ink:#151a20; --muted:#65707c; --line:#d9dee4; --paper:#ffffff;
@@ -164,6 +166,7 @@ border:1px solid var(--line);border-left-width:6px;background:#fff}}
 .fact{{padding:14px 16px;border-bottom:1px solid var(--line);min-height:76px}}
 .fact:nth-child(odd){{border-right:1px solid var(--line)}}
 .fact:nth-last-child(-n+2){{border-bottom:0}}
+.fact:last-child:nth-child(odd){{grid-column:1/-1;border-right:0}}
 .fact span{{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}}
 .fact strong{{font-size:18px;line-height:1.25;font-variant-numeric:tabular-nums}}
 .band{{padding:22px 24px;border-bottom:1px solid var(--line);scroll-margin-top:12px}}
@@ -266,7 +269,7 @@ gap:16px;padding:2px 0;font-weight:700}}
 <body>
 <header><div class="header-inner">
   <div>
-    <div class="brand-kicker">WP V5 · T+1 固定收盘退出</div>
+    <div class="brand-kicker">WP V6 · T+1 固定收盘退出</div>
     <h1>尾盘候选助手</h1>
     <div class="sub">14:20–14:50 观察全部合格票；没有合格票时明确保持空仓</div>
   </div>
@@ -291,6 +294,11 @@ gap:16px;padding:2px 0;font-weight:700}}
       {_fact('现在可用候选', str(current_count), 'good' if current_count else '')}
       {_fact('今日曾出现', str(len(session_candidates)), '')}
       {_fact('数据状态', data_status, data_status_class)}
+      {_fact(
+          '待结算入场',
+          str(int(manifest.get('pending_entry_benchmark_count') or 0)),
+          'warn' if int(manifest.get('pending_entry_benchmark_count') or 0) else '',
+      )}
       {_fact('下一节点', next_checkpoint, '')}
     </div>
   </div>
@@ -309,7 +317,7 @@ gap:16px;padding:2px 0;font-weight:700}}
 {_session_history_section(session_candidates) if live_visible else ''}
 <section class="band" id="truth">
   <div class="section-head">
-    <div><h2>T+1 真值结果</h2><p class="section-note">只使用锁定的首次信号价，按下一交易日收盘价并扣除固定成本计算。</p></div>
+    <div><h2>T+1 真值结果</h2><p class="section-note">使用信号后下一根 5 分钟线锁定的参考成交价，按下一交易日收盘价并扣除固定成本计算。</p></div>
     <span class="tag">模型候选，不等于人工成交</span>
   </div>
   {_validation_summary(historical)}
@@ -357,15 +365,15 @@ gap:16px;padding:2px 0;font-weight:700}}
   <details class="disclosure">
     <summary><span><span class="disclosure-title">交易与统计口径</span>
     <span class="disclosure-sub">查看信号时点、成本、入场价和退出规则</span></span></summary>
-    <div class="disclosure-body foot">信号时点：{', '.join(config.strategy.signal_slots)}；入场冲击：{config.execution.entry_slippage_bps:.0f}bp；
+    <div class="disclosure-body foot">信号时点：{', '.join(config.strategy.signal_slots)}；参考入场：信号后 5 分钟收盘价再加 {config.execution.entry_slippage_bps:.0f}bp；
     费用及退出影响：{config.execution.round_trip_cost_bps:.0f}bp；基准全成本：{config.execution.baseline_all_in_cost_bps:.0f}bp；参考订单：{config.execution.reference_order_notional:,.0f} 元；
-    退出：下一 A 股交易日收盘；同一股票当日首次通过即锁定首次信号价；人工实际成交与模型候选统计相互独立。</div>
+    退出：下一 A 股交易日 14:57 提交跌停价限价卖单参加收盘集合竞价；同一股票当日首次通过即锁定信号与后续结算价；人工实际成交与模型候选统计相互独立。</div>
   </details>
 </section>
 <section class="band tech-footer">报告版本 {_e(manifest.get('report_revision', ''))} · 政策指纹 {_e(manifest.get('v3_policy_fingerprint') or '无')} · 模型指纹 {_e(manifest.get('v3_model_fingerprint') or '无')}</section>
 </main>
 </body></html>"""
-    target.write_text(html_text, encoding="utf-8")
+    atomic_write_text(target, html_text)
 
 
 def _candidate_table(
@@ -391,13 +399,15 @@ def _candidate_table(
                 f"<td>{_e(row.get('signal_slot', ''))}</td>"
                 f"<td class='num'>{_number(row.get('signal_price'), 2)}</td>"
                 f"<td>{_e(row.get('first_signal_time', ''))}</td>"
-                f"<td class='num'>{_number(row.get('first_signal_price'), 2)}</td>"
+                f"<td>{_e(row.get('entry_benchmark_slot', ''))}</td>"
             )
         else:
             timing = (
                 f"<td>{_e(row.get('first_signal_time', ''))}</td>"
                 f"<td class='num'>{_number(row.get('first_signal_price'), 2)}</td>"
-                f"<td>{_e(row.get('last_signal_time', ''))}</td>"
+                f"<td>{_e(row.get('entry_benchmark_slot', ''))}</td>"
+                f"<td class='num'>{_number(row.get('entry_price'), 2)}</td>"
+                f"<td>{_e(_entry_status(row))}</td>"
             )
         rows.append(
             common
@@ -413,9 +423,9 @@ def _candidate_table(
         )
         cards.append(_candidate_card(row, live=live))
     timing_headers = (
-        "<th>当前时点</th><th>当前信号价</th><th>首次时点</th><th>首次信号价</th>"
+        "<th>当前时点</th><th>当前信号价</th><th>首次时点</th><th>结算时点</th>"
         if live
-        else "<th>首次时点</th><th>首次信号价</th><th>最后出现</th>"
+        else "<th>首次时点</th><th>首次信号价</th><th>结算时点</th><th>参考成交价</th><th>入场结算</th>"
     )
     return (
         '<div class="table-wrap desktop-only"><table><thead><tr><th>股票</th>'
@@ -441,10 +451,13 @@ def _candidate_card(row: dict[str, Any], *, live: bool) -> str:
         else row.get("first_signal_price")
     )
     locked_note = (
-        f"首次 {_e(row.get('first_signal_time', ''))} · "
-        f"{_number(row.get('first_signal_price'), 2)}"
+        f"结算 {_e(row.get('entry_benchmark_slot', ''))} · "
+        f"{_e(_entry_status(row))}"
         if live
-        else f"最后出现 {_e(row.get('last_signal_time', ''))}"
+        else (
+            f"信号价 {_number(row.get('first_signal_price'), 2)} · "
+            f"结算 {_e(row.get('entry_benchmark_slot', ''))}"
+        )
     )
     return (
         '<article class="candidate-card">'
@@ -463,6 +476,8 @@ def _candidate_card(row: dict[str, Any], *, live: bool) -> str:
         f"<div><dt>下行 Q10</dt><dd>{_pct(row.get('downside_q10_pct'), already_percent=True)}</dd></div>"
         f"<div><dt>同槽分位</dt><dd>{_pct(row.get('selection_rank_pct'))}</dd></div>"
         f"<div><dt>出现次数</dt><dd>{int(row.get('appearance_count') or 1)}</dd></div>"
+        f"<div><dt>参考成交价</dt><dd>{_number(row.get('entry_price'), 2)}</dd></div>"
+        f"<div><dt>入场结算</dt><dd>{_e(_entry_status(row))}</dd></div>"
         "</dl></article>"
     )
 
@@ -490,6 +505,10 @@ def _attach_locked_candidate_fields(
             "status",
             "selection_rank_pct",
             "selection_score",
+            "entry_benchmark_slot",
+            "entry_benchmark_status",
+            "entry_price",
+            "entry_fillable",
         ):
             result.at[index, field] = candidate.get(field)
     return result
@@ -517,6 +536,15 @@ def _candidate_status(row: dict[str, Any]) -> str:
     if state == "SHADOW_QUALIFIED":
         return "影子合格"
     return state or "已锁定"
+
+
+def _entry_status(row: dict[str, Any]) -> str:
+    status = str(row.get("entry_benchmark_status") or "")
+    return {
+        "PENDING": "待结算",
+        "SETTLED": "可成交",
+        "NON_FILL": "不可成交",
+    }.get(status, status or "历史口径")
 
 
 def _near_candidates(predictions: pd.DataFrame) -> pd.DataFrame:
@@ -601,14 +629,15 @@ def _validation_table(records: list[dict[str, Any]]) -> str:
             f"<tr><td>{_e(row.get('trade_date', ''))}</td><td>{_e(row.get('target_trade_date', ''))}</td>"
             f"<td>{_e(row.get('name', ''))} {_e(row.get('ts_code', ''))}</td>"
             f"<td>{_e(row.get('first_signal_time', ''))}</td>"
-            f"<td class='num'>{_number(row.get('first_signal_price'), 2)}</td>"
+            f"<td class='num'>{_number(row.get('entry_price'), 2)}</td>"
+            f"<td class='num'>{_number(row.get('t1_close'), 2)}</td>"
             f"<td>{_e('已验证' if row.get('truth_status') == 'verified' else '待验证')}</td>"
             f"<td class='num {_return_class(net_return, 0)}'>{_pct(net_return, already_percent=True)}</td></tr>"
         )
         cards.append(_validation_card(row))
     return (
         '<div class="table-wrap desktop-only"><table><thead><tr><th>计划日</th><th>验证日</th>'
-        "<th>股票</th><th>首次时点</th><th>入场信号价</th><th>状态</th><th>净收益</th></tr></thead><tbody>"
+        "<th>股票</th><th>首次时点</th><th>参考成交价</th><th>T+1 收盘</th><th>状态</th><th>净收益</th></tr></thead><tbody>"
         + "".join(rows)
         + '</tbody></table></div><div class="mobile-list">'
         + "".join(cards)
@@ -630,7 +659,8 @@ def _validation_card(row: dict[str, Any]) -> str:
         f"<small>计划 {_e(row.get('trade_date', ''))}<br>验证 {_e(row.get('target_trade_date', ''))}</small></div>"
         '<dl class="card-stats">'
         f"<div><dt>首次时点</dt><dd>{_e(row.get('first_signal_time', ''))}</dd></div>"
-        f"<div><dt>首次信号价</dt><dd>{_number(row.get('first_signal_price'), 2)}</dd></div>"
+        f"<div><dt>参考成交价</dt><dd>{_number(row.get('entry_price'), 2)}</dd></div>"
+        f"<div><dt>T+1 收盘</dt><dd>{_number(row.get('t1_close'), 2)}</dd></div>"
         "</dl></article>"
     )
 
@@ -686,6 +716,8 @@ def _promotion_checks(checks: dict[str, Any]) -> str:
         "shadow_clustered_mean_return_lower": "按日收益下界",
         "shadow_median_net_return": "净收益中位数",
         "shadow_profit_factor": "盈亏因子",
+        "shadow_entry_fill_rate": "入场可成交率",
+        "shadow_exit_fill_rate": "退出可成交率",
         "shadow_ece": "概率校准误差",
         "shadow_50bps_stress": "50bp 压力测试",
     }
@@ -831,7 +863,9 @@ def _phase_label(phase: str) -> str:
         "PRE_SIGNAL": "等待开窗",
         "WARMUP": "数据准备",
         "SIGNAL": "候选窗口",
+        "NO_NEW_SIGNAL": "停止新增",
         "FREEZE": "冻结候选",
+        "FROZEN": "候选已冻结",
         "CLOSED": "收盘复盘",
     }.get(phase, phase or "状态未知")
 
@@ -960,6 +994,11 @@ def _session_coverage(manifest: dict[str, Any], config: V3Config) -> str:
     integrity = str(manifest.get("session_integrity_status") or "COLLECTING")
     if integrity == "INCOMPLETE":
         return f"{covered}/{total} 缺 {missing} 槽"
+    if integrity == "INCOMPLETE_ENTRY":
+        return (
+            f"{covered}/{total} 入场待结算 "
+            f"{int(manifest.get('pending_entry_benchmark_count') or 0)}"
+        )
     if integrity == "COMPLETE":
         return f"{covered}/{total} 完整"
     return f"{covered}/{total} 收集中"
@@ -969,7 +1008,7 @@ def _integrity_class(manifest: dict[str, Any]) -> str:
     integrity = str(manifest.get("session_integrity_status") or "")
     if integrity == "COMPLETE":
         return "good"
-    if integrity == "INCOMPLETE":
+    if integrity in {"INCOMPLETE", "INCOMPLETE_ENTRY"}:
         return "bad"
     return ""
 

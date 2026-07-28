@@ -28,6 +28,7 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
             latent = rng.normal() + 0.02 * day_index + 0.15 * (stock_index % 3)
             signal = 10.0 + stock_index
             t1_return = 0.7 * latent + rng.normal(scale=0.8)
+            t1_close = signal * (1 + t1_return / 100)
             row = {
                 "trade_date": date.strftime("%Y%m%d"),
                 "target_trade_date": (date + pd.offsets.BDay(1)).strftime("%Y%m%d"),
@@ -35,7 +36,10 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
                 "ts_code": f"600{stock_index:03d}.SH",
                 "board": "main_board",
                 "signal_price": signal,
-                "t1_close": signal * (1 + t1_return / 100),
+                "entry_benchmark_price": signal,
+                "t1_close": t1_close,
+                "t1_total_return_close": t1_close,
+                "adj_factor": 1.0,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 30_000_000,
@@ -158,6 +162,8 @@ def test_backtest_gate_treats_zero_boundary_as_observed_value():
         "mean_net_return_day_clustered_lower_pct": 0.0,
         "median_net_return_pct": 0.0,
         "profit_factor": 1.30,
+        "entry_fill_rate": 0.99,
+        "exit_fill_rate": 0.99,
         "ece": 0.05,
         "stress": {"50bps": {"positive_total_return": True}},
     }
@@ -167,3 +173,26 @@ def test_backtest_gate_treats_zero_boundary_as_observed_value():
     assert gate["passed"] is True
     assert gate["checks"]["minimum_clustered_mean_return_lower"] is True
     assert gate["checks"]["minimum_median_net_return"] is True
+
+
+def test_backtest_gate_rejects_low_execution_fill_rate():
+    metrics = {
+        "candidate_events": 300,
+        "win_rate": 0.60,
+        "win_rate_wilson_lower": 0.55,
+        "win_rate_day_clustered_lower": 0.54,
+        "mean_net_return_pct": 0.40,
+        "mean_net_return_day_clustered_lower_pct": 0.10,
+        "median_net_return_pct": 0.20,
+        "profit_factor": 1.50,
+        "entry_fill_rate": 0.97,
+        "exit_fill_rate": 0.99,
+        "ece": 0.03,
+        "stress": {"50bps": {"positive_total_return": True}},
+    }
+
+    gate = evaluate_backtest_gate(metrics, V3Config())
+
+    assert gate["passed"] is False
+    assert gate["checks"]["minimum_entry_fill_rate"] is False
+    assert gate["checks"]["minimum_exit_fill_rate"] is True

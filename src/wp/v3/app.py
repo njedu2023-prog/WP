@@ -13,12 +13,15 @@ from wp.utils import ensure_dir, write_json
 
 from .contracts import V3Config, load_v3_config, session_phase
 from .dashboard import render_v3_dashboard
+from .evidence import archive_signal_evidence
+from .io import atomic_write_csv
 from .ledger import (
     assert_ledger_invariants,
     freeze_shadow_session,
     load_shadow_ledger,
     record_shadow_slot,
     save_shadow_ledger,
+    settle_entry_benchmarks,
 )
 from .live import inference_manifest, run_live_inference
 from .registry import load_registry
@@ -49,7 +52,17 @@ def run_v3() -> dict[str, Any]:
     frame = pd.read_csv(source_path, keep_default_na=False, dtype={"ts_code": str})
     source_manifest = json.loads(source_manifest_path.read_text(encoding="utf-8"))
     market_time = pd.to_datetime(source_manifest.get("market_data_time"), errors="coerce")
-    frame = _refresh_data_age(frame, current=current, market_time=market_time)
+    decision_time = _decision_time(source_manifest, fallback=current)
+    frame = _refresh_data_age(
+        frame,
+        current=decision_time,
+        market_time=market_time,
+    )
+    runtime_data_age = _data_age_seconds(
+        frame,
+        current=current,
+        market_time=market_time,
+    )
     trade_date = str(source_manifest.get("trade_date") or current.strftime("%Y%m%d"))
     signal_slot = str(source_manifest.get("signal_slot") or "")
     phase = session_phase(current, config)
@@ -78,8 +91,68 @@ def run_v3() -> dict[str, Any]:
         model_path=model_path,
         registry_path=registry_path,
     )
+    inference_summary = inference_manifest(inference)
+    evidence_manifest: dict[str, Any] = {}
+    if source_signal_authorized and signal_slot in config.strategy.signal_slots:
+        evidence_manifest = archive_signal_evidence(
+            output,
+            features=frame,
+            predictions=inference.predictions,
+            source_manifest=source_manifest,
+            inference_manifest=inference_summary,
+            config=config,
+        )
     ledger_path = output / "json" / "wp_v3_candidate_ledger.json"
     ledger = load_shadow_ledger(ledger_path)
+    settlement_summary: dict[str, Any] = {}
+    if source_signal_authorized and signal_slot in config.strategy.signal_slots:
+        settle_entry_benchmarks(
+            ledger,
+            frame,
+            trade_date=trade_date,
+            settlement_slot=signal_slot,
+            config=config,
+            settled_at=str(
+                source_manifest.get("capture_completed_at")
+                or source_manifest.get("market_data_time")
+                or current.isoformat()
+            ),
+        )
+    settlement_frame, settlement_manifest = _load_entry_settlement()
+    if not settlement_frame.empty or settlement_manifest:
+        settlement_trade_date = str(
+            settlement_manifest.get("trade_date") or trade_date
+        )
+        settlement_slot = str(
+            settlement_manifest.get("settlement_slot") or ""
+        )
+        if settlement_trade_date != trade_date:
+            raise ValueError(
+                "entry settlement trade date differs from live source"
+            )
+        settle_entry_benchmarks(
+            ledger,
+            settlement_frame,
+            trade_date=trade_date,
+            settlement_slot=settlement_slot,
+            config=config,
+            settled_at=str(
+                settlement_manifest.get("capture_completed_at")
+                or current.isoformat()
+            ),
+        )
+        settlement_summary = {
+            "entry_settlement_slot": settlement_slot,
+            "entry_settlement_requested_symbols": settlement_manifest.get(
+                "requested_symbols"
+            ),
+            "entry_settlement_observed_symbols": settlement_manifest.get(
+                "observed_symbols"
+            ),
+            "entry_settlement_fresh_symbols": settlement_manifest.get(
+                "fresh_symbols"
+            ),
+        }
     if (
         record_signal
         and signal_slot in config.strategy.signal_slots
@@ -113,6 +186,13 @@ def run_v3() -> dict[str, Any]:
         {},
     )
     missing_slots = list(current_session.get("missing_slots", []))
+    pending_entry_benchmarks = sum(
+        str(candidate.get("entry_benchmark_status") or "PENDING")
+        == "PENDING"
+        and candidate.get("entry_contract")
+        == config.execution.entry_price_contract
+        for candidate in current_session.get("candidates", [])
+    )
     integrity_status = str(
         current_session.get("integrity_status") or "COLLECTING"
     )
@@ -126,7 +206,7 @@ def run_v3() -> dict[str, Any]:
     ].copy()
     if not live_display_allowed:
         formal = formal.iloc[0:0].copy()
-    data_age = pd.to_numeric(frame.get("data_age_seconds"), errors="coerce")
+    data_age = pd.to_numeric(runtime_data_age, errors="coerce")
     finite_data_age = data_age.loc[data_age.notna() & data_age.ge(0)]
     update_time = current.strftime("%Y-%m-%d %H:%M:%S")
     manifest = {
@@ -138,7 +218,7 @@ def run_v3() -> dict[str, Any]:
         "signal_slot": signal_slot,
         "source_scheduled_slot": signal_slot,
         "market_data_time": source_manifest.get("market_data_time"),
-        "source_mode": "direct_tushare_v3",
+        "source_mode": "direct_tushare_v6",
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
         "signal_capture_started_at": source_manifest.get("capture_started_at"),
@@ -168,19 +248,35 @@ def run_v3() -> dict[str, Any]:
         "tail_universe_coverage": source_manifest.get("tail_universe_coverage"),
         "health_status": (
             "session_integrity_fault"
-            if phase in {"FROZEN", "CLOSED"} and missing_slots
+            if phase in {"FROZEN", "CLOSED"}
+            and (missing_slots or pending_entry_benchmarks)
             else "ok"
         ),
         "session_integrity_status": integrity_status,
         "covered_slots": list(current_session.get("covered_slots", [])),
         "missing_slots": missing_slots,
+        "pending_entry_benchmark_count": pending_entry_benchmarks,
         "manual_execution_only": True,
         "order_routing_enabled": False,
-        **inference_manifest(inference),
+        "signal_evidence_digest": evidence_manifest.get("evidence_digest"),
+        "signal_evidence_path": (
+            (
+                Path("outputs")
+                / "audit"
+                / trade_date[:4]
+                / trade_date
+                / signal_slot.replace(":", "")
+                / "manifest.json"
+            ).as_posix()
+            if evidence_manifest
+            else None
+        ),
+        **settlement_summary,
+        **inference_summary,
     }
     predictions_path = output / "csv" / "wp_v3_live_predictions.csv"
-    inference.predictions.to_csv(predictions_path, index=False, encoding="utf-8-sig")
-    formal.to_csv(output / "csv" / "wp_buy_plan.csv", index=False, encoding="utf-8-sig")
+    atomic_write_csv(inference.predictions, predictions_path)
+    atomic_write_csv(formal, output / "csv" / "wp_buy_plan.csv")
     write_json(output / "json" / "wp_manifest.json", manifest)
     write_json(
         output / "json" / "wp_decision_support.json",
@@ -242,23 +338,57 @@ def _refresh_data_age(
     market_time: pd.Timestamp | Any,
 ) -> pd.DataFrame:
     result = frame.copy()
+    result["data_age_seconds"] = _data_age_seconds(
+        result,
+        current=current,
+        market_time=market_time,
+    )
+    return result
+
+
+def _data_age_seconds(
+    frame: pd.DataFrame,
+    *,
+    current: datetime,
+    market_time: pd.Timestamp | Any,
+) -> pd.Series:
     current_naive = current.replace(tzinfo=None)
-    if "slot_bar_time" in result:
-        bar_time = pd.to_datetime(result["slot_bar_time"], errors="coerce")
-        result["data_age_seconds"] = (
+    if "slot_bar_time" in frame:
+        bar_time = pd.to_datetime(frame["slot_bar_time"], errors="coerce")
+        return (
             current_naive - bar_time
         ).dt.total_seconds().clip(lower=0)
-    elif pd.notna(market_time):
-        result["data_age_seconds"] = max(
+    if pd.notna(market_time):
+        age = max(
             0.0,
             (
                 current_naive
                 - pd.Timestamp(market_time).to_pydatetime().replace(tzinfo=None)
             ).total_seconds(),
         )
-    else:
-        result["data_age_seconds"] = float("inf")
-    return result
+        return pd.Series(age, index=frame.index, dtype=float)
+    return pd.Series(float("inf"), index=frame.index, dtype=float)
+
+
+def _decision_time(
+    source_manifest: dict[str, Any],
+    *,
+    fallback: datetime,
+) -> datetime:
+    for field in ("capture_completed_at", "capture_started_at", "market_data_time"):
+        value = source_manifest.get(field)
+        if not value:
+            continue
+        try:
+            timestamp = pd.Timestamp(value)
+            if timestamp.tzinfo is None:
+                timestamp = timestamp.tz_localize("Asia/Shanghai")
+            else:
+                timestamp = timestamp.tz_convert("Asia/Shanghai")
+            return timestamp.to_pydatetime()
+        except (TypeError, ValueError):
+            continue
+    return fallback
 
 
 def _source_signal_authorized(
@@ -295,8 +425,16 @@ def _source_signal_authorized(
     except (TypeError, ValueError):
         return False
     return bool(
-        scheduled <= capture < scheduled + pd.Timedelta(60, unit="s")
-        and market_time <= scheduled + pd.Timedelta(59, unit="s")
+        scheduled
+        <= capture
+        <= scheduled
+        + pd.Timedelta(
+            config.execution.max_market_data_age_seconds,
+            unit="s",
+        )
+        and scheduled
+        <= market_time
+        < scheduled + pd.Timedelta(60, unit="s")
     )
 
 
@@ -366,6 +504,34 @@ def _read_json(path: Path) -> dict[str, Any]:
         return {}
 
 
+def _load_entry_settlement() -> tuple[pd.DataFrame, dict[str, Any]]:
+    csv_value = os.environ.get("WP_V3_ENTRY_SETTLEMENT_CSV", "").strip()
+    manifest_value = os.environ.get(
+        "WP_V3_ENTRY_SETTLEMENT_MANIFEST",
+        "",
+    ).strip()
+    if not csv_value and not manifest_value:
+        return pd.DataFrame(), {}
+    csv_path = Path(csv_value)
+    manifest_path = (
+        Path(manifest_value)
+        if manifest_value
+        else csv_path.with_name("wp_v3_entry_settlement_manifest.json")
+    )
+    if not csv_path.exists() or not manifest_path.exists():
+        raise FileNotFoundError("entry settlement payload is incomplete")
+    try:
+        frame = pd.read_csv(
+            csv_path,
+            keep_default_na=False,
+            dtype={"ts_code": str},
+        )
+    except pd.errors.EmptyDataError:
+        frame = pd.DataFrame()
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    return frame, manifest
+
+
 def _resolve_model_record(registry: dict[str, Any]) -> dict[str, Any]:
     fingerprint = (
         registry.get("active_model_fingerprint")
@@ -406,7 +572,7 @@ def _missing_input_state(
         return (
             "MODEL_NOT_READY",
             "model_not_ready",
-            "V5 研究模型尚未发布，所有候选保持关闭。",
+            "V6 研究模型尚未发布，所有候选保持关闭。",
         )
     if phase == "PRE_SIGNAL":
         return (

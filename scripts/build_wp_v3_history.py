@@ -12,6 +12,7 @@ import tushare as ts
 
 from wp.v3.contracts import load_v3_config
 from wp.v3.history import TushareHistoryClient, build_three_year_panel
+from wp.v3.io import atomic_write_text
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -59,24 +60,21 @@ def main() -> int:
         default_evaluation_start=config.history.evaluation_start_date,
         default_evaluation_end=config.history.evaluation_end_date,
     )
-    if (
-        start_date != config.history.start_date
-        or end_date != config.history.end_date
-        or evaluation_start_date != config.history.evaluation_start_date
-        or evaluation_end_date != config.history.evaluation_end_date
-    ):
-        raw = Path(args.config).read_text(encoding="utf-8")
-        import yaml
+    raw = Path(args.config).read_text(encoding="utf-8")
+    import yaml
 
-        payload = yaml.safe_load(raw)
-        payload["history"]["start_date"] = start_date
-        payload["history"]["end_date"] = end_date
-        payload["history"]["evaluation_start_date"] = evaluation_start_date
-        payload["history"]["evaluation_end_date"] = evaluation_end_date
-        temporary = Path(args.output_dir) / "_resolved_wp_v3.yml"
-        temporary.parent.mkdir(parents=True, exist_ok=True)
-        temporary.write_text(yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8")
-        config = load_v3_config(temporary)
+    payload = yaml.safe_load(raw)
+    payload["history"]["start_date"] = start_date
+    payload["history"]["end_date"] = end_date
+    payload["history"]["evaluation_start_date"] = evaluation_start_date
+    payload["history"]["evaluation_end_date"] = evaluation_end_date
+    resolved_config = Path(args.output_dir) / "wp_v6_resolved_config.yml"
+    resolved_config.parent.mkdir(parents=True, exist_ok=True)
+    atomic_write_text(
+        resolved_config,
+        yaml.safe_dump(payload, allow_unicode=True, sort_keys=False),
+    )
+    config = load_v3_config(resolved_config)
 
     client = TushareHistoryClient(
         pro,

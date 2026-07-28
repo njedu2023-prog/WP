@@ -11,7 +11,7 @@ on:
       - scripts/**
       - "!scripts/trigger_*.txt"
       - config/**
-      - requirements.txt
+      - requirements.lock
       - pyproject.toml
       - .github/workflows/test.yml
 
@@ -32,7 +32,8 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirements.lock
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.lock
       - name: Run strategy tests
         run: python -m pytest -q

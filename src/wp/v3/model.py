@@ -3,6 +3,8 @@ from __future__ import annotations
 import gc
 import hashlib
 import json
+import os
+import tempfile
 from dataclasses import asdict, dataclass, replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -30,14 +32,14 @@ from .features import (
 from .policy import (
     CandidatePolicy,
     PolicySelection,
-    apply_candidate_policy,
+    candidate_policy_diagnostics,
     no_signal_policy,
 )
 from .statistics import clustered_binary_lower
 
 
 TARGET_RANK_COLUMN = "_target_net_return_rank"
-MODEL_SCHEMA_VERSION = "wp_v5_multitask_bundle_3"
+MODEL_SCHEMA_VERSION = "wp_v6_multitask_bundle_1"
 
 
 @dataclass
@@ -165,7 +167,7 @@ def train_bundle(
     eligible_rows = int(len(eligible))
     if not allow_below_minimum and len(eligible) < config.model.min_train_rows:
         raise ValueError(
-            f"V5 training requires {config.model.min_train_rows:,} eligible "
+            f"V6 training requires {config.model.min_train_rows:,} eligible "
             f"labelled rows; received {len(eligible):,}"
         )
 
@@ -177,19 +179,19 @@ def train_bundle(
     )
     if not allow_below_minimum and len(unique_dates) < minimum_dates:
         raise ValueError(
-            f"V5 temporal training requires at least {minimum_dates} dates; "
+            f"V6 temporal training requires at least {minimum_dates} dates; "
             f"received {len(unique_dates)}"
         )
     if allow_below_minimum and len(unique_dates) < (
         config.model.calibration_days + config.model.purge_days + 20
     ):
-        raise ValueError("insufficient temporal depth for V5 calibration")
+        raise ValueError("insufficient temporal depth for V6 calibration")
 
     calibration_dates = unique_dates[-config.model.calibration_days :]
     fit_end = len(unique_dates) - config.model.calibration_days - config.model.purge_days
     fit_dates = unique_dates[:fit_end]
     if len(fit_dates) < 20:
-        raise ValueError("V5 fit period is too short")
+        raise ValueError("V6 fit period is too short")
     development_dates = fit_dates[-min(max(config.model.ensemble_windows_days), len(fit_dates)) :]
     sampled_development = _deterministic_training_sample(
         eligible,
@@ -207,7 +209,7 @@ def train_bundle(
     sampled_development = enrich_feature_frame(sampled_development, copy=False)
     calibration = enrich_feature_frame(calibration, copy=False)
     print(
-        f"[wp-v5] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
+        f"[wp-v6] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
         f"rows={len(sampled_development):,} "
         f"calibration={calibration_dates[0]}..{calibration_dates[-1]} "
         f"rows={len(calibration):,}/{eligible_calibration_rows:,}",
@@ -315,7 +317,7 @@ def train_bundle(
         contract,
         candidate_policy,
     )
-    version = model_version or f"wpv5-{unique_dates[-1]}-{eligible_rows}"
+    version = model_version or f"wpv6-{unique_dates[-1]}-{eligible_rows}"
     evidence = (
         dict(policy_selection.confirmation)
         if policy_selection is not None
@@ -443,27 +445,43 @@ def predict_bundle(
     )
     if config is None:
         result["passes_policy"] = False
+        result["passes_sample"] = False
+        result["passes_empirical_lower"] = False
+        result["rejection_reasons"] = "runtime_contract_missing"
     else:
-        result["passes_policy"] = apply_candidate_policy(
+        diagnostics = candidate_policy_diagnostics(
             result,
             bundle.candidate_policy,
             config,
         )
-    result["passes_sample"] = bundle.candidate_policy.authorized
-    result["passes_empirical_lower"] = bundle.candidate_policy.authorized
+        for column in diagnostics:
+            result[column] = diagnostics[column]
     return result
 
 
 def save_bundle(bundle: ModelBundle, path: str | Path) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    joblib.dump(bundle, target, compress=3)
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=target.parent,
+        prefix=f".{target.name}.",
+        suffix=".tmp",
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        joblib.dump(bundle, temporary, compress=3)
+        with temporary.open("rb") as handle:
+            os.fsync(handle.fileno())
+        os.replace(temporary, target)
+    finally:
+        temporary.unlink(missing_ok=True)
 
 
 def load_bundle(path: str | Path) -> ModelBundle:
     bundle = joblib.load(Path(path))
     if not isinstance(bundle, ModelBundle):
-        raise TypeError("model artifact is not a WP V5 ModelBundle")
+        raise TypeError("model artifact is not a WP V6 ModelBundle")
     if bundle.schema_version != MODEL_SCHEMA_VERSION:
         raise ValueError("unsupported WP model bundle schema")
     return bundle
@@ -533,7 +551,7 @@ def _fit_members(
         )
         seed = config.model.random_seed + seed_offset + int(window)
         print(
-            f"[wp-v5] fit member window={len(member_dates)}d "
+            f"[wp-v6] fit member window={len(member_dates)}d "
             f"rows={len(member_frame):,}",
             flush=True,
         )
@@ -623,7 +641,7 @@ def _fit_members(
     required = 1 if allow_single else 2
     if len(members) < required:
         raise ValueError(
-            f"V5 temporal ensemble requires at least {required} trained members"
+            f"V6 temporal ensemble requires at least {required} trained members"
         )
     return members
 

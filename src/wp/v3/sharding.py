@@ -19,12 +19,13 @@ from .backtest import (
 )
 from .contracts import V3Config, policy_fingerprint
 from .dataset import IDENTITY_COLUMNS, first_crossing_candidates
+from .io import atomic_write_json, atomic_write_parquet
 from .policy import apply_nested_oos_policies
 
 
-SHARD_SCHEMA_VERSION = "wp_v5_walk_forward_shard_1"
-SHARD_MANIFEST_NAME = "wp_v5_fold_shard_manifest.json"
-SHARD_PREDICTIONS_NAME = "wp_v5_fold_predictions.parquet"
+SHARD_SCHEMA_VERSION = "wp_v6_walk_forward_shard_1"
+SHARD_MANIFEST_NAME = "wp_v6_fold_shard_manifest.json"
+SHARD_PREDICTIONS_NAME = "wp_v6_fold_predictions.parquet"
 
 # Fold workers need the full feature panel, but aggregation only needs immutable
 # identity, execution truth, model outputs, and audit metadata. Keeping this
@@ -148,11 +149,7 @@ def write_walk_forward_shard(
         ["fold", "trade_date", "signal_slot", "ts_code"],
         kind="stable",
     ).reset_index(drop=True)
-    ordered.to_parquet(
-        prediction_path,
-        index=False,
-        compression="zstd",
-    )
+    atomic_write_parquet(ordered, prediction_path)
     manifest = {
         "schema_version": SHARD_SCHEMA_VERSION,
         "policy_fingerprint": policy_fingerprint(config),
@@ -166,17 +163,7 @@ def write_walk_forward_shard(
         "prediction_sha256": _sha256_file(prediction_path),
         "folds": [asdict(fold) for fold in result.folds],
     }
-    (output / SHARD_MANIFEST_NAME).write_text(
-        json.dumps(
-            manifest,
-            ensure_ascii=False,
-            indent=2,
-            sort_keys=True,
-            allow_nan=False,
-        )
-        + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(output / SHARD_MANIFEST_NAME, manifest)
     return manifest
 
 

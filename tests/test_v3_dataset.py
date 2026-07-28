@@ -8,7 +8,7 @@ from wp.v3.dataset import build_supervised_panel, first_crossing_candidates
 from wp.v3.features import assert_feature_contract
 
 
-def test_label_uses_slipped_signal_price_and_t1_close_after_costs():
+def test_label_uses_delayed_entry_benchmark_and_t1_close_after_costs():
     raw = pd.DataFrame(
         [
             {
@@ -18,7 +18,10 @@ def test_label_uses_slipped_signal_price_and_t1_close_after_costs():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "t1_close": 10.10,
+                "t1_total_return_close": 10.10,
+                "adj_factor": 1.0,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 20_000_000,
@@ -45,7 +48,10 @@ def test_non_executable_exit_is_always_a_failure():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "t1_close": 11.0,
+                "t1_total_return_close": 11.0,
+                "adj_factor": 1.0,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 20_000_000,
@@ -58,7 +64,7 @@ def test_non_executable_exit_is_always_a_failure():
     )
     panel = build_supervised_panel(raw, V3Config())
     assert panel.loc[0, "target_net_positive"] == 0
-    assert panel.loc[0, "net_return_pct"] < 0
+    assert panel.loc[0, "net_return_pct"] == pytest.approx(-10.0)
 
 
 def test_missing_t1_close_on_suspension_is_an_observed_failure():
@@ -71,7 +77,10 @@ def test_missing_t1_close_on_suspension_is_an_observed_failure():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "t1_close": float("nan"),
+                "t1_total_return_close": float("nan"),
+                "adj_factor": 1.0,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 20_000_000,
@@ -85,7 +94,60 @@ def test_missing_t1_close_on_suspension_is_an_observed_failure():
     panel = build_supervised_panel(raw, V3Config())
     assert bool(panel.loc[0, "label_available"]) is True
     assert panel.loc[0, "target_net_positive"] == 0
-    assert panel.loc[0, "net_return_pct"] < 0
+    assert panel.loc[0, "net_return_pct"] == pytest.approx(-10.0)
+
+
+def test_missing_next_bar_is_an_observed_entry_failure():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "target_trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "entry_benchmark_price": float("nan"),
+                "adj_factor": 1.0,
+                "t1_close": 10.5,
+                "t1_total_return_close": 10.5,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": False,
+                "exit_fillable": True,
+            }
+        ]
+    )
+
+    panel = build_supervised_panel(raw, V3Config())
+
+    assert bool(panel.loc[0, "label_available"]) is True
+    assert panel.loc[0, "target_net_positive"] == 0
+    assert panel.loc[0, "net_return_pct"] == pytest.approx(-10.0)
+
+
+def test_unadjusted_t1_truth_is_rejected_instead_of_used_as_fallback():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260723",
+                "signal_slot": "14:20",
+                "ts_code": "600001.SH",
+                "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
+                "entry_fillable": True,
+                "exit_fillable": True,
+                "adj_factor": 1.0,
+                "t1_close": 10.2,
+            }
+        ]
+    )
+
+    with pytest.raises(ValueError, match="t1_total_return_close"):
+        build_supervised_panel(raw, V3Config())
 
 
 def test_label_uses_adjustment_factor_total_return_across_ex_dividend_day():
@@ -98,6 +160,7 @@ def test_label_uses_adjustment_factor_total_return_across_ex_dividend_day():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "adj_factor": 1.0,
                 "t1_close": 9.0,
                 "t1_total_return_close": 10.2,
@@ -128,8 +191,10 @@ def test_missing_current_adjustment_factor_is_not_execution_eligible():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "adj_factor": float("nan"),
                 "t1_close": 10.2,
+                "t1_total_return_close": 10.2,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 20_000_000,
@@ -154,8 +219,10 @@ def test_stale_symbol_bar_is_not_execution_eligible():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "adj_factor": 1.0,
                 "t1_close": 10.2,
+                "t1_total_return_close": 10.2,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 20_000_000,
@@ -181,8 +248,10 @@ def test_cold_session_without_five_observations_is_not_execution_eligible():
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
                 "adj_factor": 1.0,
                 "t1_close": 10.2,
+                "t1_total_return_close": 10.2,
                 "listing_days": 500,
                 "prev_20d_amount": 300_000_000,
                 "slot_amount": 20_000_000,

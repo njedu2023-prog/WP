@@ -11,6 +11,8 @@ import pytest
 
 from wp.v3.contracts import V3Config
 from wp.v3.history import (
+    PANEL_SCHEMA_VERSION,
+    TUSHARE_CACHE_SCHEMA_VERSION,
     TushareHistoryClient,
     _build_prior_day_features,
     _day,
@@ -21,8 +23,10 @@ from wp.v3.history import (
     _minute_universe_quality,
     _normalize_historical_minutes,
     _ordered_bounded_map,
+    _panel_builder_fingerprint,
     _query_historical_minutes_incremental,
     _reusable_panel_manifest,
+    _minute_normalizer_fingerprint,
     _slot_features,
     _slot_features_for_slots,
 )
@@ -415,9 +419,12 @@ def test_verified_panel_cache_is_reused_only_for_the_same_contract(tmp_path):
     partition = partition_dir / "wp_v3_panel_202607.parquet"
     partition.write_bytes(b"verified-panel")
     manifest = {
-        "schema_version": "wp_v3_causal_panel_1",
+        "schema_version": PANEL_SCHEMA_VERSION,
         "strategy_id": config.strategy.strategy_id,
         "feature_version": config.model.feature_version,
+        "panel_builder_fingerprint": _panel_builder_fingerprint(),
+        "minute_normalizer_fingerprint": _minute_normalizer_fingerprint(),
+        "tushare_cache_schema_version": TUSHARE_CACHE_SCHEMA_VERSION,
         "requested_start": config.history.start_date,
         "requested_end": config.history.end_date,
         "execution_contract": asdict(config.execution),

@@ -36,7 +36,7 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v5_prediction_diagnostics_1",
+            "schema_version": "wp_v6_prediction_diagnostics_1",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
@@ -113,7 +113,7 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v5_prediction_diagnostics_1",
+        "schema_version": "wp_v6_prediction_diagnostics_1",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),

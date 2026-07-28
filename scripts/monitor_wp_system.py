@@ -28,7 +28,7 @@ PAGES_MANIFEST_URL = os.environ.get(
 )
 MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "10"))
 ACCEPTED_HEALTH_STATUSES = {"ok", "无符合条件股票"}
-ACCEPTED_SOURCE_MODES = {"direct_tushare_v3"}
+ACCEPTED_SOURCE_MODES = {"direct_tushare_v6"}
 ACTIVE_RUN_STATUSES = {"queued", "in_progress", "waiting", "pending"}
 
 
@@ -40,12 +40,20 @@ def in_trade_window(current: datetime) -> bool:
     return time(14, 20) <= current.time() <= time(15, 2)
 
 
+def in_session_start_window(current: datetime) -> bool:
+    return time(14, 0) <= current.time() < time(14, 20)
+
+
 def in_close_finalize_window(current: datetime) -> bool:
     return time(15, 2) < current.time() <= time(15, 10)
 
 
 def in_monitor_window(current: datetime) -> bool:
-    return in_trade_window(current) or in_close_finalize_window(current)
+    return (
+        in_session_start_window(current)
+        or in_trade_window(current)
+        or in_close_finalize_window(current)
+    )
 
 
 def parse_dt(value: Any) -> datetime | None:
@@ -233,6 +241,26 @@ def monitor(current: datetime | None = None) -> int:
             print(f"::warning::Cannot verify Tushare calendar; continue with manifest checks: {exc}")
 
     slot = target_slot(current)
+    if in_session_start_window(current):
+        try:
+            runs = workflow_runs(WP_REPO, WP_WORKFLOW, github_token)
+        except (
+            HTTPError,
+            URLError,
+            TimeoutError,
+            RuntimeError,
+            json.JSONDecodeError,
+        ) as exc:
+            print(f"::error::Cannot read WP tail-session state: {exc}")
+            return 1
+        if workflow_active(runs):
+            print("Monitor passed: WP tail session is active before signal time.")
+            return 0
+        return repair_or_wait(
+            reason="WP tail session is not active before the 14:20 signal window",
+            runs=runs,
+            token=github_token,
+        )
     if slot is None:
         print("No due market-data slot; no action.")
         return 0
@@ -263,6 +291,15 @@ def monitor(current: datetime | None = None) -> int:
     if not wp_ok:
         return repair_or_wait(
             reason=f"WP direct data does not cover {slot:%H:%M}: {', '.join(reasons)}",
+            runs=runs,
+            token=github_token,
+        )
+    if slot.time() <= time(14, 50) and not workflow_active(runs):
+        return repair_or_wait(
+            reason=(
+                f"WP covers {slot:%H:%M}, but the continuous tail session "
+                "is no longer active"
+            ),
             runs=runs,
             token=github_token,
         )

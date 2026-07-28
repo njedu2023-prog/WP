@@ -1,4 +1,4 @@
-name: Run WP V5 Tail Session
+name: Run WP V6 Tail Session
 
 on:
   workflow_dispatch:
@@ -7,8 +7,9 @@ on:
     paths:
       - scripts/trigger_wp_run.txt
   schedule:
-    # 05:56 UTC = 13:56 Asia/Shanghai. Warm bars start at 14:00.
-    - cron: "56 5 * * 1-5"
+    # 05:40 UTC = 13:40 Asia/Shanghai. Starting early absorbs scheduler delay
+    # before the first completed warm bar at 14:02.
+    - cron: "40 5 * * 1-5"
 
 permissions:
   contents: write
@@ -22,16 +23,17 @@ concurrency:
 jobs:
   tail-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 85
+    timeout-minutes: 100
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirements.lock
       - name: Install dependencies
-        run: pip install -r requirements.txt
-      - name: Run causal V5 tail session
+        run: pip install -r requirements.lock
+      - name: Run causal V6 tail session
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
@@ -39,8 +41,7 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'once' }}
-          WP_SESSION_INTERVAL_SECONDS: "300"
+          WP_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'auto' }}
           WP_SCHEDULE_GRACE_SECONDS: "120"
           WP_MAX_SLOT_LATENESS_SECONDS: "420"
           LOKY_MAX_CPU_COUNT: "2"

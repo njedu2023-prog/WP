@@ -37,5 +37,9 @@ def latest_due_slot(current: datetime) -> datetime | None:
         <= window_end + timedelta(seconds=SCHEDULE_GRACE_SECONDS)
     ):
         return None
-    due = [slot for slot in scheduled_slots(local.date()) if slot <= local]
+    due = [
+        slot
+        for slot in scheduled_slots(local.date())
+        if slot + timedelta(seconds=SCHEDULE_GRACE_SECONDS) <= local
+    ]
     return due[-1] if due else None

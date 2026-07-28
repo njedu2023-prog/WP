@@ -43,10 +43,27 @@ def run_live_inference(
             policy_fingerprint=None,
             formal_authorization=False,
             predictions=empty,
-            message="V5 has no trained artifact; no candidate can be authorized.",
+            message="V6 has no trained artifact; no candidate can be authorized.",
         )
 
-    bundle: ModelBundle = load_bundle(artifact)
+    try:
+        bundle: ModelBundle = load_bundle(artifact)
+    except Exception as error:
+        rejected = frame.copy()
+        rejected["passes_policy"] = False
+        rejected["candidate_state"] = "MODEL_ARTIFACT_INVALID"
+        return LiveInference(
+            state="MODEL_ARTIFACT_INVALID",
+            model_version=None,
+            model_fingerprint=None,
+            policy_fingerprint=None,
+            formal_authorization=False,
+            predictions=rejected,
+            message=(
+                "Model artifact failed the V6 schema or integrity check; "
+                f"all candidates are rejected ({type(error).__name__})."
+            ),
+        )
     expected_policy = policy_fingerprint(config)
     if (
         getattr(bundle, "contract_fingerprint", bundle.policy_fingerprint)

@@ -5,6 +5,7 @@ on:
   schedule:
     # Sparse checkpoints repair a missing tail session without recreating the
     # old all-day five-minute workflow churn.
+    - cron: "3 6 * * 1-5"
     - cron: "23,38,53 6 * * 1-5"
     - cron: "3 7 * * 1-5"
 

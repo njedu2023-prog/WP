@@ -29,8 +29,9 @@ jobs:
         with:
           python-version: "3.11"
           cache: pip
+          cache-dependency-path: requirements.lock
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.lock
       - name: Validate pending plans with next-day close
         run: python scripts/run_wp_close_validation.py
         env:

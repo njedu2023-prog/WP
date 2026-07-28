@@ -75,8 +75,10 @@ def test_policy_is_selected_on_design_and_independently_confirmed():
     selection = select_candidate_policy(design, confirmation, config)
 
     assert selection.policy.authorized is True
+    assert selection.policy.reason == "design_champion_confirmed_once"
     assert selection.design["events"] == 80
     assert selection.confirmation["events"] == 40
+    assert selection.search["confirmation_policies_evaluated"] == 1
     assert apply_candidate_policy(frame, selection.policy, config).all()
 
 

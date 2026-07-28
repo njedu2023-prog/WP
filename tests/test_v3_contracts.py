@@ -39,3 +39,11 @@ def test_cost_contract_uses_35bps_baseline_and_rejects_lower_stress():
     )
     with pytest.raises(ValueError, match="baseline all-in"):
         validate_contract(invalid)
+
+
+def test_exit_order_enters_the_closing_auction_at_1457():
+    config = V3Config()
+    assert (
+        config.execution.exit_order_contract
+        == "T+1_14:57_down_limit_sell_for_close_auction"
+    )

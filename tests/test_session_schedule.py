@@ -25,14 +25,20 @@ def test_tail_schedule_has_seven_signal_slots_then_freeze_and_close():
 
 def test_latest_due_slot_stays_inside_tail_window():
     assert (
-        latest_due_slot(datetime(2026, 7, 27, 14, 46, tzinfo=CN_TZ))
+        latest_due_slot(datetime(2026, 7, 27, 14, 47, tzinfo=CN_TZ))
         .strftime("%H:%M")
         == "14:45"
     )
     assert (
-        latest_due_slot(datetime(2026, 7, 27, 15, 1, tzinfo=CN_TZ))
+        latest_due_slot(datetime(2026, 7, 27, 15, 2, tzinfo=CN_TZ))
         .strftime("%H:%M")
         == "15:00"
     )
+    assert (
+        latest_due_slot(datetime(2026, 7, 27, 14, 46, tzinfo=CN_TZ))
+        .strftime("%H:%M")
+        == "14:40"
+    )
+    assert latest_due_slot(datetime(2026, 7, 27, 14, 21, tzinfo=CN_TZ)) is None
     assert latest_due_slot(datetime(2026, 7, 27, 11, 46, tzinfo=CN_TZ)) is None
     assert latest_due_slot(datetime(2026, 7, 27, 15, 3, tzinfo=CN_TZ)) is None

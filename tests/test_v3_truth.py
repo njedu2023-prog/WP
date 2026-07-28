@@ -32,6 +32,69 @@ def test_truth_uses_immutable_first_signal_price():
     assert candidate["truth_status"] == "verified"
 
 
+def test_v6_truth_uses_settled_entry_and_never_falls_back_to_signal_price():
+    config = V3Config()
+    candidate = {
+        "ts_code": "600001.SH",
+        "first_signal_price": 10.0,
+        "entry_contract": config.execution.entry_price_contract,
+        "entry_benchmark_status": "SETTLED",
+        "entry_benchmark_price": 10.5,
+        "entry_price": 10.5105,
+        "entry_fillable": True,
+        "entry_adj_factor": 1.0,
+        "truth_status": "pending",
+    }
+    truth = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "close": 10.6,
+                "vol": 1000,
+                "down_limit": 9.0,
+                "adj_factor": 1.0,
+            }
+        ]
+    ).set_index("ts_code")
+
+    _verify_candidate(candidate, truth, config)
+
+    assert candidate["entry_price"] == 10.5105
+    assert candidate["gross_return_pct"] == pytest.approx(
+        (10.6 / 10.5105 - 1.0) * 100.0
+    )
+    assert candidate["truth_contract"].startswith("immutable_next_5m")
+
+
+def test_v6_truth_remains_pending_without_entry_benchmark():
+    config = V3Config()
+    candidate = {
+        "ts_code": "600001.SH",
+        "first_signal_price": 10.0,
+        "entry_contract": config.execution.entry_price_contract,
+        "entry_benchmark_status": "PENDING",
+        "entry_adj_factor": 1.0,
+        "truth_status": "pending",
+    }
+    truth = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "close": 10.6,
+                "vol": 1000,
+                "down_limit": 9.0,
+                "adj_factor": 1.0,
+            }
+        ]
+    ).set_index("ts_code")
+
+    _verify_candidate(candidate, truth, config)
+
+    assert candidate["truth_status"] == "pending"
+    assert candidate["truth_error"] == "missing_entry_benchmark"
+    assert candidate.get("entry_price") is None
+
+
 def test_down_limit_close_is_counted_as_execution_failure():
     candidate = {
         "ts_code": "600001.SH",

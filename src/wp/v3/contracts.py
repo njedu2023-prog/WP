@@ -3,7 +3,7 @@ from __future__ import annotations
 import hashlib
 import json
 from dataclasses import asdict, dataclass, field
-from datetime import datetime, time
+from datetime import datetime, time, timedelta
 from pathlib import Path
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -25,8 +25,8 @@ DEFAULT_SIGNAL_SLOTS = (
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v5"
-    model_family: str = "causal_multitask_lambdarank_v5"
+    strategy_id: str = "wp_t1_net_profit_v6"
+    model_family: str = "causal_multitask_executable_v6"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
     candidate_freeze_time: str = "14:55"
@@ -37,9 +37,12 @@ class StrategyContract:
 
 @dataclass(frozen=True)
 class ExecutionContract:
-    entry_price_contract: str = "signal_price_plus_slippage"
+    entry_price_contract: str = "next_5m_close_plus_slippage"
+    entry_delay_minutes: int = 5
+    entry_execution_deadline: str = "14:55"
     entry_slippage_bps: float = 10.0
     round_trip_cost_bps: float = 25.0
+    exit_order_contract: str = "T+1_14:57_down_limit_sell_for_close_auction"
     stress_cost_bps: tuple[float, ...] = (35.0, 50.0)
     min_listing_days: int = 60
     min_price: float = 2.0
@@ -61,8 +64,8 @@ class ExecutionContract:
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v5_nested_oos_policy_1"
-    feature_version: str = "wp_v5_causal_features_1"
+    policy_implementation_version: str = "wp_v6_nested_oos_policy_1"
+    feature_version: str = "wp_v6_causal_features_1"
     minimum_train_days: int = 252
     calibration_days: int = 42
     policy_design_days: int = 84
@@ -84,11 +87,11 @@ class ModelContract:
     policy_min_design_days: int = 30
     policy_min_confirmation_events: int = 60
     policy_min_confirmation_days: int = 15
-    policy_min_win_rate: float = 0.50
-    policy_min_wilson_lower: float = 0.45
-    policy_min_clustered_lower: float = 0.40
-    policy_min_mean_net_return_pct: float = 0.10
-    policy_min_profit_factor: float = 1.05
+    policy_min_win_rate: float = 0.54
+    policy_min_wilson_lower: float = 0.50
+    policy_min_clustered_lower: float = 0.48
+    policy_min_mean_net_return_pct: float = 0.15
+    policy_min_profit_factor: float = 1.10
     max_probability_model_spread: float = 0.15
     max_selection_rank_spread: float = 0.25
     min_train_rows: int = 20_000
@@ -110,6 +113,8 @@ class PromotionContract:
     minimum_clustered_mean_return_lower_pct: float = 0.00
     minimum_median_net_return_pct: float = 0.00
     minimum_profit_factor: float = 1.20
+    minimum_entry_fill_rate: float = 0.98
+    minimum_exit_fill_rate: float = 0.98
     maximum_ece: float = 0.05
     require_50bps_stress_nonnegative: bool = True
     auto_promote_when_all_gates_pass: bool = True
@@ -181,6 +186,21 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("live display cannot clear before the candidate ledger freezes")
     if config.strategy.exit_contract != "T+1_close":
         raise ValueError("WP has one immutable exit contract: T+1_close")
+    if config.execution.entry_price_contract != "next_5m_close_plus_slippage":
+        raise ValueError("WP entry truth must use the next five-minute close")
+    if config.execution.entry_delay_minutes != 5:
+        raise ValueError("WP entry benchmark delay is fixed at five minutes")
+    if config.execution.entry_execution_deadline != "14:55":
+        raise ValueError("WP entry benchmark must finish by 14:55")
+    if any(
+        entry_benchmark_slot(slot, config) > config.execution.entry_execution_deadline
+        for slot in config.strategy.signal_slots
+    ):
+        raise ValueError("a signal cannot settle after the entry execution deadline")
+    if config.execution.exit_order_contract != (
+        "T+1_14:57_down_limit_sell_for_close_auction"
+    ):
+        raise ValueError("WP exit order contract must participate in the T+1 close")
     if config.promotion.minimum_shadow_trading_days < 150:
         raise ValueError("production promotion requires at least 150 shadow trading days")
     if config.model.policy_design_days < 40:
@@ -216,6 +236,10 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("stress costs cannot be below the baseline all-in cost")
     if config.execution.non_fill_penalty_pct >= 0:
         raise ValueError("non-fill penalty must be negative")
+    if not 0.0 < config.promotion.minimum_entry_fill_rate <= 1.0:
+        raise ValueError("minimum_entry_fill_rate must be in (0, 1]")
+    if not 0.0 < config.promotion.minimum_exit_fill_rate <= 1.0:
+        raise ValueError("minimum_exit_fill_rate must be in (0, 1]")
     if config.history.tushare_requests_per_minute < 30:
         raise ValueError("tushare_requests_per_minute cannot be below 30")
     if not 1 <= config.history.minute_fetch_workers <= 8:
@@ -276,6 +300,12 @@ def due_signal_slot(now: datetime, config: V3Config) -> str | None:
     hhmm = now.astimezone(CN_TZ).strftime("%H:%M")
     due = [slot for slot in config.strategy.signal_slots if slot <= hhmm]
     return due[-1] if due else None
+
+
+def entry_benchmark_slot(signal_slot: str, config: V3Config) -> str:
+    parsed = datetime.strptime(signal_slot, "%H:%M")
+    shifted = parsed + timedelta(minutes=config.execution.entry_delay_minutes)
+    return shifted.strftime("%H:%M")
 
 
 def parse_hhmm(value: str) -> time:

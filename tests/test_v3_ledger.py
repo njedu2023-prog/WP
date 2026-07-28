@@ -9,6 +9,7 @@ from wp.v3.ledger import (
     empty_shadow_ledger,
     freeze_shadow_session,
     record_shadow_slot,
+    settle_entry_benchmarks,
 )
 
 
@@ -57,10 +58,85 @@ def test_ledger_locks_first_signal_and_only_updates_last_observation():
     assert candidate["appearance_count"] == 2
     assert candidate["policy_fingerprint"] == "policy-a"
     assert candidate["baseline_all_in_cost_bps"] == 35.0
+    assert candidate["entry_benchmark_slot"] == "14:25"
+    assert candidate["entry_benchmark_status"] == "PENDING"
     assert "first_signal_features" in candidate
     assert "qualification_evidence" in candidate
     assert ledger["sessions"][0]["policy_fingerprint"] == "policy-a"
     assert_ledger_invariants(ledger, config)
+
+
+def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
+    ledger = empty_shadow_ledger()
+    config = V3Config()
+    record_shadow_slot(
+        ledger,
+        _prediction(10.0),
+        trade_date="20260723",
+        signal_slot="14:20",
+        config=config,
+    )
+    settlement = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "entry_benchmark_slot": "14:25",
+                "entry_benchmark_price": 10.2,
+                "entry_benchmark_amount": 20_000_000,
+                "entry_benchmark_bar_time": "2026-07-23 14:25:00",
+                "data_age_seconds": 0,
+                "up_limit": 11.0,
+            }
+        ]
+    )
+    settle_entry_benchmarks(
+        ledger,
+        settlement,
+        trade_date="20260723",
+        settlement_slot="14:25",
+        config=config,
+    )
+    candidate = ledger["sessions"][0]["candidates"][0]
+    assert candidate["entry_benchmark_status"] == "SETTLED"
+    assert candidate["entry_benchmark_price"] == 10.2
+    assert candidate["entry_price"] == pytest.approx(10.2102)
+    assert candidate["entry_fillable"] is True
+
+    changed = settlement.copy()
+    changed["entry_benchmark_price"] = 10.3
+    with pytest.raises(ValueError, match="cannot rewrite immutable"):
+        settle_entry_benchmarks(
+            ledger,
+            changed,
+            trade_date="20260723",
+            settlement_slot="14:25",
+            config=config,
+        )
+
+
+def test_freeze_fails_integrity_when_a_v6_entry_is_still_pending():
+    ledger = empty_shadow_ledger()
+    config = V3Config()
+    for slot in config.strategy.signal_slots:
+        predictions = (
+            _prediction(10.0)
+            if slot == "14:50"
+            else _prediction(10.0).assign(passes_policy=False)
+        )
+        record_shadow_slot(
+            ledger,
+            predictions,
+            trade_date="20260723",
+            signal_slot=slot,
+            config=config,
+        )
+    freeze_shadow_session(
+        ledger,
+        trade_date="20260723",
+        config=config,
+    )
+    assert ledger["sessions"][0]["integrity_status"] == "INCOMPLETE_ENTRY"
+    assert ledger["sessions"][0]["pending_entry_benchmark_count"] == 1
 
 
 def test_frozen_session_rejects_new_candidates():

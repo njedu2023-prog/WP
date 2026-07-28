@@ -15,7 +15,13 @@ from wp.utils import write_json
 
 from .contracts import V3Config, load_v3_config
 from .dashboard import render_v3_dashboard
-from .ledger import assert_ledger_invariants, load_shadow_ledger, save_shadow_ledger
+from .io import atomic_write_csv
+from .ledger import (
+    assert_ledger_invariants,
+    load_shadow_ledger,
+    save_shadow_ledger,
+    settle_entry_benchmarks,
+)
 from .registry import (
     load_registry,
     refresh_shadow_metrics,
@@ -64,6 +70,12 @@ def run_v3_close_validation(
                 truth_by_date[target_date] = _fetch_close_truth(pro, target_date)
             except RuntimeError as error:
                 truth_errors[target_date] = str(error)
+        _backfill_missing_entry_benchmarks(
+            pro,
+            due,
+            truth_by_date=truth_by_date,
+            config=config,
+        )
         for candidate in due:
             target_date = str(candidate["target_trade_date"])
             entry_date = str(candidate["trade_date"])
@@ -121,10 +133,9 @@ def run_v3_close_validation(
         & target_dates.str.fullmatch(r"\d{8}", na=False)
         & target_dates.le(today)
     )
-    validation.to_csv(
+    atomic_write_csv(
+        validation,
         output / "csv" / "wp_buy_plan_validation.csv",
-        index=False,
-        encoding="utf-8-sig",
     )
     manifest_path = output / "json" / "wp_manifest.json"
     manifest = _read_json(manifest_path)
@@ -246,7 +257,17 @@ def _fetch_close_truth(pro: Any, trade_date: str) -> pd.DataFrame:
         )
         .merge(limits, on=["trade_date", "ts_code"], how="left")
     )
-    for column in ("open", "high", "low", "close", "vol", "down_limit", "adj_factor"):
+    for column in (
+        "open",
+        "high",
+        "low",
+        "close",
+        "vol",
+        "amount",
+        "up_limit",
+        "down_limit",
+        "adj_factor",
+    ):
         truth[column] = pd.to_numeric(truth[column], errors="coerce")
     return truth.drop_duplicates("ts_code").set_index("ts_code")
 
@@ -262,8 +283,28 @@ def _verify_candidate(
     if code not in truth.index:
         return
     row = truth.loc[code]
-    signal_price = float(candidate["first_signal_price"])
-    entry_price = signal_price * (1 + config.execution.entry_slippage_bps / 10_000.0)
+    uses_v6_entry = (
+        candidate.get("entry_contract")
+        == config.execution.entry_price_contract
+    )
+    if uses_v6_entry:
+        benchmark_status = str(
+            candidate.get("entry_benchmark_status") or "PENDING"
+        )
+        if benchmark_status == "PENDING":
+            candidate["truth_error"] = "missing_entry_benchmark"
+            return
+        entry_price = _positive_float(candidate.get("entry_price"))
+        entry_fillable = bool(candidate.get("entry_fillable"))
+        if benchmark_status == "SETTLED" and not entry_price:
+            candidate["truth_error"] = "invalid_entry_benchmark"
+            return
+    else:
+        signal_price = float(candidate["first_signal_price"])
+        entry_price = signal_price * (
+            1 + config.execution.entry_slippage_bps / 10_000.0
+        )
+        entry_fillable = True
     entry_adj_factor = _positive_float(candidate.get("entry_adj_factor"))
     if entry_truth is not None:
         if code not in entry_truth.index:
@@ -292,7 +333,7 @@ def _verify_candidate(
     )
     gross = (
         (total_return_close / entry_price - 1.0) * 100.0
-        if total_return_close
+        if total_return_close and entry_price
         else None
     )
     net = (
@@ -300,11 +341,12 @@ def _verify_candidate(
         if gross is not None
         else config.execution.non_fill_penalty_pct
     )
-    if not exit_fillable:
+    if not entry_fillable or not exit_fillable:
         net = min(net, config.execution.non_fill_penalty_pct)
     candidate.update(
         {
             "entry_price": entry_price,
+            "entry_fillable": entry_fillable,
             "entry_adj_factor_truth": entry_adj_factor,
             "entry_slippage_bps": config.execution.entry_slippage_bps,
             "round_trip_cost_bps": config.execution.round_trip_cost_bps,
@@ -317,18 +359,121 @@ def _verify_candidate(
             "exit_fillable": exit_fillable,
             "gross_return_pct": gross,
             "net_return_pct": net,
-            "net_positive": bool(exit_fillable and net > 0),
+            "net_positive": bool(entry_fillable and exit_fillable and net > 0),
             "truth_status": "verified",
             "truth_verified_at": now_cn().isoformat(),
-            "truth_contract": "immutable_first_signal_price_to_T+1_close_after_costs",
+            "truth_contract": (
+                "immutable_next_5m_entry_to_T+1_close_after_costs"
+                if uses_v6_entry
+                else "legacy_first_signal_price_to_T+1_close_after_costs"
+            ),
             "corporate_action_adjustment": "adj_factor_total_return",
             "non_fill_penalty_pct": (
                 config.execution.non_fill_penalty_pct
-                if not exit_fillable
+                if not entry_fillable or not exit_fillable
                 else None
             ),
         }
     )
+    candidate.pop("truth_error", None)
+
+
+def _backfill_missing_entry_benchmarks(
+    pro: Any,
+    candidates: list[dict[str, Any]],
+    *,
+    truth_by_date: dict[str, pd.DataFrame],
+    config: V3Config,
+) -> None:
+    for candidate in candidates:
+        if (
+            candidate.get("entry_contract")
+            != config.execution.entry_price_contract
+            or str(candidate.get("entry_benchmark_status") or "PENDING")
+            != "PENDING"
+        ):
+            continue
+        trade_date = str(candidate.get("trade_date") or "")
+        settlement_slot = str(candidate.get("entry_benchmark_slot") or "")
+        code = str(candidate.get("ts_code") or "")
+        if not (
+            len(trade_date) == 8
+            and settlement_slot
+            and code
+            and trade_date in truth_by_date
+        ):
+            candidate["truth_error"] = "entry_benchmark_contract_incomplete"
+            continue
+        try:
+            raw = pro.query(
+                "stk_mins",
+                ts_code=code,
+                start_date=(
+                    f"{trade_date[:4]}-{trade_date[4:6]}-"
+                    f"{trade_date[6:]} 14:15:00"
+                ),
+                end_date=(
+                    f"{trade_date[:4]}-{trade_date[4:6]}-"
+                    f"{trade_date[6:]} 15:00:00"
+                ),
+                freq="5min",
+                fields="ts_code,trade_time,open,high,low,close,vol,amount",
+            )
+        except Exception as error:  # provider failures must remain visible
+            candidate["truth_error"] = (
+                f"entry_benchmark_query_failed:{type(error).__name__}"
+            )
+            continue
+        frame = pd.DataFrame(raw).copy()
+        if not frame.empty:
+            frame["trade_time"] = pd.to_datetime(
+                frame["trade_time"],
+                errors="coerce",
+            )
+            frame = frame.loc[
+                frame["trade_time"].dt.strftime("%H:%M").eq(settlement_slot)
+            ].copy()
+        if frame.empty:
+            settlement = pd.DataFrame(columns=["ts_code"])
+        else:
+            frame = frame.sort_values("trade_time", kind="stable").tail(1)
+            entry_truth = truth_by_date[trade_date]
+            up_limit = (
+                _positive_float(entry_truth.loc[code].get("up_limit"))
+                if code in entry_truth.index
+                else None
+            )
+            settlement = pd.DataFrame(
+                [
+                    {
+                        "ts_code": code,
+                        "entry_benchmark_slot": settlement_slot,
+                        "entry_benchmark_price": frame.iloc[0].get("close"),
+                        "entry_benchmark_amount": frame.iloc[0].get("amount"),
+                        "entry_benchmark_bar_time": frame.iloc[0].get(
+                            "trade_time"
+                        ),
+                        "data_age_seconds": 0.0,
+                        "up_limit": up_limit,
+                    }
+                ]
+            )
+        settle_entry_benchmarks(
+            {
+                "sessions": [
+                    {
+                        "trade_date": trade_date,
+                        "candidates": [candidate],
+                    }
+                ]
+            },
+            settlement,
+            trade_date=trade_date,
+            settlement_slot=settlement_slot,
+            config=config,
+            settled_at=now_cn().isoformat(),
+        )
+        candidate["entry_benchmark_source"] = "reconstructed_stk_mins"
 
 
 def _validation_frame(ledger: dict[str, Any]) -> pd.DataFrame:

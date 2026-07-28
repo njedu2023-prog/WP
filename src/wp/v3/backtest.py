@@ -105,7 +105,7 @@ def walk_forward_backtest(
         training = ordered.loc[row_dates.isin(model_train_dates)]
         testing = ordered.loc[row_dates.isin(test_dates)]
         print(
-            f"[wp-v5] walk-forward fold {fold_number}/{total_folds} "
+            f"[wp-v6] walk-forward fold {fold_number}/{total_folds} "
             f"train={model_train_dates[0]}..{model_train_dates[-1]} "
             f"test={test_dates[0]}..{test_dates[-1]}",
             flush=True,
@@ -114,7 +114,7 @@ def walk_forward_backtest(
             training,
             config,
             allow_below_minimum=False,
-            model_version=f"wpv5-wf-{test_dates[0]}",
+            model_version=f"wpv6-wf-{test_dates[0]}",
         )
         prediction = predict_bundle(bundle, testing)
         prediction["fold"] = fold_number
@@ -122,7 +122,7 @@ def walk_forward_backtest(
         prediction["test_end"] = str(test_dates[-1])
         fold_rows.append(prediction)
         print(
-            f"[wp-v5] completed fold {fold_number}/{total_folds} "
+            f"[wp-v6] completed fold {fold_number}/{total_folds} "
             f"prediction_rows={len(prediction):,}",
             flush=True,
         )
@@ -303,6 +303,20 @@ def evaluate_predictions(
     profits = float(candidate_returns[candidate_returns > 0].sum())
     losses = float(-candidate_returns[candidate_returns < 0].sum())
     profit_factor = profits / losses if losses > 0 else (float("inf") if profits > 0 else 0.0)
+    entry_fillable = candidates.get(
+        "entry_fillable",
+        pd.Series(False, index=candidates.index),
+    ).fillna(False).astype(bool)
+    exit_fillable = candidates.get(
+        "exit_fillable",
+        pd.Series(False, index=candidates.index),
+    ).fillna(False).astype(bool)
+    entry_fill_count = int(entry_fillable.sum())
+    exit_fill_count = int((entry_fillable & exit_fillable).sum())
+    entry_fill_rate = entry_fill_count / total if total else 0.0
+    exit_fill_rate = (
+        exit_fill_count / entry_fill_count if entry_fill_count else 0.0
+    )
 
     daily = (
         candidates.assign(
@@ -333,6 +347,11 @@ def evaluate_predictions(
         "labelled_slot_rows": int(len(labelled)),
         "candidate_events": total,
         "candidate_days": int(candidates.get("trade_date", pd.Series(dtype=str)).nunique()),
+        "entry_fillable_events": entry_fill_count,
+        "entry_fill_rate": entry_fill_rate,
+        "exit_fillable_events": exit_fill_count,
+        "exit_fill_rate": exit_fill_rate,
+        "round_trip_fill_rate": exit_fill_count / total if total else 0.0,
         "win_count": wins,
         "win_rate": win_rate,
         "win_rate_wilson_lower": lower,
@@ -407,6 +426,16 @@ def evaluate_backtest_gate(metrics: dict[str, Any], config: V3Config) -> dict[st
             0.0,
         )
         >= promotion.minimum_profit_factor,
+        "minimum_entry_fill_rate": _number_or_default(
+            metrics.get("entry_fill_rate"),
+            0.0,
+        )
+        >= promotion.minimum_entry_fill_rate,
+        "minimum_exit_fill_rate": _number_or_default(
+            metrics.get("exit_fill_rate"),
+            0.0,
+        )
+        >= promotion.minimum_exit_fill_rate,
         "maximum_ece": _number_or_default(metrics.get("ece"), 999.0)
         <= promotion.maximum_ece,
         "stress_50bps_nonnegative": (
@@ -505,7 +534,7 @@ def _benchmark_metrics(
     ].copy()
     return {
         "all_executable_at_1450": _return_summary(eligible),
-        "legacy_8_to_12_pct_at_1450": _return_summary(legacy),
+        "retired_8_to_12_pct_rule_at_1450": _return_summary(legacy),
     }
 
 

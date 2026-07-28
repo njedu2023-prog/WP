@@ -10,6 +10,7 @@ import numpy as np
 import pandas as pd
 
 from .contracts import V3Config
+from .io import atomic_write_json
 from .statistics import day_clustered_intervals, wilson_interval
 
 
@@ -69,13 +70,8 @@ def load_registry(path: str | Path) -> dict[str, Any]:
 
 
 def save_registry(registry: dict[str, Any], path: str | Path) -> None:
-    target = Path(path)
-    target.parent.mkdir(parents=True, exist_ok=True)
     registry["generated_at"] = datetime.now(timezone.utc).isoformat()
-    target.write_text(
-        json.dumps(registry, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(path, registry)
 
 
 def register_research_model(
@@ -102,19 +98,27 @@ def register_research_model(
         .get("passed", False)
     )
 
-    if registry.get("active_policy_fingerprint") == policy and backtest_passed:
+    if registry.get("active_model_fingerprint") == fingerprint and backtest_passed:
         status = "PROMOTED"
-        previous = registry.get("active_model_fingerprint")
-        _supersede(registry, previous, "SUPERSEDED_PRODUCTION")
-        registry["active_model_fingerprint"] = fingerprint
-    elif registry.get("active_policy_fingerprint") == policy:
-        status = "RESEARCH"
     elif backtest_passed:
-        status = "SHADOW"
-        previous = registry.get("shadow_model_fingerprint")
-        _supersede(registry, previous, "SUPERSEDED_SHADOW")
-        registry["shadow_policy_fingerprint"] = policy
-        registry["shadow_model_fingerprint"] = fingerprint
+        current_shadow_fingerprint = str(
+            registry.get("shadow_model_fingerprint") or ""
+        )
+        if current_shadow_fingerprint == fingerprint:
+            status = str(
+                (current_shadow or {}).get("status") or "SHADOW"
+            )
+        elif current_shadow_passed:
+            # A model is the experimental unit. A retrain can materially change
+            # candidates even when its thresholds are identical, so it waits as
+            # a challenger instead of inheriting another model's shadow clock.
+            status = "RESEARCH"
+        else:
+            status = "SHADOW"
+            previous = registry.get("shadow_model_fingerprint")
+            _supersede(registry, previous, "SUPERSEDED_SHADOW")
+            registry["shadow_policy_fingerprint"] = policy
+            registry["shadow_model_fingerprint"] = fingerprint
     elif current_shadow_passed:
         # A rejected challenger may be retained for research, but it must not
         # displace a shadow policy that already passed the historical gate.
@@ -162,19 +166,6 @@ def register_research_model(
             and backtest_passed
         ):
             record["status"] = existing["status"]
-    same_policy = [
-        model
-        for model in registry.get("models", [])
-        if model.get("policy_fingerprint") == policy
-    ]
-    if same_policy and not existing:
-        latest_shadow = max(
-            same_policy,
-            key=lambda item: str(item.get("trained_at") or ""),
-        ).get("shadow")
-        if latest_shadow:
-            record["shadow"] = latest_shadow
-
     registry["models"] = [
         model
         for model in registry.get("models", [])
@@ -200,6 +191,11 @@ def evaluate_promotion(record: dict[str, Any], config: V3Config) -> PromotionDec
     promotion = config.promotion
     checks = {
         "backtest_gate": bool(backtest.get("backtest_gate", {}).get("passed", False)),
+        "shadow_bound_to_exact_model": (
+            str(shadow.get("evidence_scope") or "") == "exact_model"
+            and str(shadow.get("model_fingerprint") or "")
+            == str(record.get("fingerprint") or "")
+        ),
         "shadow_trading_days": int(shadow.get("trading_days", 0))
         >= promotion.minimum_shadow_trading_days,
         "shadow_candidate_days": int(shadow.get("candidate_days", 0))
@@ -235,6 +231,16 @@ def evaluate_promotion(record: dict[str, Any], config: V3Config) -> PromotionDec
         >= promotion.minimum_median_net_return_pct,
         "shadow_profit_factor": _number(shadow.get("profit_factor"), 0.0)
         >= promotion.minimum_profit_factor,
+        "shadow_entry_fill_rate": _number(
+            shadow.get("entry_fill_rate"),
+            0.0,
+        )
+        >= promotion.minimum_entry_fill_rate,
+        "shadow_exit_fill_rate": _number(
+            shadow.get("exit_fill_rate"),
+            0.0,
+        )
+        >= promotion.minimum_exit_fill_rate,
         "shadow_ece": _number(shadow.get("ece"), 999.0)
         <= promotion.maximum_ece,
         "shadow_50bps_stress": (
@@ -306,23 +312,20 @@ def refresh_shadow_metrics(
     if requested is None:
         raise KeyError(f"model fingerprint not found: {fingerprint}")
     policy = str(requested.get("policy_fingerprint") or fingerprint)
-    policy_models = {
-        str(model.get("fingerprint"))
-        for model in registry.get("models", [])
-        if str(model.get("policy_fingerprint") or model.get("fingerprint")) == policy
-    }
+    observation_boundary = _model_observation_boundary(requested)
     sessions = [
         session
         for session in ledger.get("sessions", [])
         if session.get("frozen")
         and not session.get("missing_slots")
-        and _session_belongs_to_policy(session, policy, policy_models)
+        and _session_belongs_to_model(session, fingerprint)
+        and _is_forward_shadow_session(session, observation_boundary)
     ]
     candidates = [
         candidate
         for session in sessions
         for candidate in session.get("candidates", [])
-        if _candidate_belongs_to_policy(candidate, policy, policy_models)
+        if _candidate_belongs_to_model(candidate, fingerprint)
     ]
     verified = [
         candidate
@@ -363,11 +366,25 @@ def refresh_shadow_metrics(
     lower, upper = wilson_interval(wins, len(returns))
     profits = float(returns[returns > 0].sum()) if len(returns) else 0.0
     losses = float(-returns[returns < 0].sum()) if len(returns) else 0.0
+    entry_fillable = np.asarray(
+        [candidate.get("entry_fillable") is True for candidate in verified],
+        dtype=bool,
+    )
+    exit_fillable = np.asarray(
+        [candidate.get("exit_fillable") is True for candidate in verified],
+        dtype=bool,
+    )
+    entry_fill_count = int(entry_fillable.sum())
+    exit_fill_count = int(np.sum(entry_fillable & exit_fillable))
     stress_50 = returns - (
         50.0 - config.execution.baseline_all_in_cost_bps
     ) / 100.0
     shadow = {
+        "evidence_scope": "exact_model",
+        "model_fingerprint": fingerprint,
         "policy_fingerprint": policy,
+        "observation_after_trade_date": observation_boundary["train_end"],
+        "model_trained_at": observation_boundary["trained_at"],
         "started_trade_date": min(
             (str(session.get("trade_date")) for session in sessions),
             default=None,
@@ -384,6 +401,17 @@ def refresh_shadow_metrics(
         ),
         "candidates": len(candidates),
         "verified_candidates": len(returns),
+        "entry_fillable_candidates": entry_fill_count,
+        "entry_fill_rate": (
+            entry_fill_count / len(returns) if len(returns) else None
+        ),
+        "exit_fillable_candidates": exit_fill_count,
+        "exit_fill_rate": (
+            exit_fill_count / entry_fill_count if entry_fill_count else None
+        ),
+        "round_trip_fill_rate": (
+            exit_fill_count / len(returns) if len(returns) else None
+        ),
         "wins": wins,
         "win_rate": float(np.mean(returns > 0)) if len(returns) else None,
         "win_rate_wilson_lower": lower if len(returns) else None,
@@ -418,18 +446,10 @@ def refresh_shadow_metrics(
             bool(stress_50.sum() > 0) if len(stress_50) else False
         ),
     }
-    for record in registry.get("models", []):
-        if str(record.get("policy_fingerprint") or record.get("fingerprint")) == policy:
-            record["shadow"] = dict(shadow)
-
-    target_fingerprint = _current_policy_model(
-        registry,
-        policy,
-        fallback=fingerprint,
-    )
+    requested["shadow"] = dict(shadow)
     return apply_promotion_decision(
         registry,
-        target_fingerprint,
+        fingerprint,
         config,
         authorize=config.promotion.auto_promote_when_all_gates_pass,
     )
@@ -437,12 +457,21 @@ def refresh_shadow_metrics(
 
 def _empty_shadow() -> dict[str, Any]:
     return {
+        "evidence_scope": "exact_model",
+        "model_fingerprint": None,
         "policy_fingerprint": None,
+        "observation_after_trade_date": None,
+        "model_trained_at": None,
         "started_trade_date": None,
         "trading_days": 0,
         "candidate_days": 0,
         "candidates": 0,
         "verified_candidates": 0,
+        "entry_fillable_candidates": 0,
+        "entry_fill_rate": None,
+        "exit_fillable_candidates": 0,
+        "exit_fill_rate": None,
+        "round_trip_fill_rate": None,
         "wins": 0,
         "win_rate": None,
         "win_rate_wilson_lower": None,
@@ -459,44 +488,73 @@ def _empty_shadow() -> dict[str, Any]:
     }
 
 
-def _candidate_belongs_to_policy(
+def _candidate_belongs_to_model(
     candidate: dict[str, Any],
-    policy: str,
-    model_fingerprints: set[str],
+    fingerprint: str,
 ) -> bool:
-    candidate_policy = candidate.get("policy_fingerprint")
-    if candidate_policy:
-        return str(candidate_policy) == policy
-    return str(candidate.get("model_fingerprint")) in model_fingerprints
+    return str(candidate.get("model_fingerprint") or "") == str(fingerprint)
 
 
-def _session_belongs_to_policy(
+def _model_observation_boundary(
+    record: dict[str, Any],
+) -> dict[str, str | None]:
+    train_end = str(record.get("train_end") or "")
+    if len(train_end) != 8 or not train_end.isdigit():
+        train_end = ""
+    trained_at = str(record.get("trained_at") or "")
+    return {
+        "train_end": train_end or None,
+        "trained_at": trained_at or None,
+    }
+
+
+def _is_forward_shadow_session(
     session: dict[str, Any],
-    policy: str,
-    model_fingerprints: set[str],
+    boundary: dict[str, str | None],
 ) -> bool:
-    session_policy = session.get("policy_fingerprint")
-    if session_policy:
-        return str(session_policy) == policy
-    if str(session.get("model_fingerprint")) in model_fingerprints:
-        return True
-    return any(
-        _candidate_belongs_to_policy(candidate, policy, model_fingerprints)
-        for candidate in session.get("candidates", [])
+    trade_date = str(session.get("trade_date") or "")
+    train_end = str(boundary.get("train_end") or "")
+    first_trained_at = str(boundary.get("trained_at") or "")
+    frozen_at = str(session.get("frozen_at") or "")
+    if (
+        len(trade_date) != 8
+        or not trade_date.isdigit()
+        or len(train_end) != 8
+        or not train_end.isdigit()
+        or trade_date <= train_end
+        or not first_trained_at
+        or not frozen_at
+    ):
+        return False
+    try:
+        frozen = pd.Timestamp(frozen_at)
+        trained = pd.Timestamp(first_trained_at)
+        if frozen.tzinfo is None:
+            frozen = frozen.tz_localize("Asia/Shanghai")
+        else:
+            frozen = frozen.tz_convert("Asia/Shanghai")
+        if trained.tzinfo is None:
+            trained = trained.tz_localize("UTC")
+        else:
+            trained = trained.tz_convert("UTC")
+    except (TypeError, ValueError):
+        return False
+    return (
+        frozen.strftime("%Y%m%d") == trade_date
+        and frozen.tz_convert("UTC") >= trained
     )
 
 
-def _current_policy_model(
-    registry: dict[str, Any],
-    policy: str,
-    *,
-    fallback: str,
-) -> str:
-    if registry.get("active_policy_fingerprint") == policy:
-        return str(registry.get("active_model_fingerprint") or fallback)
-    if registry.get("shadow_policy_fingerprint") == policy:
-        return str(registry.get("shadow_model_fingerprint") or fallback)
-    return fallback
+def _session_belongs_to_model(
+    session: dict[str, Any],
+    fingerprint: str,
+) -> bool:
+    if str(session.get("model_fingerprint") or "") == str(fingerprint):
+        return True
+    return any(
+        _candidate_belongs_to_model(candidate, fingerprint)
+        for candidate in session.get("candidates", [])
+    )
 
 
 def _supersede(

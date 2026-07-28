@@ -15,6 +15,7 @@ from wp.v3.contracts import load_v3_config
 from wp.v3.dashboard import render_v3_dashboard
 from wp.v3.diagnostics import diagnostics_tables
 from wp.v3.history import load_panel_partitions
+from wp.v3.io import atomic_write_csv, atomic_write_json
 from wp.v3.ledger import empty_shadow_ledger
 from wp.v3.model import bundle_metadata, save_bundle, train_bundle
 from wp.v3.policy import policy_selection_from_dict
@@ -44,7 +45,7 @@ def _strict_json(value: object) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run full nested walk-forward research and register a WP V5 shadow model."
+        description="Run full nested walk-forward research and register a WP V6 shadow model."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument(
@@ -95,7 +96,7 @@ def main() -> int:
         if args.max_folds is not None:
             raise ValueError("--max-folds cannot be used with --shard-dir")
         print(
-            f"[wp-v5] validating and aggregating walk-forward shards "
+            f"[wp-v6] validating and aggregating walk-forward shards "
             f"from {args.shard_dir}",
             flush=True,
         )
@@ -123,7 +124,7 @@ def main() -> int:
             max_folds=args.max_folds,
         )
     print(
-        f"[wp-v5] OOS aggregation complete folds={len(backtest.folds)} "
+        f"[wp-v6] OOS aggregation complete folds={len(backtest.folds)} "
         f"rows={len(backtest.predictions):,} "
         f"candidates={len(backtest.candidates):,}",
         flush=True,
@@ -146,7 +147,7 @@ def main() -> int:
             end_date=panel_end,
         )
         print(
-            f"[wp-v5] final model panel={panel_start}..{panel_end} "
+            f"[wp-v6] final model panel={panel_start}..{panel_end} "
             f"rows={len(panel):,}",
             flush=True,
         )
@@ -160,45 +161,21 @@ def main() -> int:
     metadata = bundle_metadata(bundle)
 
     backtest_path = output / "wp_v3_backtest.json"
-    backtest_path.write_text(
-        _strict_json(backtest_summary) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(backtest_path, backtest_summary)
     metadata_path = output / "wp_v3_model_metadata.json"
-    metadata_path.write_text(
-        _strict_json(metadata) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(metadata_path, metadata)
     candidate_path = output / "wp_v3_oos_candidates.csv"
-    backtest_candidates.to_csv(
-        candidate_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
+    atomic_write_csv(backtest_candidates, candidate_path)
     diagnostics = backtest_metrics.get("diagnostics", {})
-    (output / "wp_v3_prediction_diagnostics.json").write_text(
-        _strict_json(diagnostics) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(output / "wp_v3_prediction_diagnostics.json", diagnostics)
     for name, table in diagnostics_tables(diagnostics).items():
-        table.to_csv(
-            output / f"wp_v3_diagnostic_{name}.csv",
-            index=False,
-            encoding="utf-8-sig",
-        )
+        atomic_write_csv(table, output / f"wp_v3_diagnostic_{name}.csv")
     replay_json_path = ROOT / "outputs" / "json" / "wp_v3_historical_replay.json"
     replay_csv_path = ROOT / "outputs" / "csv" / "wp_v3_historical_replay.csv"
     replay_json_path.parent.mkdir(parents=True, exist_ok=True)
     replay_csv_path.parent.mkdir(parents=True, exist_ok=True)
-    replay_json_path.write_text(
-        _strict_json(replay) + "\n",
-        encoding="utf-8",
-    )
-    pd.DataFrame(replay["candidates"]).to_csv(
-        replay_csv_path,
-        index=False,
-        encoding="utf-8-sig",
-    )
+    atomic_write_json(replay_json_path, replay)
+    atomic_write_csv(pd.DataFrame(replay["candidates"]), replay_csv_path)
 
     registry = load_registry(args.registry)
     register_research_model(
@@ -217,7 +194,7 @@ def main() -> int:
     save_registry(registry, args.registry)
 
     summary = {
-        "schema_version": "wp_v5_research_summary_1",
+        "schema_version": "wp_v6_research_summary_1",
         "dataset": dataset_summary,
         "date_start": calendar_summary["evaluation_start_date"],
         "date_end": calendar_summary["evaluation_end_date"],
@@ -237,10 +214,7 @@ def main() -> int:
         "deployment_state": registered.get("status", "RESEARCH"),
         "minimum_shadow_trading_days": config.promotion.minimum_shadow_trading_days,
     }
-    (output / "wp_v3_research_summary.json").write_text(
-        _strict_json(summary) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(output / "wp_v3_research_summary.json", summary)
     _render_research_audit_dashboard(
         output=output,
         config=config,

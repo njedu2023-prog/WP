@@ -4,15 +4,28 @@ import pandas as pd
 
 from wp.v3.history import _normalize_historical_minutes, _slot_features
 from wp.v3.live_data import (
+    capture_entry_settlement_frame,
     _load_rt_min_session_snapshots,
     _normalize_rt_k_day,
     _normalize_rt_min,
 )
+from wp.v3.contracts import V3Config
 
 
 class Client:
     def __init__(self, cache_dir: Path) -> None:
         self.cache_dir = cache_dir
+
+
+class SettlementClient(Client):
+    def query(self, api_name: str, **params):
+        if api_name == "rt_min":
+            return _rt_min_bar(10.2, 20_000_000, "14:55:00")
+        if api_name == "stk_limit":
+            return pd.DataFrame(
+                [{"ts_code": "600000.SH", "up_limit": 11.0}]
+            )
+        raise AssertionError(api_name)
 
 
 def _rt_min_bar(
@@ -127,3 +140,18 @@ def test_realtime_day_contract_carries_authoritative_previous_close():
             "day_open": 9.9,
         }
     ]
+
+
+def test_entry_settlement_uses_only_the_exact_requested_bar(tmp_path):
+    frame, manifest = capture_entry_settlement_frame(
+        SettlementClient(tmp_path),
+        trade_date="20260721",
+        settlement_slot="14:55",
+        ts_codes=["600000.SH"],
+        config=V3Config(),
+    )
+
+    assert manifest["observed_symbols"] == 1
+    assert frame.loc[0, "entry_benchmark_slot"] == "14:55"
+    assert frame.loc[0, "entry_benchmark_price"] == 10.2
+    assert frame.loc[0, "entry_benchmark_amount"] == 20_000_000

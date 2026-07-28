@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import math
+import os
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -47,7 +49,70 @@ def load_yaml(path: str | Path, default: dict[str, Any] | None = None) -> dict[s
 def write_json(path: str | Path, payload: dict[str, Any]) -> None:
     file_path = Path(path)
     ensure_dir(file_path.parent)
-    file_path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+    descriptor, temporary_name = tempfile.mkstemp(
+        dir=file_path.parent,
+        prefix=f".{file_path.name}.",
+        suffix=".tmp",
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(
+                _json_safe(payload),
+                handle,
+                ensure_ascii=False,
+                indent=2,
+                sort_keys=True,
+                allow_nan=False,
+            )
+            handle.write("\n")
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, file_path)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _json_safe(value: Any) -> Any:
+    if value is None:
+        return None
+    if isinstance(value, dict):
+        return {str(key): _json_safe(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_json_safe(item) for item in value]
+    if isinstance(value, set):
+        return sorted(
+            (_json_safe(item) for item in value),
+            key=lambda item: json.dumps(
+                item,
+                ensure_ascii=True,
+                sort_keys=True,
+                default=str,
+            ),
+        )
+    if hasattr(value, "item"):
+        try:
+            value = value.item()
+        except (TypeError, ValueError):
+            pass
+    if isinstance(value, float) and not math.isfinite(value):
+        return None
+    try:
+        missing = pd.isna(value)
+        if isinstance(missing, bool) and missing:
+            return None
+    except (TypeError, ValueError):
+        pass
+    if isinstance(value, Path):
+        return value.as_posix()
+    if hasattr(value, "isoformat") and not isinstance(value, str):
+        try:
+            return value.isoformat()
+        except (TypeError, ValueError):
+            pass
+    if isinstance(value, (str, int, float, bool)):
+        return value
+    return str(value)
 
 
 def first_existing(df: pd.DataFrame, names: list[str]) -> str | None:

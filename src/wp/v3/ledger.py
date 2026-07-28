@@ -7,8 +7,14 @@ from typing import Any
 
 import pandas as pd
 
-from .contracts import CN_TZ, DEFAULT_SIGNAL_SLOTS, V3Config
+from .contracts import (
+    CN_TZ,
+    DEFAULT_SIGNAL_SLOTS,
+    V3Config,
+    entry_benchmark_slot,
+)
 from .features import FEATURE_COLUMNS
+from .io import atomic_write_json
 
 
 def empty_shadow_ledger() -> dict[str, Any]:
@@ -53,10 +59,7 @@ def save_shadow_ledger(ledger: dict[str, Any], path: str | Path) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
     ledger["generated_at"] = datetime.now(CN_TZ).isoformat()
-    target.write_text(
-        json.dumps(ledger, ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-    )
+    atomic_write_json(target, ledger)
 
 
 def record_shadow_slot(
@@ -104,6 +107,11 @@ def record_shadow_slot(
                 "first_signal_price": _float(row.get("signal_price")),
                 "entry_adj_factor": _float(row.get("adj_factor")),
                 "entry_adj_factor_observed": _float(row.get("adj_factor")),
+                "entry_benchmark_slot": entry_benchmark_slot(signal_slot, config),
+                "entry_benchmark_status": "PENDING",
+                "entry_order_notional": config.execution.reference_order_notional,
+                "entry_price": None,
+                "entry_fillable": None,
                 "last_signal_time": signal_slot,
                 "last_signal_price": _float(row.get("signal_price")),
                 "appearance_count": 1,
@@ -123,6 +131,7 @@ def record_shadow_slot(
                 "feature_version": config.model.feature_version,
                 "entry_contract": config.execution.entry_price_contract,
                 "exit_contract": config.strategy.exit_contract,
+                "exit_order_contract": config.execution.exit_order_contract,
                 "entry_slippage_bps": config.execution.entry_slippage_bps,
                 "round_trip_cost_bps": config.execution.round_trip_cost_bps,
                 "baseline_all_in_cost_bps": (
@@ -185,6 +194,141 @@ def record_shadow_slot(
     return ledger
 
 
+def settle_entry_benchmarks(
+    ledger: dict[str, Any],
+    settlement: pd.DataFrame,
+    *,
+    trade_date: str,
+    settlement_slot: str,
+    config: V3Config,
+    settled_at: str | None = None,
+) -> dict[str, Any]:
+    session = next(
+        (
+            item
+            for item in ledger.get("sessions", [])
+            if str(item.get("trade_date")) == str(trade_date)
+        ),
+        None,
+    )
+    if session is None:
+        return ledger
+    due = [
+        candidate
+        for candidate in session.get("candidates", [])
+        if _requires_entry_benchmark(candidate, config)
+        and str(candidate.get("entry_benchmark_slot") or "")
+        == str(settlement_slot)
+    ]
+    if not due:
+        return ledger
+
+    frame = settlement.copy()
+    if not frame.empty:
+        if "ts_code" not in frame:
+            raise ValueError("entry settlement frame is missing ts_code")
+        frame["ts_code"] = frame["ts_code"].astype(str)
+        if frame["ts_code"].duplicated().any():
+            raise ValueError("entry settlement frame contains duplicate stocks")
+        frame = frame.set_index("ts_code", drop=False)
+    settled_at = settled_at or datetime.now(CN_TZ).isoformat()
+    for candidate in due:
+        code = str(candidate.get("ts_code"))
+        existing_status = str(
+            candidate.get("entry_benchmark_status") or "PENDING"
+        )
+        if existing_status != "PENDING":
+            _assert_settlement_immutable(
+                candidate,
+                frame.loc[code] if not frame.empty and code in frame.index else None,
+                config=config,
+            )
+            continue
+        row = frame.loc[code] if not frame.empty and code in frame.index else None
+        if row is None:
+            candidate.update(
+                {
+                    "entry_benchmark_status": "NON_FILL",
+                    "entry_fillable": False,
+                    "entry_non_fill_reason": "missing_exact_benchmark_bar",
+                    "entry_benchmark_settled_at": settled_at,
+                }
+            )
+            continue
+        benchmark_price = _float(
+            row.get("entry_benchmark_price", row.get("slot_close"))
+        )
+        benchmark_amount = _float(
+            row.get("entry_benchmark_amount", row.get("slot_amount"))
+        )
+        benchmark_time = row.get(
+            "entry_benchmark_bar_time",
+            row.get("slot_bar_time"),
+        )
+        bar_slot = _bar_slot(
+            row.get("entry_benchmark_slot") or benchmark_time
+        )
+        up_limit = _float(row.get("up_limit"))
+        distance_to_up_limit = _float(
+            row.get("entry_benchmark_distance_to_up_limit_pct")
+        )
+        if distance_to_up_limit is None and benchmark_price and up_limit:
+            distance_to_up_limit = (up_limit / benchmark_price - 1.0) * 100.0
+        data_age = _float(row.get("data_age_seconds"))
+        reasons: list[str] = []
+        if benchmark_price is None or benchmark_price <= 0:
+            reasons.append("invalid_benchmark_price")
+        if bar_slot != settlement_slot:
+            reasons.append("wrong_benchmark_bar")
+        if benchmark_amount is None or benchmark_amount < config.execution.min_slot_amount:
+            reasons.append("insufficient_slot_amount")
+        if (
+            benchmark_amount is None
+            or benchmark_amount * config.execution.max_entry_pct_of_slot_amount
+            < config.execution.reference_order_notional
+        ):
+            reasons.append("insufficient_order_capacity")
+        if (
+            distance_to_up_limit is None
+            or distance_to_up_limit
+            < config.execution.min_distance_to_up_limit_pct
+        ):
+            reasons.append("too_close_to_up_limit")
+        if (
+            data_age is not None
+            and not -60 <= data_age <= config.execution.max_market_data_age_seconds
+        ):
+            reasons.append("stale_benchmark_bar")
+        fillable = not reasons
+        entry_price = (
+            benchmark_price
+            * (1.0 + config.execution.entry_slippage_bps / 10_000.0)
+            if benchmark_price
+            else None
+        )
+        candidate.update(
+            {
+                "entry_benchmark_status": (
+                    "SETTLED" if fillable else "NON_FILL"
+                ),
+                "entry_benchmark_price": benchmark_price,
+                "entry_benchmark_amount": benchmark_amount,
+                "entry_benchmark_bar_time": (
+                    str(benchmark_time) if benchmark_time is not None else None
+                ),
+                "entry_benchmark_data_age_seconds": data_age,
+                "entry_benchmark_distance_to_up_limit_pct": (
+                    distance_to_up_limit
+                ),
+                "entry_price": entry_price,
+                "entry_fillable": fillable,
+                "entry_non_fill_reason": "|".join(reasons) if reasons else None,
+                "entry_benchmark_settled_at": settled_at,
+            }
+        )
+    return ledger
+
+
 def freeze_shadow_session(
     ledger: dict[str, Any],
     *,
@@ -229,8 +373,16 @@ def freeze_shadow_session(
     session["missing_slots"] = [
         slot for slot in config.strategy.signal_slots if slot not in session.get("covered_slots", [])
     ]
+    pending_entries = _pending_entry_candidates(session, config)
+    session["pending_entry_benchmark_count"] = len(pending_entries)
     session["integrity_status"] = (
-        "COMPLETE" if not session["missing_slots"] else "INCOMPLETE"
+        "COMPLETE"
+        if not session["missing_slots"] and not pending_entries
+        else (
+            "INCOMPLETE_ENTRY"
+            if not session["missing_slots"]
+            else "INCOMPLETE"
+        )
     )
     return ledger
 
@@ -252,7 +404,12 @@ def assert_ledger_invariants(ledger: dict[str, Any], config: V3Config) -> None:
                 raise ValueError(
                     f"frozen session {session.get('trade_date')} has inconsistent missing slots"
                 )
-            expected_integrity = "COMPLETE" if not missing else "INCOMPLETE"
+            pending_entries = _pending_entry_candidates(session, config)
+            expected_integrity = (
+                "COMPLETE"
+                if not missing and not pending_entries
+                else ("INCOMPLETE_ENTRY" if not missing else "INCOMPLETE")
+            )
             if session.get("integrity_status") != expected_integrity:
                 raise ValueError(
                     f"frozen session {session.get('trade_date')} has inconsistent integrity"
@@ -269,6 +426,27 @@ def assert_ledger_invariants(ledger: dict[str, Any], config: V3Config) -> None:
                 raise ValueError(f"missing immutable first signal price for {code}")
             if candidate.get("exit_contract") != "T+1_close":
                 raise ValueError(f"invalid exit contract for {code}")
+            if _requires_entry_benchmark(candidate, config):
+                expected_benchmark = entry_benchmark_slot(
+                    str(candidate.get("first_signal_time")),
+                    config,
+                )
+                if candidate.get("entry_benchmark_slot") != expected_benchmark:
+                    raise ValueError(f"invalid entry benchmark slot for {code}")
+                benchmark_status = str(
+                    candidate.get("entry_benchmark_status") or "PENDING"
+                )
+                if benchmark_status not in {"PENDING", "SETTLED", "NON_FILL"}:
+                    raise ValueError(f"invalid entry benchmark status for {code}")
+                if benchmark_status == "SETTLED":
+                    if _float(candidate.get("entry_price")) is None:
+                        raise ValueError(f"missing immutable entry price for {code}")
+                    if candidate.get("entry_fillable") is not True:
+                        raise ValueError(f"settled entry is not fillable for {code}")
+                if benchmark_status == "NON_FILL" and candidate.get(
+                    "entry_fillable"
+                ) is not False:
+                    raise ValueError(f"non-fill entry marked fillable for {code}")
             if (
                 session.get("policy_fingerprint")
                 and candidate.get("policy_fingerprint")
@@ -304,6 +482,60 @@ def _assert_immutable(existing: dict[str, Any], row: dict[str, Any], slot: str) 
         )
     if slot < str(existing.get("first_signal_time")):
         raise ValueError(f"cannot insert an earlier signal after first crossing for {row.get('ts_code')}")
+
+
+def _pending_entry_candidates(
+    session: dict[str, Any],
+    config: V3Config,
+) -> list[dict[str, Any]]:
+    return [
+        candidate
+        for candidate in session.get("candidates", [])
+        if _requires_entry_benchmark(candidate, config)
+        and str(candidate.get("entry_benchmark_status") or "PENDING")
+        == "PENDING"
+    ]
+
+
+def _requires_entry_benchmark(
+    candidate: dict[str, Any],
+    config: V3Config,
+) -> bool:
+    return (
+        candidate.get("entry_contract")
+        == config.execution.entry_price_contract
+    )
+
+
+def _bar_slot(value: Any) -> str:
+    if value is None:
+        return ""
+    text = str(value)
+    try:
+        return pd.Timestamp(text).strftime("%H:%M")
+    except (TypeError, ValueError):
+        return text[:5]
+
+
+def _assert_settlement_immutable(
+    candidate: dict[str, Any],
+    row: pd.Series | None,
+    *,
+    config: V3Config,
+) -> None:
+    if row is None:
+        return
+    incoming = _float(row.get("entry_benchmark_price", row.get("slot_close")))
+    existing = _float(candidate.get("entry_benchmark_price"))
+    if (
+        incoming is not None
+        and existing is not None
+        and abs(incoming - existing) > 1e-9
+    ):
+        raise ValueError(
+            f"cannot rewrite immutable entry benchmark for "
+            f"{candidate.get('ts_code')}: {existing} -> {incoming}"
+        )
 
 
 def _bind_session_model(session: dict[str, Any], predictions: pd.DataFrame) -> None:

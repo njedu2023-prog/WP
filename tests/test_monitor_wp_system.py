@@ -12,7 +12,7 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 def _manifest(slot: str = "2026-07-16 14:35:00") -> dict:
     return {
         "health_status": "ok",
-        "source_mode": "direct_tushare_v3",
+        "source_mode": "direct_tushare_v6",
         "source_trade_date": "20260716",
         "source_scheduled_slot": slot,
         "source_generated_at": "2026-07-16 14:37:00",
@@ -73,7 +73,28 @@ def test_monitor_accepts_matching_pages_revision(monkeypatch):
     monkeypatch.setenv("TUSHARE_TOKEN", "tushare")
     monkeypatch.setattr(monitor, "is_trade_day", lambda *args: True)
     monkeypatch.setattr(monitor, "read_github_file", lambda *args, **kwargs: manifest)
-    monkeypatch.setattr(monitor, "workflow_runs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        monitor,
+        "workflow_runs",
+        lambda *args, **kwargs: [{"status": "in_progress"}],
+    )
     monkeypatch.setattr(monitor, "read_public_json", lambda *args: manifest)
 
     assert monitor.monitor(current) == 0
+
+
+def test_monitor_repairs_missing_session_before_signal_window(monkeypatch):
+    current = datetime(2026, 7, 16, 14, 3, tzinfo=CN_TZ)
+    dispatched = []
+    monkeypatch.setenv("GITHUB_TOKEN", "token")
+    monkeypatch.setenv("TUSHARE_TOKEN", "tushare")
+    monkeypatch.setattr(monitor, "is_trade_day", lambda *args: True)
+    monkeypatch.setattr(monitor, "workflow_runs", lambda *args, **kwargs: [])
+    monkeypatch.setattr(
+        monitor,
+        "dispatch_workflow",
+        lambda repo, workflow, token: dispatched.append((repo, workflow, token)),
+    )
+
+    assert monitor.monitor(current) == 0
+    assert dispatched == [(monitor.WP_REPO, monitor.WP_WORKFLOW, "token")]

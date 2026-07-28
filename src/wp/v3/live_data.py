@@ -213,6 +213,17 @@ def build_live_feature_frame(
     )
     if current_minute.empty:
         raise RuntimeError("live all-market rt_min 5MIN snapshot is missing")
+    current_minute["bar_slot"] = pd.to_datetime(
+        current_minute["trade_time"],
+        errors="coerce",
+    ).dt.strftime("%H:%M")
+    current_minute = current_minute.loc[
+        current_minute["bar_slot"].eq(signal_slot)
+    ].drop(columns="bar_slot")
+    if current_minute.empty:
+        raise RuntimeError(
+            f"live all-market rt_min has no completed {signal_slot} bar"
+        )
     requested_time = pd.Timestamp(
         f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {signal_slot}:00"
     )
@@ -293,8 +304,9 @@ def build_live_feature_frame(
     snapshots = _add_market_context(snapshots)
     snapshots = _add_industry_context(snapshots)
     snapshots = enrich_feature_frame(snapshots)
+    capture_time = pd.Timestamp.now(tz="Asia/Shanghai").tz_localize(None)
     snapshots["data_age_seconds"] = (
-        requested_time
+        capture_time
         - pd.to_datetime(snapshots["slot_bar_time"], errors="coerce")
     ).dt.total_seconds()
     snapshots["execution_eligible"] = execution_eligibility(snapshots, config)
@@ -356,6 +368,13 @@ def capture_live_minute_snapshot(
     requested = pd.Timestamp(
         f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {observation_slot}:00"
     )
+    snapshot["bar_slot"] = pd.to_datetime(
+        snapshot["trade_time"],
+        errors="coerce",
+    ).dt.strftime("%H:%M")
+    snapshot = snapshot.loc[snapshot["bar_slot"].eq(observation_slot)].drop(
+        columns="bar_slot"
+    )
     age = (
         requested - pd.to_datetime(snapshot["trade_time"], errors="coerce")
     ).dt.total_seconds()
@@ -386,6 +405,108 @@ def capture_live_minute_snapshot(
             else None
         ),
         **quality,
+    }
+
+
+def capture_entry_settlement_frame(
+    client: TushareHistoryClient,
+    *,
+    trade_date: str,
+    settlement_slot: str,
+    ts_codes: list[str],
+    config: V3Config,
+) -> tuple[pd.DataFrame, dict[str, Any]]:
+    columns = [
+        "ts_code",
+        "entry_benchmark_slot",
+        "entry_benchmark_price",
+        "entry_benchmark_amount",
+        "entry_benchmark_bar_time",
+        "data_age_seconds",
+        "up_limit",
+        "entry_benchmark_distance_to_up_limit_pct",
+    ]
+    requested = pd.Timestamp(
+        f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
+        f"{settlement_slot}:00"
+    )
+    codes = sorted({str(code) for code in ts_codes if str(code)})
+    if not codes:
+        return pd.DataFrame(columns=columns), {
+            "schema_version": "wp_v6_entry_settlement_1",
+            "trade_date": trade_date,
+            "settlement_slot": settlement_slot,
+            "requested_symbols": 0,
+            "observed_symbols": 0,
+            "fresh_symbols": 0,
+            "capture_contract": "exact_next_5m_bar",
+        }
+
+    snapshot = _fetch_rt_min_snapshot(
+        client,
+        trade_date=trade_date,
+        observation_slot=settlement_slot,
+        ts_codes=codes,
+    ).copy()
+    snapshot["bar_slot"] = pd.to_datetime(
+        snapshot["trade_time"],
+        errors="coerce",
+    ).dt.strftime("%H:%M")
+    snapshot = snapshot.loc[snapshot["bar_slot"].eq(settlement_slot)].copy()
+    limits = client.query(
+        "stk_limit",
+        cache_key=trade_date,
+        trade_date=trade_date,
+        fields=LIMIT_FIELDS,
+    )
+    limits = limits[["ts_code", "up_limit"]].copy()
+    limits["ts_code"] = limits["ts_code"].astype(str)
+    limits["up_limit"] = pd.to_numeric(limits["up_limit"], errors="coerce")
+    result = snapshot.merge(limits, on="ts_code", how="left")
+    result["entry_benchmark_slot"] = settlement_slot
+    result["entry_benchmark_price"] = pd.to_numeric(
+        result["close"],
+        errors="coerce",
+    )
+    result["entry_benchmark_amount"] = pd.to_numeric(
+        result["slot_amount"],
+        errors="coerce",
+    )
+    result["entry_benchmark_bar_time"] = pd.to_datetime(
+        result["trade_time"],
+        errors="coerce",
+    ).dt.strftime("%Y-%m-%d %H:%M:%S")
+    capture_time = pd.Timestamp.now(tz="Asia/Shanghai").tz_localize(None)
+    result["data_age_seconds"] = (
+        capture_time - pd.to_datetime(result["trade_time"], errors="coerce")
+    ).dt.total_seconds()
+    result["entry_benchmark_distance_to_up_limit_pct"] = (
+        result["up_limit"]
+        / result["entry_benchmark_price"].replace(0, np.nan)
+        - 1.0
+    ) * 100.0
+    result = result.reindex(columns=columns).drop_duplicates(
+        "ts_code",
+        keep="last",
+    )
+    fresh = result["data_age_seconds"].between(
+        -60,
+        config.execution.max_market_data_age_seconds,
+        inclusive="both",
+    )
+    return result.reset_index(drop=True), {
+        "schema_version": "wp_v6_entry_settlement_1",
+        "trade_date": trade_date,
+        "settlement_slot": settlement_slot,
+        "requested_symbols": len(codes),
+        "observed_symbols": int(len(result)),
+        "fresh_symbols": int(fresh.sum()),
+        "capture_contract": "exact_next_5m_bar",
+        "latest_bar_time": (
+            result["entry_benchmark_bar_time"].max()
+            if not result.empty
+            else None
+        ),
     }
 
 
