@@ -1,12 +1,5 @@
 ﻿gate,column,independent_pass_count,independent_pass_rate,cumulative_pass_count,cumulative_pass_rate
-execution,execution_eligible,1091583,1.0,1091583,1.0
-probability,passes_probability,24352,0.02230888535274001,24352,0.02230888535274001
-probability_lower,passes_probability_lower,34951,0.03201863715356505,20765,0.01902283197887838
-expected_return,passes_expected_return,86983,0.07968519113984003,15550,0.014245366591454795
-downside,passes_downside,627203,0.5745811358366703,12615,0.011556610903614293
-selection_rank,passes_selection_rank,4615,0.00422780494016488,244,0.00022352858188520708
-calibration_sample,passes_sample,0,0.0,0,0.0
-empirical_lower,passes_empirical_lower,0,0.0,0,0.0
-model_stability,passes_stability,968687,0.8874148827894901,0,0.0
-freshness,passes_freshness,1091583,1.0,0,0.0
+execution,execution_eligible,1202850,1.0,1202850,1.0
+prior_oos_policy_authorized,candidate_policy_authorized,0,0.0,0,0.0
+all_candidate_gates,passes_policy,0,0.0,0,0.0
 final_policy,passes_policy,0,0.0,0,0.0

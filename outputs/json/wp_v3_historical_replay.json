@@ -4,6 +4,258 @@
     {
       "candidate_count": 0,
       "status": "NO_SIGNAL",
+      "target_trade_date": "20241024",
+      "trade_date": "20241023"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241025",
+      "trade_date": "20241024"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241028",
+      "trade_date": "20241025"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241029",
+      "trade_date": "20241028"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241030",
+      "trade_date": "20241029"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241031",
+      "trade_date": "20241030"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241101",
+      "trade_date": "20241031"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241104",
+      "trade_date": "20241101"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241105",
+      "trade_date": "20241104"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241106",
+      "trade_date": "20241105"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241107",
+      "trade_date": "20241106"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241108",
+      "trade_date": "20241107"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241111",
+      "trade_date": "20241108"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241112",
+      "trade_date": "20241111"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241113",
+      "trade_date": "20241112"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241114",
+      "trade_date": "20241113"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241115",
+      "trade_date": "20241114"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241118",
+      "trade_date": "20241115"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241119",
+      "trade_date": "20241118"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241120",
+      "trade_date": "20241119"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241121",
+      "trade_date": "20241120"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241122",
+      "trade_date": "20241121"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241125",
+      "trade_date": "20241122"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241126",
+      "trade_date": "20241125"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241127",
+      "trade_date": "20241126"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241128",
+      "trade_date": "20241127"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241129",
+      "trade_date": "20241128"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241202",
+      "trade_date": "20241129"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241203",
+      "trade_date": "20241202"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241204",
+      "trade_date": "20241203"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241205",
+      "trade_date": "20241204"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241206",
+      "trade_date": "20241205"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241209",
+      "trade_date": "20241206"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241210",
+      "trade_date": "20241209"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241211",
+      "trade_date": "20241210"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241212",
+      "trade_date": "20241211"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241213",
+      "trade_date": "20241212"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241216",
+      "trade_date": "20241213"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241217",
+      "trade_date": "20241216"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241218",
+      "trade_date": "20241217"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241219",
+      "trade_date": "20241218"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
+      "target_trade_date": "20241220",
+      "trade_date": "20241219"
+    },
+    {
+      "candidate_count": 0,
+      "status": "NO_SIGNAL",
       "target_trade_date": "20241223",
       "trade_date": "20241220"
     },
