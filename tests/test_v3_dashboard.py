@@ -39,9 +39,11 @@ def test_closed_dashboard_has_no_live_buy_list(tmp_path):
         config=V3Config(),
     )
     text = path.read_text(encoding="utf-8")
-    assert "交易窗口已关闭" in text
+    assert "已收盘，不再买入" in text
     assert "当前合格候选" not in text
-    assert "当日冻结候选台账" in text
+    assert "今日候选记录" in text
+    assert "下一交易日 14:20" in text
+    assert "模型研究与上线条件" in text
 
 
 def test_live_dashboard_shows_current_and_locked_signal_semantics(tmp_path):
@@ -105,8 +107,35 @@ def test_live_dashboard_shows_current_and_locked_signal_semantics(tmp_path):
     )
     text = path.read_text(encoding="utf-8")
     assert "当前合格候选" in text
-    assert "今日累计锁定信号" in text
+    assert "今日已经出现过" in text
     assert "当前信号价" in text
     assert "首次信号价" in text
     assert "14:20" in text
-    assert "3/7 收集中" in text
+    assert "仅观察，不实盘" in text
+    assert "14:35 更新" in text
+    assert "candidate-card" in text
+
+
+def test_production_dashboard_makes_no_trade_decision_explicit(tmp_path):
+    path = tmp_path / "latest.html"
+    render_v3_dashboard(
+        path,
+        manifest={
+            "source_trade_date": "20260727",
+            "signal_slot": "14:40",
+            "session_phase": "SIGNAL",
+            "health_status": "ok",
+            "live_display_allowed": True,
+            "v3_state": "PRODUCTION",
+        },
+        predictions=pd.DataFrame(),
+        ledger=empty_shadow_ledger(),
+        registry=empty_registry(),
+        config=V3Config(),
+    )
+    text = path.read_text(encoding="utf-8")
+    assert "暂不买入" in text
+    assert "空仓是正式决策" in text
+    assert "不会为了产生名单而降低标准" in text
+    assert "14:45 更新" in text
+    assert "当前没有候选" in text
