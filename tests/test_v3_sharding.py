@@ -75,6 +75,13 @@ def test_shard_aggregation_rejects_missing_or_tampered_evidence(
             purge_days=1,
             test_days=3,
         ),
+        history=replace(
+            base.history,
+            start_date="20251201",
+            end_date="20260121",
+            evaluation_start_date="20260113",
+            evaluation_end_date="20260121",
+        ),
     )
     dates = [date.strftime("%Y%m%d") for date in pd.bdate_range("2026-01-01", periods=15)]
     panel = pd.DataFrame(

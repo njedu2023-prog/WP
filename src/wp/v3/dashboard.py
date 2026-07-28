@@ -72,7 +72,7 @@ def render_v3_dashboard(
     replay_candidates = replay.get("candidates", [])
     backtest = model.get("backtest", {})
     shadow = model.get("shadow", {})
-    live_visible = phase == "SIGNAL"
+    live_visible = bool(manifest.get("live_display_allowed", phase == "SIGNAL"))
     title_state = {
         "PRODUCTION": "生产模型",
         "SHADOW": "影子模型",
@@ -95,7 +95,7 @@ def render_v3_dashboard(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V4 尾盘 T+1 决策台</title>
+<title>WP V5 尾盘 T+1 决策台</title>
 <style>
 :root {{
   --ink:#171a1f; --muted:#66707b; --line:#d9dee5; --paper:#ffffff;
@@ -144,7 +144,7 @@ details summary{{cursor:pointer;font-weight:650;padding:8px 0}}
 </head>
 <body>
 <header><div class="header-inner">
-  <div><h1>WP V4 尾盘 T+1 决策台</h1>
+  <div><h1>WP V5 尾盘 T+1 决策台</h1>
   <div class="sub">目标：14:20–14:50 可成交买入，固定 T+1 收盘卖出后净收益为正</div></div>
   <div class="run-state"><div>{_e(trade_date)} · {_e(manifest.get('signal_slot', ''))}</div>
   <strong class="{status_class}">{_e(title_state)}</strong></div>

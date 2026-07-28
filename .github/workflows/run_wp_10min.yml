@@ -1,4 +1,4 @@
-name: Run WP V4 Tail Session
+name: Run WP V5 Tail Session
 
 on:
   workflow_dispatch:
@@ -31,7 +31,7 @@ jobs:
           cache: pip
       - name: Install dependencies
         run: pip install -r requirements.txt
-      - name: Run causal V4 tail session
+      - name: Run causal V5 tail session
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src

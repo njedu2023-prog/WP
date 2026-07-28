@@ -21,6 +21,7 @@ from wp.v3.history import (
     _minute_universe_quality,
     _normalize_historical_minutes,
     _ordered_bounded_map,
+    _query_historical_minutes_incremental,
     _reusable_panel_manifest,
     _slot_features,
     _slot_features_for_slots,
@@ -55,6 +56,30 @@ class _DailyPro:
         return pd.DataFrame([row])
 
 
+class _MinuteGapPro:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def query(self, _api_name: str, **params):
+        self.calls.append(dict(params))
+        if int(params.get("offset", 0)) > 0:
+            return pd.DataFrame()
+        return pd.DataFrame(
+            [
+                {
+                    "ts_code": params["ts_code"],
+                    "trade_time": params["start_date"],
+                    "open": 8.0,
+                    "high": 8.1,
+                    "low": 7.9,
+                    "close": 8.0,
+                    "vol": 100.0,
+                    "amount": 1_000.0,
+                }
+            ]
+        )
+
+
 def test_pagination_continues_when_api_cap_is_below_requested_page_size(tmp_path):
     rows = [{"ts_code": f"60000{index}.SH", "value": index} for index in range(5)]
     client = TushareHistoryClient(_CappedPro(rows), tmp_path, page_size=8_000)
@@ -65,6 +90,57 @@ def test_pagination_continues_when_api_cap_is_below_requested_page_size(tmp_path
         fields="ts_code,value",
     )
     assert result["value"].tolist() == [0, 1, 2, 3, 4]
+
+
+def test_minute_history_reuses_existing_suffix_and_fetches_only_missing_prefix(
+    tmp_path,
+):
+    cache_dir = tmp_path / "stk_mins"
+    cache_dir.mkdir()
+    pd.DataFrame(
+        [
+            {
+                "ts_code": "600000.SH",
+                "trade_time": "2023-07-27 14:20:00",
+                "open": 10.0,
+                "high": 10.1,
+                "low": 9.9,
+                "close": 10.0,
+                "vol": 100.0,
+                "amount": 1_000.0,
+            }
+        ]
+    ).to_parquet(
+        cache_dir / "600000_SH_20230727_20260724_5min.parquet",
+        index=False,
+    )
+    pro = _MinuteGapPro()
+    client = TushareHistoryClient(
+        pro,
+        tmp_path,
+        requests_per_minute=100_000,
+    )
+
+    result = _query_historical_minutes_incremental(
+        client,
+        ts_code="600000.SH",
+        start_date="20210726",
+        end_date="20260724",
+    )
+
+    first_page = [
+        call for call in pro.calls if int(call.get("offset", 0)) == 0
+    ]
+    assert len(first_page) == 1
+    assert first_page[0]["start_date"] == "2021-07-26 09:30:00"
+    assert first_page[0]["end_date"] == "2023-07-26 15:00:00"
+    assert result["trade_time"].tolist() == [
+        "2021-07-26 09:30:00",
+        "2023-07-27 14:20:00",
+    ]
+    assert (
+        cache_dir / "600000_SH_20210726_20260724_5min.parquet"
+    ).exists()
 
 
 def test_bounded_parallel_map_preserves_order_and_uses_multiple_workers():

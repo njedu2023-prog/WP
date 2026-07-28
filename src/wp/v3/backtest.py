@@ -114,7 +114,7 @@ def walk_forward_backtest(
             training,
             config,
             allow_below_minimum=False,
-            model_version=f"wpv4-wf-{test_dates[0]}",
+            model_version=f"wpv5-wf-{test_dates[0]}",
         )
         prediction = predict_bundle(bundle, testing)
         prediction["fold"] = fold_number
@@ -151,8 +151,15 @@ def walk_forward_backtest(
             config,
         )
         final_policy = final_selection.as_dict()
+        all_oos_predictions = predictions
+        predictions = evaluation_window(all_oos_predictions, config)
         candidates = first_crossing_candidates(predictions, config)
         metrics = evaluate_predictions(predictions, candidates, config)
+        metrics["evaluation_contract"] = evaluation_contract_summary(
+            all_oos_predictions,
+            predictions,
+            config,
+        )
         metrics["nested_policy"] = {
             "folds": policy_audit,
             "final": final_policy,
@@ -173,6 +180,68 @@ def walk_forward_backtest(
 def walk_forward_fold_count(panel: pd.DataFrame, config: V3Config) -> int:
     dates = np.array(sorted(panel["trade_date"].astype(str).unique()))
     return len(_walk_forward_test_starts(dates, config))
+
+
+def evaluation_window(
+    predictions: pd.DataFrame,
+    config: V3Config,
+) -> pd.DataFrame:
+    if predictions.empty:
+        return predictions.copy()
+    dates = predictions["trade_date"].astype(str)
+    selected = predictions.loc[
+        dates.between(
+            config.history.evaluation_start_date,
+            config.history.evaluation_end_date,
+            inclusive="both",
+        )
+    ].copy()
+    if selected.empty:
+        raise RuntimeError(
+            "walk-forward predictions do not cover the declared evaluation window "
+            f"{config.history.evaluation_start_date}-"
+            f"{config.history.evaluation_end_date}"
+        )
+    observed_start = str(selected["trade_date"].astype(str).min())
+    observed_end = str(selected["trade_date"].astype(str).max())
+    if (
+        observed_start != config.history.evaluation_start_date
+        or observed_end != config.history.evaluation_end_date
+    ):
+        raise RuntimeError(
+            "walk-forward predictions cover "
+            f"{observed_start}-{observed_end}, expected the complete boundary "
+            f"{config.history.evaluation_start_date}-"
+            f"{config.history.evaluation_end_date}"
+        )
+    return selected.reset_index(drop=True)
+
+
+def evaluation_contract_summary(
+    all_oos_predictions: pd.DataFrame,
+    evaluation_predictions: pd.DataFrame,
+    config: V3Config,
+) -> dict[str, Any]:
+    evaluation_dates = evaluation_predictions["trade_date"].astype(str)
+    all_dates = all_oos_predictions["trade_date"].astype(str)
+    return {
+        "evaluation_start_date": config.history.evaluation_start_date,
+        "evaluation_end_date": config.history.evaluation_end_date,
+        "observed_evaluation_start_date": str(evaluation_dates.min()),
+        "observed_evaluation_end_date": str(evaluation_dates.max()),
+        "evaluation_trade_days": int(evaluation_dates.nunique()),
+        "evaluation_slot_rows": int(len(evaluation_predictions)),
+        "prior_oos_policy_warmup_trade_days": int(
+            all_dates.loc[
+                all_dates.lt(config.history.evaluation_start_date)
+            ].nunique()
+        ),
+        "prior_oos_policy_warmup_slot_rows": int(
+            all_dates.lt(config.history.evaluation_start_date).sum()
+        ),
+        "all_oos_trade_days": int(all_dates.nunique()),
+        "all_oos_slot_rows": int(len(all_oos_predictions)),
+    }
 
 
 def walk_forward_fold_dates(

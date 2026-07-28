@@ -79,8 +79,10 @@ promotion:
   auto_promote_when_all_gates_pass: true
 
 history:
-  start_date: "20230727"
+  start_date: "20210726"
   end_date: "20260724"
+  evaluation_start_date: "20230727"
+  evaluation_end_date: "20260724"
   partition: month
   tushare_page_size: 8000
   tushare_requests_per_minute: 180

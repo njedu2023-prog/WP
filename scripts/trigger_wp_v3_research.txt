@@ -1,6 +1,0 @@
-requested_at: 2026-07-28T05:39:27+08:00
-start_date: 20230727
-end_date: 20260724
-strategy: wp_t1_net_profit_v4
-policy: wp_v4_policy_20260727_11
-reason: run_parallel_sharded_walk_forward_after_40m_host_limit

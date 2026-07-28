@@ -1,15 +1,25 @@
-name: Research WP V5 Three-Year Nested OOS Model
+name: Research WP V5 Full Three-Year OOS Model
 
 on:
   workflow_dispatch:
     inputs:
       start_date:
-        description: "History start YYYYMMDD"
+        description: "Causal panel start YYYYMMDD"
+        required: true
+        default: "20210726"
+        type: string
+      end_date:
+        description: "Causal panel end YYYYMMDD"
+        required: true
+        default: "20260724"
+        type: string
+      evaluation_start_date:
+        description: "Three-year OOS evaluation start YYYYMMDD"
         required: true
         default: "20230727"
         type: string
-      end_date:
-        description: "History end YYYYMMDD"
+      evaluation_end_date:
+        description: "Three-year OOS evaluation end YYYYMMDD"
         required: true
         default: "20260724"
         type: string
@@ -36,7 +46,7 @@ concurrency:
 jobs:
   prepare:
     runs-on: ubuntu-latest
-    timeout-minutes: 40
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -59,16 +69,19 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r10-${{ github.run_id }}
           restore-keys: |
+            wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r10-
             wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-
             wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
             wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
-      - name: Build three-year point-in-time panel
+      - name: Build five-year causal panel for a full three-year OOS audit
         run: >-
           python scripts/build_wp_v3_history.py
-          --start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.start_date || '20230727') }}"
+          --start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.start_date || '20210726') }}"
           --end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.end_date || '20260724') }}"
+          --evaluation-start-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.evaluation_start_date || '20230727') }}"
+          --evaluation-end-date "${{ github.event_name == 'schedule' && 'auto' || (github.event.inputs.evaluation_end_date || '20260724') }}"
         env:
           PYTHONPATH: src
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
@@ -83,7 +96,7 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r10-${{ github.run_id }}
 
   folds:
     needs: prepare
@@ -106,7 +119,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r10-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Run deterministic walk-forward shard
         run: >-
@@ -142,7 +155,7 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r9-${{ github.run_id }}
+          key: wp-v5-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r10-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Download all walk-forward shards
         uses: actions/download-artifact@v5
@@ -174,7 +187,7 @@ jobs:
       - name: Publish model, registry, and audit evidence through GitHub API
         run: >-
           python scripts/github_commit_paths.py
-          "Publish WP V5 three-year nested OOS research"
+          "Publish WP V5 full three-year OOS research"
           artifacts/wp_v3_history/wp_v3_dataset_manifest.json
           artifacts/wp_v3_research
           outputs/json/wp_model_registry_v3.json

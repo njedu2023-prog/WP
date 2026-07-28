@@ -53,6 +53,19 @@ def run_v3() -> dict[str, Any]:
     trade_date = str(source_manifest.get("trade_date") or current.strftime("%Y%m%d"))
     signal_slot = str(source_manifest.get("signal_slot") or "")
     phase = session_phase(current, config)
+    source_signal_authorized = _source_signal_authorized(
+        source_manifest,
+        config,
+    )
+    record_signal = (
+        source_signal_authorized
+        and phase in {"SIGNAL", "NO_NEW_SIGNAL"}
+    )
+    live_display_allowed = (
+        source_signal_authorized
+        and trade_date == current.strftime("%Y%m%d")
+        and phase in {"SIGNAL", "NO_NEW_SIGNAL", "FROZEN"}
+    )
     registry_path = ROOT / "outputs" / "json" / "wp_model_registry_v3.json"
     registry = load_registry(registry_path)
     model_path = _resolve_model_path(
@@ -71,7 +84,7 @@ def run_v3() -> dict[str, Any]:
     ledger_path = output / "json" / "wp_v3_candidate_ledger.json"
     ledger = load_shadow_ledger(ledger_path)
     if (
-        phase == "SIGNAL"
+        record_signal
         and signal_slot in config.strategy.signal_slots
         and inference.model_fingerprint
     ):
@@ -114,7 +127,7 @@ def run_v3() -> dict[str, Any]:
         ).fillna(False)
         & inference.formal_authorization
     ].copy()
-    if phase != "SIGNAL":
+    if not live_display_allowed:
         formal = formal.iloc[0:0].copy()
     data_age = pd.to_numeric(frame.get("data_age_seconds"), errors="coerce")
     finite_data_age = data_age.loc[data_age.notna() & data_age.ge(0)]
@@ -131,6 +144,12 @@ def run_v3() -> dict[str, Any]:
         "source_mode": "direct_tushare_v3",
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
+        "signal_capture_started_at": source_manifest.get("capture_started_at"),
+        "signal_capture_completed_at": source_manifest.get(
+            "capture_completed_at"
+        ),
+        "signal_source_authorized": source_signal_authorized,
+        "live_display_allowed": live_display_allowed,
         "buy_plan_count": int(len(formal)),
         "shadow_qualified_count": int(
             inference.predictions.get(
@@ -172,12 +191,7 @@ def run_v3() -> dict[str, Any]:
             "generated_at": update_time,
             "market_data_time": manifest["market_data_time"],
             "summary": manifest,
-            "records": inference.predictions.loc[
-                inference.predictions.get(
-                    "passes_policy",
-                    pd.Series(False, index=inference.predictions.index),
-                ).fillna(False)
-            ].to_dict(orient="records"),
+            "records": formal.to_dict(orient="records"),
             "manual_execution_only": True,
             "order_routing_enabled": False,
         },
@@ -248,6 +262,45 @@ def _refresh_data_age(
     else:
         result["data_age_seconds"] = float("inf")
     return result
+
+
+def _source_signal_authorized(
+    source_manifest: dict[str, Any],
+    config: V3Config,
+) -> bool:
+    trade_date = str(source_manifest.get("trade_date") or "")
+    signal_slot = str(source_manifest.get("signal_slot") or "")
+    capture_started_at = source_manifest.get("capture_started_at")
+    market_data_time = source_manifest.get("market_data_time")
+    if (
+        len(trade_date) != 8
+        or signal_slot not in config.strategy.signal_slots
+        or not capture_started_at
+        or not market_data_time
+    ):
+        return False
+    try:
+        capture = pd.Timestamp(capture_started_at)
+        if capture.tzinfo is None:
+            capture = capture.tz_localize(config.strategy.timezone)
+        else:
+            capture = capture.tz_convert(config.strategy.timezone)
+        scheduled = pd.Timestamp(
+            f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
+            f"{signal_slot}:00",
+            tz=config.strategy.timezone,
+        )
+        market_time = pd.Timestamp(market_data_time)
+        if market_time.tzinfo is None:
+            market_time = market_time.tz_localize(config.strategy.timezone)
+        else:
+            market_time = market_time.tz_convert(config.strategy.timezone)
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        scheduled <= capture < scheduled + pd.Timedelta(60, unit="s")
+        and market_time <= scheduled + pd.Timedelta(59, unit="s")
+    )
 
 
 def _write_not_ready(

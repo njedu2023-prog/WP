@@ -35,10 +35,17 @@ def build_live_input(
     token = environment.get("TUSHARE_TOKEN", "").strip()
     if not token:
         raise RuntimeError("TUSHARE_TOKEN is required for V3 live causal features")
-    now = datetime.now(CN_TZ)
-    trade_date = environment.get("WP_EXPECTED_TRADE_DATE", "").strip() or now.strftime("%Y%m%d")
+    capture_started_at = datetime.now(CN_TZ)
+    trade_date = (
+        environment.get("WP_EXPECTED_TRADE_DATE", "").strip()
+        or capture_started_at.strftime("%Y%m%d")
+    )
     requested = environment.get("WP_V3_SIGNAL_SLOT", "").strip()
-    signal_slot = requested if requested in DEFAULT_SIGNAL_SLOTS else due_slot(now)
+    signal_slot = (
+        requested
+        if requested in DEFAULT_SIGNAL_SLOTS
+        else due_slot(capture_started_at)
+    )
     config = load_v3_config(root / "config" / "wp_v3.yml")
     client = TushareHistoryClient(
         ts.pro_api(token),
@@ -51,6 +58,10 @@ def build_live_input(
         signal_slot=signal_slot,
         config=config,
     )
+    manifest = dict(manifest)
+    manifest["capture_started_at"] = capture_started_at.isoformat()
+    manifest["capture_completed_at"] = datetime.now(CN_TZ).isoformat()
+    manifest["capture_contract"] = "anchored_signal_slot_snapshot"
     output_dir = root / "data" / "v3" / "latest"
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "wp_v3_live_features.csv"
@@ -93,7 +104,7 @@ def capture_warmup_input(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build exact WP V4 live causal features.")
+    parser = argparse.ArgumentParser(description="Build exact WP V5 live causal features.")
     parser.add_argument("--signal-slot", choices=DEFAULT_SIGNAL_SLOTS)
     args = parser.parse_args()
     if args.signal_slot:

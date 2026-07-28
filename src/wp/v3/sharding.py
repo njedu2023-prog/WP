@@ -11,6 +11,8 @@ import pandas as pd
 from .backtest import (
     BacktestResult,
     WalkForwardFold,
+    evaluation_contract_summary,
+    evaluation_window,
     evaluate_predictions,
     walk_forward_fold_count,
 )
@@ -240,8 +242,15 @@ def load_walk_forward_shards(
         combined,
         config,
     )
+    all_oos_predictions = combined
+    combined = evaluation_window(all_oos_predictions, config)
     candidates = first_crossing_candidates(combined, config)
     metrics = evaluate_predictions(combined, candidates, config)
+    metrics["evaluation_contract"] = evaluation_contract_summary(
+        all_oos_predictions,
+        combined,
+        config,
+    )
     metrics["nested_policy"] = {
         "folds": policy_audit,
         "final": final_selection.as_dict(),

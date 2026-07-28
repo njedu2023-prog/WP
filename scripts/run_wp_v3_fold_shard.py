@@ -51,7 +51,7 @@ def main() -> int:
         args.panel_dir,
         columns=["trade_date"],
     )
-    _assert_three_year_calendar(calendar)
+    _assert_research_calendar(calendar, config)
     calendar_dates = np.array(
         sorted(calendar["trade_date"].astype(str).unique())
     )
@@ -113,20 +113,44 @@ def main() -> int:
     return 0
 
 
-def _assert_three_year_calendar(calendar: pd.DataFrame) -> None:
+def _assert_research_calendar(calendar: pd.DataFrame, config) -> None:
     trade_dates = calendar["trade_date"].astype(str)
-    trade_days = int(trade_dates.nunique())
-    if trade_days < 700:
-        raise RuntimeError(
-            f"three-year research contract requires at least 700 covered trade days; "
-            f"received {trade_days}"
+    unique_dates = sorted(trade_dates.unique())
+    evaluation_dates = [
+        date
+        for date in unique_dates
+        if (
+            config.history.evaluation_start_date
+            <= date
+            <= config.history.evaluation_end_date
         )
-    start = pd.Timestamp(str(trade_dates.min()))
-    end = pd.Timestamp(str(trade_dates.max()))
-    if (end - start).days < 1_000:
+    ]
+    if len(evaluation_dates) < 700:
         raise RuntimeError(
-            f"dataset covers only {(end - start).days} calendar days; "
-            "three years are required"
+            "full three-year OOS evaluation requires at least 700 covered "
+            f"trade days; received {len(evaluation_dates)}"
+        )
+    if (
+        evaluation_dates[0] != config.history.evaluation_start_date
+        or evaluation_dates[-1] != config.history.evaluation_end_date
+    ):
+        raise RuntimeError(
+            "panel does not cover the exact declared OOS evaluation boundary"
+        )
+    pre_evaluation_days = sum(
+        date < config.history.evaluation_start_date for date in unique_dates
+    )
+    required_warmup_days = (
+        config.model.minimum_train_days
+        + config.model.calibration_days
+        + 2 * config.model.purge_days
+        + config.model.policy_design_days
+        + config.model.policy_confirmation_days
+    )
+    if pre_evaluation_days < required_warmup_days:
+        raise RuntimeError(
+            f"causal panel has {pre_evaluation_days} pre-evaluation days; "
+            f"{required_warmup_days} are required for model and policy warmup"
         )
 
 

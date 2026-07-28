@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import shutil
 import threading
 import time
@@ -174,7 +175,7 @@ def build_three_year_panel(
     )
     if existing_manifest is not None:
         print(
-            "reusing verified WP V4 causal panel "
+            "reusing verified WP V5 causal panel "
             f"{config.history.start_date}-{config.history.end_date}",
             flush=True,
         )
@@ -375,7 +376,7 @@ def load_panel_partitions(
 ) -> pd.DataFrame:
     files = sorted(Path(path).glob("wp_v3_panel_*.parquet"))
     if not files:
-        raise FileNotFoundError(f"no WP V4 panel partitions under {path}")
+        raise FileNotFoundError(f"no WP V5 panel partitions under {path}")
     start = str(start_date or "")
     end = str(end_date or "")
     if start:
@@ -976,17 +977,11 @@ def _build_historical_minute_partitions(
         symbol_start = max(start_date, _date_field(row.get("list_date"), start_date))
         symbol_end = min(end_date, _date_field(row.get("delist_date"), end_date))
         try:
-            raw = client.query(
-                "stk_mins",
-                cache_key=(
-                    f"{code.replace('.', '_')}_{symbol_start}_{symbol_end}_5min"
-                ),
-                paged=True,
+            raw = _query_historical_minutes_incremental(
+                client,
                 ts_code=code,
-                start_date=f"{_dash(symbol_start)} 09:30:00",
-                end_date=f"{_dash(symbol_end)} 15:00:00",
-                freq="5min",
-                fields=MINUTE_FIELDS,
+                start_date=symbol_start,
+                end_date=symbol_end,
             )
             selected = _normalize_historical_minutes(
                 raw,
@@ -1078,6 +1073,112 @@ def _build_historical_minute_partitions(
     )
     shutil.rmtree(building)
     return paths
+
+
+def _query_historical_minutes_incremental(
+    client: TushareHistoryClient,
+    *,
+    ts_code: str,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    cache_dir = client.cache_dir / "stk_mins"
+    cache_dir.mkdir(parents=True, exist_ok=True)
+    prefix = ts_code.replace(".", "_")
+    exact_path = cache_dir / f"{prefix}_{start_date}_{end_date}_5min.parquet"
+    if exact_path.exists():
+        return pd.read_parquet(exact_path)
+
+    pattern = re.compile(
+        rf"^{re.escape(prefix)}_(\d{{8}})_(\d{{8}})_5min\.parquet$"
+    )
+    cached: list[tuple[str, str, Path]] = []
+    for path in cache_dir.glob(f"{prefix}_*_5min.parquet"):
+        match = pattern.match(path.name)
+        if not match:
+            continue
+        cached_start, cached_end = match.groups()
+        if cached_end < start_date or cached_start > end_date:
+            continue
+        cached.append((cached_start, cached_end, path))
+
+    coverage = _merge_date_intervals(
+        [
+            (max(start_date, cached_start), min(end_date, cached_end))
+            for cached_start, cached_end, _ in cached
+        ]
+    )
+    missing = _missing_date_intervals(start_date, end_date, coverage)
+    pieces = [pd.read_parquet(path) for _, _, path in cached]
+    for gap_start, gap_end in missing:
+        pieces.append(
+            client.query(
+                "stk_mins",
+                cache_key=f"{prefix}_{gap_start}_{gap_end}_5min",
+                paged=True,
+                ts_code=ts_code,
+                start_date=f"{_dash(gap_start)} 09:30:00",
+                end_date=f"{_dash(gap_end)} 15:00:00",
+                freq="5min",
+                fields=MINUTE_FIELDS,
+            )
+        )
+    if pieces:
+        frame = pd.concat(pieces, ignore_index=True).drop_duplicates()
+    else:
+        frame = pd.DataFrame(columns=MINUTE_FIELDS.split(","))
+    trade_time = pd.to_datetime(frame.get("trade_time"), errors="coerce")
+    trade_dates = trade_time.dt.strftime("%Y%m%d")
+    frame = frame.loc[
+        trade_dates.between(start_date, end_date, inclusive="both")
+    ].copy()
+    if not frame.empty:
+        frame.sort_values(["trade_time", "ts_code"], kind="stable", inplace=True)
+        frame.reset_index(drop=True, inplace=True)
+    temporary = exact_path.with_suffix(".parquet.tmp")
+    frame.to_parquet(temporary, index=False)
+    temporary.replace(exact_path)
+    return frame
+
+
+def _merge_date_intervals(
+    intervals: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    if not intervals:
+        return []
+    ordered = sorted(intervals)
+    merged: list[tuple[str, str]] = [ordered[0]]
+    for start, end in ordered[1:]:
+        previous_start, previous_end = merged[-1]
+        if _date(start) <= _date(previous_end) + timedelta(days=1):
+            merged[-1] = (previous_start, max(previous_end, end))
+        else:
+            merged.append((start, end))
+    return merged
+
+
+def _missing_date_intervals(
+    start_date: str,
+    end_date: str,
+    covered: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    cursor = _date(start_date)
+    end = _date(end_date)
+    gaps: list[tuple[str, str]] = []
+    for covered_start, covered_end in covered:
+        left = _date(covered_start)
+        right = _date(covered_end)
+        if cursor < left:
+            gaps.append(
+                (
+                    cursor.strftime("%Y%m%d"),
+                    (left - timedelta(days=1)).strftime("%Y%m%d"),
+                )
+            )
+        cursor = max(cursor, right + timedelta(days=1))
+    if cursor <= end:
+        gaps.append((cursor.strftime("%Y%m%d"), end.strftime("%Y%m%d")))
+    return gaps
 
 
 def _ordered_bounded_map(

@@ -117,8 +117,10 @@ class PromotionContract:
 
 @dataclass(frozen=True)
 class HistoryContract:
-    start_date: str = "20230727"
+    start_date: str = "20210726"
     end_date: str = "20260724"
+    evaluation_start_date: str = "20230727"
+    evaluation_end_date: str = "20260724"
     partition: str = "month"
     tushare_page_size: int = 8_000
     tushare_requests_per_minute: int = 180
@@ -218,6 +220,25 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("tushare_requests_per_minute cannot be below 30")
     if not 1 <= config.history.minute_fetch_workers <= 8:
         raise ValueError("minute_fetch_workers must be between 1 and 8")
+    history_dates = {
+        name: datetime.strptime(value, "%Y%m%d")
+        for name, value in (
+            ("start_date", config.history.start_date),
+            ("end_date", config.history.end_date),
+            ("evaluation_start_date", config.history.evaluation_start_date),
+            ("evaluation_end_date", config.history.evaluation_end_date),
+        )
+    }
+    if not (
+        history_dates["start_date"]
+        < history_dates["evaluation_start_date"]
+        <= history_dates["evaluation_end_date"]
+        <= history_dates["end_date"]
+    ):
+        raise ValueError(
+            "history dates must satisfy start_date < evaluation_start_date "
+            "<= evaluation_end_date <= end_date"
+        )
 
 
 def policy_fingerprint(config: V3Config) -> str:

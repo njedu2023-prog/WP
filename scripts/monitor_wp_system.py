@@ -11,11 +11,11 @@ from urllib.parse import quote
 from zoneinfo import ZoneInfo
 
 try:
-    from scripts.check_upstream_revision import latest_due_slot
     from scripts.http_retry import request_json
+    from scripts.wp_session_schedule import latest_due_slot
 except ModuleNotFoundError:  # Executed as python scripts/monitor_wp_system.py.
-    from check_upstream_revision import latest_due_slot
     from http_retry import request_json
+    from wp_session_schedule import latest_due_slot
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")

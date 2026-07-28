@@ -82,7 +82,7 @@ def main() -> int:
         args.panel_dir,
         columns=["trade_date"],
     )
-    calendar_summary = _three_year_calendar_summary(calendar)
+    calendar_summary = _three_year_calendar_summary(calendar, config)
     calendar_dates = sorted(calendar["trade_date"].astype(str).unique())
     calendar_panel = pd.DataFrame({"trade_date": calendar_dates})
     dataset_summary = _dataset_summary(
@@ -202,8 +202,18 @@ def main() -> int:
     summary = {
         "schema_version": "wp_v5_research_summary_1",
         "dataset": dataset_summary,
-        "date_start": calendar_summary["date_start"],
-        "date_end": calendar_summary["date_end"],
+        "date_start": calendar_summary["evaluation_start_date"],
+        "date_end": calendar_summary["evaluation_end_date"],
+        "evaluation_contract": {
+            key: value
+            for key, value in calendar_summary.items()
+            if key.startswith("evaluation_")
+        },
+        "panel_contract": {
+            key: value
+            for key, value in calendar_summary.items()
+            if key.startswith("panel_")
+        },
         "model": metadata,
         "backtest": backtest.metrics,
         "promotion": asdict(decision),
@@ -220,8 +230,8 @@ def main() -> int:
         registry=registry,
         model_fingerprint=bundle.fingerprint,
         deployment_state=str(registered.get("status") or "RESEARCH"),
-        research_start=calendar_summary["date_start"],
-        research_end=calendar_summary["date_end"],
+        research_start=calendar_summary["evaluation_start_date"],
+        research_end=calendar_summary["evaluation_end_date"],
     )
     print(_strict_json(summary))
     return 0
@@ -280,27 +290,80 @@ def _historical_replay(
     }
 
 
-def _three_year_calendar_summary(calendar: pd.DataFrame) -> dict[str, object]:
+def _three_year_calendar_summary(
+    calendar: pd.DataFrame,
+    config,
+) -> dict[str, object]:
     trade_dates = calendar["trade_date"].astype(str)
-    trade_days = int(trade_dates.nunique())
-    if trade_days < 700:
+    panel_dates = sorted(trade_dates.unique())
+    pre_evaluation_days = sum(
+        date < config.history.evaluation_start_date for date in panel_dates
+    )
+    required_warmup_days = (
+        config.model.minimum_train_days
+        + config.model.calibration_days
+        + 2 * config.model.purge_days
+        + config.model.policy_design_days
+        + config.model.policy_confirmation_days
+    )
+    if pre_evaluation_days < required_warmup_days:
         raise RuntimeError(
-            f"three-year research contract requires at least 700 covered trade days; "
-            f"received {trade_days}"
+            f"causal panel has {pre_evaluation_days} pre-evaluation days; "
+            f"{required_warmup_days} are required for model and policy warmup"
         )
-    date_start = str(trade_dates.min())
-    date_end = str(trade_dates.max())
-    calendar_days = int((pd.Timestamp(date_end) - pd.Timestamp(date_start)).days)
-    if calendar_days < 1_000:
+    evaluation_dates = [
+        date
+        for date in panel_dates
+        if (
+            config.history.evaluation_start_date
+            <= date
+            <= config.history.evaluation_end_date
+        )
+    ]
+    evaluation_trade_days = int(len(evaluation_dates))
+    if evaluation_trade_days < 700:
         raise RuntimeError(
-            f"dataset covers only {calendar_days} calendar days; "
-            "three years are required"
+            "three-year OOS evaluation contract requires at least 700 covered "
+            f"trade days; received {evaluation_trade_days}"
+        )
+    observed_evaluation_start = str(evaluation_dates[0])
+    observed_evaluation_end = str(evaluation_dates[-1])
+    evaluation_calendar_days = int(
+        (
+            pd.Timestamp(config.history.evaluation_end_date)
+            - pd.Timestamp(config.history.evaluation_start_date)
+        ).days
+    )
+    if evaluation_calendar_days < 1_000:
+        raise RuntimeError(
+            f"evaluation covers only {evaluation_calendar_days} calendar days; "
+            "a complete three-year OOS interval is required"
+        )
+    if observed_evaluation_start != config.history.evaluation_start_date:
+        raise RuntimeError(
+            "evaluation panel begins on "
+            f"{observed_evaluation_start}, expected "
+            f"{config.history.evaluation_start_date}"
+        )
+    if observed_evaluation_end != config.history.evaluation_end_date:
+        raise RuntimeError(
+            "evaluation panel ends on "
+            f"{observed_evaluation_end}, expected "
+            f"{config.history.evaluation_end_date}"
         )
     return {
-        "trade_days": trade_days,
-        "date_start": date_start,
-        "date_end": date_end,
-        "calendar_days": calendar_days,
+        "panel_trade_days": int(len(panel_dates)),
+        "panel_start_date": str(panel_dates[0]),
+        "panel_end_date": str(panel_dates[-1]),
+        "panel_calendar_days": int(
+            (pd.Timestamp(panel_dates[-1]) - pd.Timestamp(panel_dates[0])).days
+        ),
+        "panel_pre_evaluation_trade_days": int(pre_evaluation_days),
+        "panel_required_warmup_trade_days": int(required_warmup_days),
+        "evaluation_trade_days": evaluation_trade_days,
+        "evaluation_start_date": observed_evaluation_start,
+        "evaluation_end_date": observed_evaluation_end,
+        "evaluation_calendar_days": evaluation_calendar_days,
     }
 
 
@@ -316,13 +379,13 @@ def _dataset_summary(
     coverage = float(manifest.get("coverage", 0.0) or 0.0)
     if coverage < 0.98:
         raise RuntimeError(
-            f"three-year panel coverage {coverage:.2%} is below the 98% contract"
+            f"causal panel coverage {coverage:.2%} is below the 98% contract"
         )
     covered_days = int(manifest.get("covered_trade_days", 0) or 0)
-    if covered_days != int(calendar_summary["trade_days"]):
+    if covered_days != int(calendar_summary["panel_trade_days"]):
         raise RuntimeError(
             f"dataset manifest covers {covered_days} days but panel contains "
-            f"{calendar_summary['trade_days']}"
+            f"{calendar_summary['panel_trade_days']}"
         )
     return {
         **calendar_summary,

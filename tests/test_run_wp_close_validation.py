@@ -45,4 +45,4 @@ def test_v3_close_validation_commits_only_when_truth_state_changes(
 
     assert run_wp_close_validation.run_once() == 0
     assert len(commands) == 2
-    assert "Validate WP V4 next-day close" in commands[1]
+    assert "Validate WP V5 next-day close" in commands[1]

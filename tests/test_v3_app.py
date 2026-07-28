@@ -3,7 +3,8 @@ from zoneinfo import ZoneInfo
 
 import pandas as pd
 
-from wp.v3.app import _refresh_data_age
+from wp.v3.app import _refresh_data_age, _source_signal_authorized
+from wp.v3.contracts import V3Config
 
 
 def test_data_age_is_computed_per_symbol_bar_not_global_latest_bar():
@@ -22,3 +23,27 @@ def test_data_age_is_computed_per_symbol_bar_not_global_latest_bar():
         market_time=pd.Timestamp("2026-07-27 14:20:00"),
     )
     assert result["data_age_seconds"].tolist() == [120.0, 720.0]
+
+
+def test_legal_1450_capture_remains_authorized_when_computation_crosses_1451():
+    manifest = {
+        "trade_date": "20260727",
+        "signal_slot": "14:50",
+        "market_data_time": "2026-07-27 14:50:00",
+        "capture_started_at": "2026-07-27T14:50:42+08:00",
+        "capture_completed_at": "2026-07-27T14:51:18+08:00",
+    }
+
+    assert _source_signal_authorized(manifest, V3Config()) is True
+
+
+def test_post_deadline_capture_cannot_masquerade_as_the_1450_signal():
+    manifest = {
+        "trade_date": "20260727",
+        "signal_slot": "14:50",
+        "market_data_time": "2026-07-27 14:50:00",
+        "capture_started_at": "2026-07-27T14:51:01+08:00",
+        "capture_completed_at": "2026-07-27T14:51:30+08:00",
+    }
+
+    assert _source_signal_authorized(manifest, V3Config()) is False

@@ -20,13 +20,18 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Build or verify the three-year WP point-in-time market panel."
+        description=(
+            "Build the causal WP research panel and its complete three-year "
+            "out-of-sample evaluation contract."
+        )
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument("--output-dir", default=str(ROOT / "artifacts" / "wp_v3_history"))
     parser.add_argument("--cache-dir", default=str(ROOT / ".cache" / "wp_v3_tushare"))
     parser.add_argument("--start-date", help="YYYYMMDD or auto")
     parser.add_argument("--end-date", help="YYYYMMDD or auto")
+    parser.add_argument("--evaluation-start-date", help="YYYYMMDD or auto")
+    parser.add_argument("--evaluation-end-date", help="YYYYMMDD or auto")
     parser.add_argument("--allow-partial", action="store_true")
     return parser.parse_args()
 
@@ -35,19 +40,30 @@ def main() -> int:
     args = parse_args()
     token = os.getenv("TUSHARE_TOKEN", "").strip()
     if not token:
-        raise RuntimeError("TUSHARE_TOKEN is required for the three-year causal rebuild")
+        raise RuntimeError("TUSHARE_TOKEN is required for the causal research rebuild")
     config = load_v3_config(args.config)
     pro = ts.pro_api(token)
-    start_date, end_date = _resolve_history_range(
+    (
+        start_date,
+        end_date,
+        evaluation_start_date,
+        evaluation_end_date,
+    ) = _resolve_history_range(
         pro,
         args.start_date,
         args.end_date,
+        args.evaluation_start_date,
+        args.evaluation_end_date,
         default_start=config.history.start_date,
         default_end=config.history.end_date,
+        default_evaluation_start=config.history.evaluation_start_date,
+        default_evaluation_end=config.history.evaluation_end_date,
     )
     if (
         start_date != config.history.start_date
         or end_date != config.history.end_date
+        or evaluation_start_date != config.history.evaluation_start_date
+        or evaluation_end_date != config.history.evaluation_end_date
     ):
         raw = Path(args.config).read_text(encoding="utf-8")
         import yaml
@@ -55,6 +71,8 @@ def main() -> int:
         payload = yaml.safe_load(raw)
         payload["history"]["start_date"] = start_date
         payload["history"]["end_date"] = end_date
+        payload["history"]["evaluation_start_date"] = evaluation_start_date
+        payload["history"]["evaluation_end_date"] = evaluation_end_date
         temporary = Path(args.output_dir) / "_resolved_wp_v3.yml"
         temporary.parent.mkdir(parents=True, exist_ok=True)
         temporary.write_text(yaml.safe_dump(payload, allow_unicode=True), encoding="utf-8")
@@ -80,14 +98,37 @@ def _resolve_history_range(
     pro,
     requested_start: str | None,
     requested_end: str | None,
+    requested_evaluation_start: str | None,
+    requested_evaluation_end: str | None,
     *,
     default_start: str,
     default_end: str,
-) -> tuple[str, str]:
+    default_evaluation_start: str,
+    default_evaluation_end: str,
+) -> tuple[str, str, str, str]:
     start_value = (requested_start or default_start).strip().lower()
     end_value = (requested_end or default_end).strip().lower()
-    if start_value != "auto" and end_value != "auto":
-        return start_value, end_value
+    evaluation_start_value = (
+        requested_evaluation_start or default_evaluation_start
+    ).strip().lower()
+    evaluation_end_value = (
+        requested_evaluation_end or default_evaluation_end
+    ).strip().lower()
+    if all(
+        value != "auto"
+        for value in (
+            start_value,
+            end_value,
+            evaluation_start_value,
+            evaluation_end_value,
+        )
+    ):
+        return (
+            start_value,
+            end_value,
+            evaluation_start_value,
+            evaluation_end_value,
+        )
 
     current = datetime.now(CN_TZ)
     latest_possible = current.date()
@@ -110,13 +151,37 @@ def _resolve_history_range(
     if not open_dates:
         raise RuntimeError("cannot resolve the latest completed A-share trade date")
     end_date = open_dates[-1] if end_value == "auto" else end_value
-    if start_value != "auto":
-        return start_value, end_date
+    evaluation_end_date = (
+        end_date if evaluation_end_value == "auto" else evaluation_end_value
+    )
+    start_date = (
+        _first_open_date_on_or_after(
+            pro,
+            (
+                pd.Timestamp(datetime.strptime(end_date, "%Y%m%d"))
+                - pd.DateOffset(years=5)
+            ).strftime("%Y%m%d"),
+        )
+        if start_value == "auto"
+        else start_value
+    )
+    evaluation_start_date = (
+        _first_open_date_on_or_after(
+            pro,
+            (
+                pd.Timestamp(
+                    datetime.strptime(evaluation_end_date, "%Y%m%d")
+                )
+                - pd.DateOffset(years=3)
+            ).strftime("%Y%m%d"),
+        )
+        if evaluation_start_value == "auto"
+        else evaluation_start_value
+    )
+    return start_date, end_date, evaluation_start_date, evaluation_end_date
 
-    anchor = (
-        pd.Timestamp(datetime.strptime(end_date, "%Y%m%d"))
-        - pd.DateOffset(years=3)
-    ).strftime("%Y%m%d")
+
+def _first_open_date_on_or_after(pro, anchor: str) -> str:
     start_calendar = pro.trade_cal(
         exchange="SSE",
         start_date=anchor,
@@ -133,8 +198,8 @@ def _resolve_history_range(
         ].astype(str)
     )
     if not start_dates:
-        raise RuntimeError("cannot resolve the first trade date in the three-year window")
-    return start_dates[0], end_date
+        raise RuntimeError(f"cannot resolve the first trade date on or after {anchor}")
+    return start_dates[0]
 
 
 if __name__ == "__main__":
