@@ -1,9 +1,9 @@
 {
-  "generated_at": "2026-07-28 18:18:48",
+  "generated_at": "2026-07-29 00:25:49",
   "schema_version": "wp_strategy_ledger_v3_bridge",
+  "sessions": [],
   "summary": {
     "candidate_semantics": "model_candidates_not_user_fills",
     "verified_count": 0
-  },
-  "sessions": []
+  }
 }

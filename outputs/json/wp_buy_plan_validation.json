@@ -1,32 +1,35 @@
 {
-  "generated_at": "2026-07-28 18:18:48",
+  "generated_at": "2026-07-29 00:25:49",
+  "records": [],
   "schema_version": "wp_v3_candidate_truth_1",
   "summary": {
     "candidate_count": 0,
-    "verified_count": 0,
     "pending_count": 0,
     "pending_due_count": 0,
     "promotion": {
       "05928ce9adc35aa0c55d": {
-        "eligible": false,
         "checks": {
           "backtest_gate": false,
-          "shadow_trading_days": false,
+          "shadow_50bps_stress": false,
+          "shadow_bound_to_exact_model": true,
           "shadow_candidate_days": false,
           "shadow_candidates": false,
-          "shadow_win_rate": false,
-          "shadow_win_rate_lower": false,
-          "shadow_clustered_win_rate_lower": false,
-          "shadow_mean_net_return": false,
           "shadow_clustered_mean_return_lower": false,
+          "shadow_clustered_win_rate_lower": false,
+          "shadow_ece": false,
+          "shadow_entry_fill_rate": false,
+          "shadow_exit_fill_rate": false,
+          "shadow_mean_net_return": false,
           "shadow_median_net_return": false,
           "shadow_profit_factor": false,
-          "shadow_ece": false,
-          "shadow_50bps_stress": false
+          "shadow_trading_days": false,
+          "shadow_win_rate": false,
+          "shadow_win_rate_lower": false
         },
-        "reason": "failed:backtest_gate,shadow_trading_days,shadow_candidate_days,shadow_candidates,shadow_win_rate,shadow_win_rate_lower,shadow_clustered_win_rate_lower,shadow_mean_net_return,shadow_clustered_mean_return_lower,shadow_median_net_return,shadow_profit_factor,shadow_ece,shadow_50bps_stress"
+        "eligible": false,
+        "reason": "failed:backtest_gate,shadow_trading_days,shadow_candidate_days,shadow_candidates,shadow_win_rate,shadow_win_rate_lower,shadow_clustered_win_rate_lower,shadow_mean_net_return,shadow_clustered_mean_return_lower,shadow_median_net_return,shadow_profit_factor,shadow_entry_fill_rate,shadow_exit_fill_rate,shadow_ece,shadow_50bps_stress"
       }
-    }
-  },
-  "records": []
+    },
+    "verified_count": 0
+  }
 }
