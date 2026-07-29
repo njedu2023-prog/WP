@@ -5,67 +5,67 @@
   "calibration_start": "20260527",
   "calibration_table": [
     {
-      "clustered_lower": 0.0,
-      "count": 0,
-      "days": 0,
+      "clustered_lower": 0.05705509196934942,
+      "count": 1328,
+      "days": 42,
       "left": 0.0,
       "right": 0.1,
-      "wilson_lower": 0.0,
-      "win_rate": 0.0
+      "wilson_lower": 0.06161562219320032,
+      "win_rate": 0.07454819277108433
     },
     {
-      "clustered_lower": 0.0,
-      "count": 0,
-      "days": 0,
+      "clustered_lower": 0.1339437085523829,
+      "count": 3261,
+      "days": 42,
       "left": 0.1,
       "right": 0.2,
-      "wilson_lower": 0.0,
-      "win_rate": 0.0
+      "wilson_lower": 0.13633662690214085,
+      "win_rate": 0.14811407543698252
     },
     {
-      "clustered_lower": 0.0,
-      "count": 0,
-      "days": 0,
+      "clustered_lower": 0.2236790834915074,
+      "count": 7480,
+      "days": 42,
       "left": 0.2,
       "right": 0.3,
-      "wilson_lower": 0.0,
-      "win_rate": 0.0
+      "wilson_lower": 0.23557045762530518,
+      "win_rate": 0.24518716577540106
     },
     {
-      "clustered_lower": 0.368344296588342,
-      "count": 38751,
+      "clustered_lower": 0.33734762361711157,
+      "count": 30743,
       "days": 42,
       "left": 0.3,
       "right": 0.4,
-      "wilson_lower": 0.4005816574833495,
-      "win_rate": 0.40546050424505176
+      "wilson_lower": 0.36364978979948,
+      "win_rate": 0.36902709559899816
     },
     {
-      "clustered_lower": 0.33380946398221556,
-      "count": 30244,
-      "days": 42,
+      "clustered_lower": 0.35803642864988383,
+      "count": 27732,
+      "days": 41,
       "left": 0.4,
       "right": 0.5,
-      "wilson_lower": 0.397836556405805,
-      "win_rate": 0.4033527311202222
+      "wilson_lower": 0.4182892778532919,
+      "win_rate": 0.4240949084090581
     },
     {
-      "clustered_lower": 0.47780126849894294,
-      "count": 1542,
-      "days": 11,
+      "clustered_lower": 0.0,
+      "count": 0,
+      "days": 0,
       "left": 0.5,
       "right": 0.6,
-      "wilson_lower": 0.6072722795081116,
-      "win_rate": 0.6316472114137484
+      "wilson_lower": 0.0,
+      "win_rate": 0.0
     },
     {
-      "clustered_lower": 1.0,
-      "count": 7,
-      "days": 2,
+      "clustered_lower": 0.0,
+      "count": 0,
+      "days": 0,
       "left": 0.6,
       "right": 0.7,
-      "wilson_lower": 0.6456695649333126,
-      "win_rate": 1.0
+      "wilson_lower": 0.0,
+      "win_rate": 0.0
     },
     {
       "clustered_lower": 0.0,
@@ -108,7 +108,7 @@
     "selection_rank_min": 1.0,
     "severe_loss_probability_max": 0.0
   },
-  "contract_fingerprint": "ba3fb43059731f03862c",
+  "contract_fingerprint": "8064c1f92f548a29e770",
   "eligible_calibration_rows": 134642,
   "eligible_fit_rows": 1342134,
   "ensemble_members": [
@@ -241,8 +241,8 @@
     "float_mv_cs_rank",
     "up_limit_distance_cs_rank"
   ],
-  "feature_version": "wp_v5_causal_features_1",
-  "fingerprint": "05928ce9adc35aa0c55d",
+  "feature_version": "wp_v6_causal_features_1",
+  "fingerprint": "575fb8870589e1ccd3e4",
   "market_feature_columns": [
     "slot_minute",
     "market_return_pct",
@@ -261,8 +261,8 @@
     "market_regime_strength"
   ],
   "max_market_data_age_seconds": 420,
-  "model_version": "wpv5-20260724-1342134",
-  "policy_fingerprint": "b77d4c3e3230a008691c",
+  "model_version": "wpv6-20260724-1342134",
+  "policy_fingerprint": "fbd71220c8482b0e375b",
   "policy_selection": {
     "confirmation": {
       "events": 0,
@@ -302,14 +302,16 @@
       "severe_loss_probability_max": 0.0
     },
     "search": {
+      "confirmation_policies_evaluated": 0,
       "design_eligible": 0,
+      "design_finalists": 0,
       "reason": "no_design_policy_passed",
       "reviewed": [],
       "tested": 288
     }
   },
-  "positive_rate": 0.4104315133624852,
-  "schema_version": "wp_v5_multitask_bundle_3",
+  "positive_rate": 0.33842695089101593,
+  "schema_version": "wp_v6_multitask_bundle_1",
   "selection_evidence": {
     "events": 0,
     "mean_net_return_day_clustered_lower_pct": null,
@@ -323,10 +325,10 @@
     "win_rate_wilson_lower": 0.0,
     "wins": 0
   },
-  "strategy_id": "wp_t1_net_profit_v5",
+  "strategy_id": "wp_t1_net_profit_v6",
   "train_end": "20260724",
   "train_start": "20240422",
-  "trained_at": "2026-07-28T10:01:39.617389+00:00",
-  "training_data_digest": "f325734fff22d079e37b67202ca509d2ab915b4b344bdfbb865667e440bf4ffd",
+  "trained_at": "2026-07-29T02:12:03.475232+00:00",
+  "training_data_digest": "1882f901563eac22126f1fa89c0805bb4628a4a31caa29fb01c482ef57eff3d5",
   "training_rows": 817101
 }
