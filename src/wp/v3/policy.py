@@ -80,8 +80,49 @@ def apply_candidate_policy(
     policy: CandidatePolicy,
     config: V3Config,
 ) -> pd.Series:
-    diagnostics = candidate_policy_diagnostics(frame, policy, config)
-    return diagnostics["passes_policy"]
+    if frame.empty or not policy.authorized:
+        return pd.Series(
+            False,
+            index=frame.index,
+            dtype=bool,
+            name="passes_policy",
+        )
+
+    execution = _boolean(
+        frame.get("execution_eligible", pd.Series(True, index=frame.index))
+    )
+    freshness = _numeric_default(frame, "data_age_seconds", 0.0).le(
+        config.execution.max_market_data_age_seconds
+    )
+    mask = (
+        execution
+        & freshness
+        & _numeric(frame, "p_net_positive").ge(policy.probability_min)
+        & _numeric(frame, "p_net_positive_lower").ge(
+            policy.probability_lower_min
+        )
+        & _numeric(frame, "p_market_positive").ge(
+            policy.market_probability_min
+        )
+        & _numeric(frame, "p_cross_section_top").ge(
+            policy.cross_section_probability_min
+        )
+        & _numeric(frame, "p_severe_loss").le(
+            policy.severe_loss_probability_max
+        )
+        & _numeric(frame, "selection_rank_pct").ge(policy.selection_rank_min)
+        & _numeric(frame, "expected_net_return_pct").ge(
+            policy.expected_return_min_pct
+        )
+        & _numeric(frame, "downside_q10_pct").ge(policy.downside_min_pct)
+        & _numeric(frame, "probability_model_spread").le(
+            config.model.max_probability_model_spread
+        )
+        & _numeric(frame, "selection_rank_spread").le(
+            config.model.max_selection_rank_spread
+        )
+    )
+    return mask.fillna(False).astype(bool).rename("passes_policy")
 
 
 def candidate_policy_diagnostics(
