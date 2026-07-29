@@ -1,0 +1,123 @@
+strategy:
+  strategy_id: wp_t1_net_profit_v7
+  model_family: causal_fill_conditional_return_v7
+  timezone: Asia/Shanghai
+  signal_slots:
+  - '14:20'
+  - '14:25'
+  - '14:30'
+  - '14:35'
+  - '14:40'
+  - '14:45'
+  - '14:50'
+  candidate_freeze_time: '14:55'
+  clear_live_display_time: '15:00'
+  exit_contract: T+1_close
+  board_scope: main_board
+execution:
+  entry_price_contract: next_5m_close_plus_slippage
+  entry_delay_minutes: 5
+  entry_execution_deadline: '14:55'
+  entry_slippage_bps: 10
+  round_trip_cost_bps: 25
+  exit_order_contract: T+1_14:57_down_limit_sell_for_close_auction
+  stress_cost_bps:
+  - 35
+  - 50
+  min_listing_days: 60
+  min_price: 2.0
+  max_price: 150.0
+  min_prev_20d_amount: 50000000
+  min_slot_amount: 3000000
+  reference_order_notional: 100000
+  max_entry_pct_of_slot_amount: 0.01
+  min_distance_to_up_limit_pct: 0.5
+  min_distance_to_down_limit_pct: 1.0
+  max_market_data_age_seconds: 420
+  min_intraday_snapshot_count: 5
+  non_fill_penalty_pct: -10.0
+model:
+  policy_implementation_version: wp_v7_nested_oos_policy_1
+  feature_version: wp_v7_causal_features_1
+  minimum_train_days: 252
+  calibration_days: 42
+  policy_design_days: 84
+  policy_confirmation_days: 42
+  test_days: 42
+  purge_days: 2
+  ensemble_windows_days:
+  - 252
+  - 504
+  temporal_half_life_days: 252
+  cross_section_top_fraction: 0.2
+  severe_loss_threshold_pct: -2.0
+  entry_fill_probability_grid:
+  - 0.97
+  - 0.985
+  exit_fill_probability_grid:
+  - 0.985
+  - 0.995
+  probability_grid:
+  - 0.38
+  - 0.42
+  - 0.46
+  conditional_probability_grid:
+  - 0.48
+  - 0.52
+  severe_loss_probability_grid:
+  - 0.25
+  - 0.35
+  selection_rank_grid:
+  - 0.995
+  - 0.998
+  expected_utility_grid_pct:
+  - -0.1
+  - 0.0
+  - 0.1
+  downside_grid_pct:
+  - -3.0
+  - -2.0
+  policy_min_design_events: 150
+  policy_min_design_days: 30
+  policy_min_confirmation_events: 60
+  policy_min_confirmation_days: 15
+  policy_min_win_rate: 0.54
+  policy_min_wilson_lower: 0.5
+  policy_min_clustered_lower: 0.48
+  policy_min_mean_net_return_pct: 0.15
+  policy_min_profit_factor: 1.1
+  max_probability_model_spread: 0.15
+  max_fill_probability_model_spread: 0.1
+  max_selection_rank_spread: 0.25
+  min_train_rows: 20000
+  max_training_rows_per_slot: 240
+  random_seed: 20260727
+promotion:
+  mode: shadow
+  minimum_shadow_trading_days: 150
+  minimum_shadow_candidate_days: 50
+  minimum_shadow_candidates: 250
+  minimum_oos_candidates: 250
+  minimum_oos_win_rate: 0.55
+  minimum_oos_win_rate_lower: 0.52
+  minimum_clustered_win_rate_lower: 0.52
+  minimum_mean_net_return_pct: 0.2
+  minimum_clustered_mean_return_lower_pct: 0.0
+  minimum_median_net_return_pct: 0.0
+  minimum_profit_factor: 1.2
+  minimum_entry_fill_rate: 0.98
+  minimum_exit_fill_rate: 0.98
+  maximum_ece: 0.05
+  require_50bps_stress_nonnegative: true
+  auto_promote_when_all_gates_pass: true
+history:
+  start_date: '20210726'
+  end_date: '20260724'
+  evaluation_start_date: '20230727'
+  evaluation_end_date: '20260724'
+  partition: month
+  tushare_page_size: 8000
+  tushare_requests_per_minute: 180
+  minute_fetch_workers: 4
+  raw_cache_days: 7
+  minimum_minute_universe_coverage: 0.9
