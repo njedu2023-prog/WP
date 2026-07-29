@@ -336,13 +336,18 @@ def _verify_candidate(
         if total_return_close and entry_price
         else None
     )
-    net = (
-        gross - config.execution.round_trip_cost_bps / 100.0
-        if gross is not None
-        else config.execution.non_fill_penalty_pct
-    )
-    if not entry_fillable or not exit_fillable:
-        net = min(net, config.execution.non_fill_penalty_pct)
+    if not entry_fillable:
+        # No position was established, so the realized contract return is cash.
+        # The miss still counts as a negative class for target_net_positive and
+        # remains visible in the entry-fill calibration statistics.
+        net = 0.0
+        execution_status = "ENTRY_NOT_FILLED"
+    elif not exit_fillable:
+        net = config.execution.non_fill_penalty_pct
+        execution_status = "EXIT_NOT_FILLED"
+    else:
+        net = gross - config.execution.round_trip_cost_bps / 100.0
+        execution_status = "ROUND_TRIP_FILLED"
     candidate.update(
         {
             "entry_price": entry_price,
@@ -357,6 +362,7 @@ def _verify_candidate(
             "t1_adj_factor": target_adj_factor,
             "t1_total_return_close": total_return_close,
             "exit_fillable": exit_fillable,
+            "execution_status": execution_status,
             "gross_return_pct": gross,
             "net_return_pct": net,
             "net_positive": bool(entry_fillable and exit_fillable and net > 0),
@@ -370,7 +376,7 @@ def _verify_candidate(
             "corporate_action_adjustment": "adj_factor_total_return",
             "non_fill_penalty_pct": (
                 config.execution.non_fill_penalty_pct
-                if not entry_fillable or not exit_fillable
+                if entry_fillable and not exit_fillable
                 else None
             ),
         }

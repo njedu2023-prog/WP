@@ -81,8 +81,11 @@
 
 - `truth_status`：`pending` 或 `verified`。
 - `gross_return_pct`：不可变入场价到复权 T+1 收盘价的毛收益。
-- `net_return_pct`：毛收益扣除合同往返成本后的净收益。
-- `net_positive`：`net_return_pct > 0`。
+- `net_return_pct`：完整成交时为毛收益扣除合同往返成本；买入未成交时为
+  现金收益 `0`；已买入但 T+1 无法保证退出时为固定 `-10%` 惩罚。
+- `net_positive`：仅当买入、退出均可成交且 `net_return_pct > 0`。
+- `execution_status`：`ENTRY_NOT_FILLED`、`EXIT_NOT_FILLED` 或
+  `ROUND_TRIP_FILLED`。
 - `t1_open` / `t1_high` / `t1_low` / `t1_close`：T+1 日真实四价，仅用于事后验证。
 - `truth_contract`：固定为下一根 5 分钟线参考成交价到 T+1 收盘、扣声明成本。
 

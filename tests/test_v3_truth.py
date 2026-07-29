@@ -95,6 +95,41 @@ def test_v6_truth_remains_pending_without_entry_benchmark():
     assert candidate.get("entry_price") is None
 
 
+def test_entry_non_fill_keeps_cash_return_and_fails_positive_label():
+    config = V3Config()
+    candidate = {
+        "trade_date": "20260721",
+        "ts_code": "600001.SH",
+        "first_signal_price": 10.0,
+        "entry_contract": config.execution.entry_price_contract,
+        "entry_benchmark_status": "NON_FILL",
+        "entry_benchmark_price": 10.5,
+        "entry_price": 10.5105,
+        "entry_fillable": False,
+        "entry_adj_factor": 1.0,
+        "truth_status": "pending",
+    }
+    truth = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "close": 10.8,
+                "vol": 1000,
+                "down_limit": 9.0,
+                "adj_factor": 1.0,
+            }
+        ]
+    ).set_index("ts_code")
+
+    _verify_candidate(candidate, truth, config)
+
+    assert candidate["truth_status"] == "verified"
+    assert candidate["execution_status"] == "ENTRY_NOT_FILLED"
+    assert candidate["net_return_pct"] == 0.0
+    assert candidate["net_positive"] is False
+    assert candidate["non_fill_penalty_pct"] is None
+
+
 def test_down_limit_close_is_counted_as_execution_failure():
     candidate = {
         "ts_code": "600001.SH",
@@ -115,6 +150,7 @@ def test_down_limit_close_is_counted_as_execution_failure():
     ).set_index("ts_code")
     _verify_candidate(candidate, truth, V3Config())
     assert candidate["exit_fillable"] is False
+    assert candidate["execution_status"] == "EXIT_NOT_FILLED"
     assert candidate["net_positive"] is False
     assert candidate["net_return_pct"] <= -10
 
