@@ -21,6 +21,8 @@ def _predictions() -> pd.DataFrame:
                         "ts_code": f"600{stock:03d}.SH",
                         "target_net_positive": int(positive),
                         "net_return_pct": 1.0 if positive else -1.0,
+                        "target_entry_fillable": 1,
+                        "target_exit_fillable": 1,
                         "p_net_positive": 0.2 + 0.6 * score,
                         "p_net_positive_lower": 0.15 + 0.55 * score,
                         "p_entry_fill": 0.98 + 0.01 * score,
@@ -76,9 +78,13 @@ def test_diagnostic_tables_are_flat_and_exportable():
         "policy_funnel",
         "score_deciles",
         "top_n_per_slot",
+        "extreme_rank_cohorts",
+        "joint_gate_cohorts",
         "slot_quality",
     }
     assert not tables["top_n_per_slot"].empty
+    assert not tables["extreme_rank_cohorts"].empty
+    assert not tables["joint_gate_cohorts"].empty
     assert np.isfinite(
         tables["top_n_per_slot"]["mean_net_return_pct"].dropna()
     ).all()

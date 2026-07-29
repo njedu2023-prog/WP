@@ -166,3 +166,20 @@ def test_policy_rejects_each_execution_probability_below_its_gate():
         diagnostics.loc[frame.index[2], "passes_round_trip_fill_probability"]
         == False
     )
+
+
+def test_failed_policy_search_reports_nearest_gate_failures():
+    design = _profitable_predictions(20)
+    confirmation = _profitable_predictions(10, start="2025-03-03")
+    design["net_return_pct"] = -0.40
+    design["target_net_positive"] = 0
+
+    selection = select_candidate_policy(design, confirmation, _test_config())
+
+    assert selection.policy.authorized is False
+    assert selection.search["reason"] == "no_design_policy_passed"
+    assert selection.search["near_misses"]
+    nearest = selection.search["near_misses"][0]
+    assert nearest["passed_gate_count"] < nearest["total_gate_count"]
+    assert "minimum_win_rate" in nearest["failed_gates"]
+    assert "minimum_mean_net_return" in nearest["failed_gates"]

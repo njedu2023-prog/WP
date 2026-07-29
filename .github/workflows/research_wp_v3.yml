@@ -274,5 +274,7 @@ jobs:
             artifacts/wp_v3_research/wp_v3_diagnostic_policy_funnel.csv
             artifacts/wp_v3_research/wp_v3_diagnostic_score_deciles.csv
             artifacts/wp_v3_research/wp_v3_diagnostic_top_n_per_slot.csv
+            artifacts/wp_v3_research/wp_v3_diagnostic_extreme_rank_cohorts.csv
+            artifacts/wp_v3_research/wp_v3_diagnostic_joint_gate_cohorts.csv
             artifacts/wp_v3_research/wp_v3_diagnostic_slot_quality.csv
           retention-days: 90

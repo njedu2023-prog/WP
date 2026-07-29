@@ -272,6 +272,7 @@ def select_candidate_policy(
     confirmation_frame = _ordered(confirmation)
     grid = list(_policy_grid(config))
     quick: list[tuple[CandidatePolicy, dict[str, Any]]] = []
+    near_misses: list[dict[str, Any]] = []
     for policy in grid:
         metrics = _candidate_metrics(
             design_frame,
@@ -279,9 +280,34 @@ def select_candidate_policy(
             clustered=False,
             seed=config.model.random_seed,
         )
-        if _passes_quick_design(metrics, config):
+        gate_status = _quick_design_gate_status(metrics, config)
+        near_misses.append(
+            {
+                "policy_id": policy.policy_id,
+                "policy": asdict(policy),
+                "passed_gate_count": int(sum(gate_status.values())),
+                "total_gate_count": int(len(gate_status)),
+                "failed_gates": [
+                    gate for gate, passed in gate_status.items() if not passed
+                ],
+                "gate_status": gate_status,
+                "metrics": metrics,
+                "proximity_score": _quick_design_proximity(metrics, config),
+            }
+        )
+        if all(gate_status.values()):
             quick.append((policy, metrics))
 
+    near_misses.sort(
+        key=lambda item: (
+            int(item["passed_gate_count"]),
+            float(item["proximity_score"]),
+            float(item["metrics"].get("win_rate_wilson_lower", 0.0)),
+            float(item["metrics"].get("mean_net_return_pct") or -999.0),
+        ),
+        reverse=True,
+    )
+    near_misses = near_misses[:20]
     quick.sort(
         key=lambda item: (
             float(item[1].get("win_rate_wilson_lower", 0.0)),
@@ -332,6 +358,7 @@ def select_candidate_policy(
                 "design_finalists": 0,
                 "confirmation_policies_evaluated": 0,
                 "reviewed": reviewed,
+                "near_misses": near_misses,
                 "reason": reason,
             },
         )
@@ -374,6 +401,7 @@ def select_candidate_policy(
                 "confirmation_policies_evaluated": 1,
                 "selected_design_rank": champion_rank,
                 "reviewed": reviewed,
+                "near_misses": near_misses,
                 "reason": "authorized",
             },
         )
@@ -390,6 +418,7 @@ def select_candidate_policy(
             "confirmation_policies_evaluated": 1,
             "selected_design_rank": champion_rank,
             "reviewed": reviewed,
+            "near_misses": near_misses,
             "reason": reason,
         },
     )
@@ -645,22 +674,84 @@ def _candidate_metrics(
 
 
 def _passes_quick_design(metrics: dict[str, Any], config: V3Config) -> bool:
+    return all(_quick_design_gate_status(metrics, config).values())
+
+
+def _quick_design_gate_status(
+    metrics: dict[str, Any],
+    config: V3Config,
+) -> dict[str, bool]:
     model = config.model
-    return (
-        int(metrics.get("events", 0)) >= model.policy_min_design_events
-        and int(metrics.get("trade_days", 0)) >= model.policy_min_design_days
-        and float(metrics.get("win_rate", 0.0)) >= model.policy_min_win_rate
-        and float(metrics.get("win_rate_wilson_lower", 0.0))
-        >= model.policy_min_wilson_lower
-        and float(metrics.get("entry_fill_rate", 0.0))
-        >= config.promotion.minimum_entry_fill_rate
-        and float(metrics.get("exit_fill_rate_given_entry", 0.0))
-        >= config.promotion.minimum_exit_fill_rate
-        and float(metrics.get("mean_net_return_pct") or -999.0)
-        >= model.policy_min_mean_net_return_pct
-        and float(metrics.get("profit_factor") or 0.0)
-        >= model.policy_min_profit_factor
+    return {
+        "minimum_events": (
+            int(metrics.get("events", 0)) >= model.policy_min_design_events
+        ),
+        "minimum_trade_days": (
+            int(metrics.get("trade_days", 0)) >= model.policy_min_design_days
+        ),
+        "minimum_win_rate": (
+            float(metrics.get("win_rate", 0.0)) >= model.policy_min_win_rate
+        ),
+        "minimum_wilson_lower": (
+            float(metrics.get("win_rate_wilson_lower", 0.0))
+            >= model.policy_min_wilson_lower
+        ),
+        "minimum_entry_fill_rate": (
+            float(metrics.get("entry_fill_rate", 0.0))
+            >= config.promotion.minimum_entry_fill_rate
+        ),
+        "minimum_exit_fill_rate": (
+            float(metrics.get("exit_fill_rate_given_entry", 0.0))
+            >= config.promotion.minimum_exit_fill_rate
+        ),
+        "minimum_mean_net_return": (
+            float(metrics.get("mean_net_return_pct") or -999.0)
+            >= model.policy_min_mean_net_return_pct
+        ),
+        "minimum_profit_factor": (
+            float(metrics.get("profit_factor") or 0.0)
+            >= model.policy_min_profit_factor
+        ),
+    }
+
+
+def _quick_design_proximity(
+    metrics: dict[str, Any],
+    config: V3Config,
+) -> float:
+    model = config.model
+    pairs = (
+        (float(metrics.get("events", 0)), float(model.policy_min_design_events)),
+        (float(metrics.get("trade_days", 0)), float(model.policy_min_design_days)),
+        (float(metrics.get("win_rate", 0.0)), float(model.policy_min_win_rate)),
+        (
+            float(metrics.get("win_rate_wilson_lower", 0.0)),
+            float(model.policy_min_wilson_lower),
+        ),
+        (
+            float(metrics.get("entry_fill_rate", 0.0)),
+            float(config.promotion.minimum_entry_fill_rate),
+        ),
+        (
+            float(metrics.get("exit_fill_rate_given_entry", 0.0)),
+            float(config.promotion.minimum_exit_fill_rate),
+        ),
+        (
+            float(metrics.get("mean_net_return_pct") or -999.0),
+            float(model.policy_min_mean_net_return_pct),
+        ),
+        (
+            float(metrics.get("profit_factor") or 0.0),
+            float(model.policy_min_profit_factor),
+        ),
     )
+    scores = [
+        max(-5.0, min(value / threshold, 1.0))
+        if threshold > 0
+        else (1.0 if value >= threshold else -1.0)
+        for value, threshold in pairs
+    ]
+    return float(sum(scores) / len(scores))
 
 
 def _passes_full(

@@ -40,12 +40,14 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v7_prediction_diagnostics_1",
+            "schema_version": "wp_v7_prediction_diagnostics_2",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
             "score_deciles": [],
             "top_n_per_slot": [],
+            "extreme_rank_cohorts": [],
+            "joint_gate_cohorts": [],
             "slot_quality": [],
         }
 
@@ -88,6 +90,11 @@ def build_prediction_diagnostics(
         frame.get("p_severe_loss"),
         errors="coerce",
     )
+    for column in ("target_entry_fillable", "target_exit_fillable"):
+        frame[column] = pd.to_numeric(
+            frame.get(column, pd.Series(np.nan, index=frame.index)),
+            errors="coerce",
+        )
 
     score_columns = {
         **SCORE_COLUMNS,
@@ -122,10 +129,21 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v7_prediction_diagnostics_1",
+        "schema_version": "wp_v7_prediction_diagnostics_2",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),
+        "base_by_execution_state": {
+            "entry_filled": _return_summary(
+                frame.loc[frame["target_entry_fillable"].eq(1)]
+            ),
+            "round_trip_filled": _return_summary(
+                frame.loc[
+                    frame["target_entry_fillable"].eq(1)
+                    & frame["target_exit_fillable"].eq(1)
+                ]
+            ),
+        },
         "policy_funnel": _policy_funnel(frame),
         "score_distributions": {
             name: _quantiles(frame[column])
@@ -140,6 +158,17 @@ def build_prediction_diagnostics(
         "score_quality": score_quality,
         "score_deciles": deciles,
         "top_n_per_slot": top_n,
+        "extreme_rank_cohorts": _extreme_rank_cohorts(
+            frame,
+            config,
+            score_columns={
+                "executable_positive_probability": "p_net_positive",
+                "expected_utility": "expected_utility_pct",
+                "selection_score": "selection_score",
+                "legacy_composite_rank": "_composite_rank",
+            },
+        ),
+        "joint_gate_cohorts": _joint_gate_cohorts(frame, config),
         "slot_quality": slot_quality,
         "interpretation": (
             "Diagnostic cohorts are chronological OOS observations. They do not "
@@ -155,6 +184,12 @@ def diagnostics_tables(
         "policy_funnel": pd.DataFrame(diagnostics.get("policy_funnel", [])),
         "score_deciles": pd.DataFrame(diagnostics.get("score_deciles", [])),
         "top_n_per_slot": pd.DataFrame(diagnostics.get("top_n_per_slot", [])),
+        "extreme_rank_cohorts": pd.DataFrame(
+            diagnostics.get("extreme_rank_cohorts", [])
+        ),
+        "joint_gate_cohorts": pd.DataFrame(
+            diagnostics.get("joint_gate_cohorts", [])
+        ),
         "slot_quality": pd.json_normalize(diagnostics.get("slot_quality", [])),
     }
 
@@ -330,6 +365,87 @@ def _top_n_per_slot(
     return rows
 
 
+def _extreme_rank_cohorts(
+    frame: pd.DataFrame,
+    config: V3Config,
+    *,
+    score_columns: dict[str, str],
+    thresholds: tuple[float, ...] = (0.99, 0.995, 0.998, 0.999),
+) -> list[dict[str, Any]]:
+    execution = _boolean(frame.get("execution_eligible"), frame.index)
+    rows: list[dict[str, Any]] = []
+    for score_name, score_column in score_columns.items():
+        clean = frame.loc[frame[score_column].notna() & execution].copy()
+        if clean.empty:
+            continue
+        percentile = clean[score_column].groupby(
+            [clean["trade_date"], clean["signal_slot"]],
+            sort=False,
+        ).rank(method="first", pct=True)
+        for threshold in thresholds:
+            clean["_diagnostic_selected"] = percentile.ge(threshold)
+            selected = first_crossing_candidates(
+                clean,
+                config,
+                status_column="_diagnostic_selected",
+            )
+            rows.append(
+                {
+                    "score": score_name,
+                    "rank_percentile_min": float(threshold),
+                    **_return_summary(selected, clustered=True),
+                }
+            )
+    return rows
+
+
+def _joint_gate_cohorts(
+    frame: pd.DataFrame,
+    config: V3Config,
+    *,
+    rank_thresholds: tuple[float, ...] = (0.99, 0.995),
+    utility_thresholds: tuple[float, ...] = (0.0, 0.05, 0.10, 0.20),
+    entry_thresholds: tuple[float, ...] = (0.95, 0.97),
+    exit_thresholds: tuple[float, ...] = (0.95, 0.98),
+) -> list[dict[str, Any]]:
+    clean = frame.loc[
+        frame["expected_utility_pct"].notna()
+        & _boolean(frame.get("execution_eligible"), frame.index)
+    ].copy()
+    if clean.empty:
+        return []
+    utility_rank = clean["expected_utility_pct"].groupby(
+        [clean["trade_date"], clean["signal_slot"]],
+        sort=False,
+    ).rank(method="first", pct=True)
+    rows: list[dict[str, Any]] = []
+    for rank_threshold in rank_thresholds:
+        for utility_threshold in utility_thresholds:
+            for entry_threshold in entry_thresholds:
+                for exit_threshold in exit_thresholds:
+                    clean["_diagnostic_selected"] = (
+                        utility_rank.ge(rank_threshold)
+                        & clean["expected_utility_pct"].ge(utility_threshold)
+                        & clean["p_entry_fill"].ge(entry_threshold)
+                        & clean["p_exit_fill_given_entry"].ge(exit_threshold)
+                    )
+                    selected = first_crossing_candidates(
+                        clean,
+                        config,
+                        status_column="_diagnostic_selected",
+                    )
+                    rows.append(
+                        {
+                            "rank_percentile_min": float(rank_threshold),
+                            "expected_utility_min_pct": float(utility_threshold),
+                            "entry_fill_probability_min": float(entry_threshold),
+                            "exit_fill_probability_min": float(exit_threshold),
+                            **_return_summary(selected, clustered=True),
+                        }
+                    )
+    return rows
+
+
 def _return_summary(
     frame: pd.DataFrame,
     *,
@@ -350,6 +466,18 @@ def _return_summary(
             "mean_net_return_day_clustered_lower_pct": None,
         }
     selected = frame.loc[returns.index]
+    entry = pd.to_numeric(
+        selected.get("target_entry_fillable"),
+        errors="coerce",
+    )
+    exit_fill = pd.to_numeric(
+        selected.get("target_exit_fillable"),
+        errors="coerce",
+    )
+    entry_filled = entry.eq(1)
+    round_trip_filled = entry_filled & exit_fill.eq(1)
+    entry_returns = returns.loc[entry_filled]
+    round_trip_returns = returns.loc[round_trip_filled]
     wins = int(returns.gt(0).sum())
     lower, _ = wilson_interval(wins, len(returns))
     profits = float(returns[returns > 0].sum())
@@ -371,6 +499,30 @@ def _return_summary(
             float(profits / losses)
             if losses > 0
             else (999.0 if profits > 0 else 0.0)
+        ),
+        "entry_fill_rate": (
+            float(entry.mean()) if entry.notna().any() else None
+        ),
+        "exit_fill_rate_given_entry": (
+            float(exit_fill.loc[entry_filled].mean())
+            if entry_filled.any()
+            else None
+        ),
+        "round_trip_fill_rate": (
+            float(round_trip_filled.mean()) if len(selected) else None
+        ),
+        "win_rate_given_entry": (
+            float(entry_returns.gt(0).mean())
+            if not entry_returns.empty
+            else None
+        ),
+        "mean_net_return_given_entry_pct": (
+            float(entry_returns.mean()) if not entry_returns.empty else None
+        ),
+        "mean_net_return_round_trip_pct": (
+            float(round_trip_returns.mean())
+            if not round_trip_returns.empty
+            else None
         ),
         "win_rate_day_clustered_lower": (
             float(interval.win_rate_lower) if interval else None
