@@ -8,6 +8,7 @@ from wp.v3.contracts import V3Config
 from wp.v3.policy import (
     apply_candidate_policy,
     apply_nested_oos_policies,
+    candidate_policy_diagnostics,
     select_candidate_policy,
 )
 
@@ -98,3 +99,24 @@ def test_nested_policy_cannot_use_current_or_future_fold_truth():
     assert audit[2]["policy"]["reason"] == "insufficient_prior_oos_policy_days"
     assert audit[3]["policy"]["authorized"] is True
     assert final.policy.authorized is True
+
+
+def test_fast_policy_mask_matches_full_diagnostics():
+    frame = _profitable_predictions(2)
+    config = _test_config()
+    selection = select_candidate_policy(
+        _profitable_predictions(20),
+        _profitable_predictions(10, start="2025-03-03"),
+        config,
+    )
+    frame.loc[frame.index[0], "p_net_positive"] = 0.10
+    frame.loc[frame.index[-1], "execution_eligible"] = False
+
+    fast = apply_candidate_policy(frame, selection.policy, config)
+    detailed = candidate_policy_diagnostics(
+        frame,
+        selection.policy,
+        config,
+    )["passes_policy"]
+
+    pd.testing.assert_series_equal(fast, detailed)
