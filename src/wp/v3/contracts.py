@@ -25,8 +25,8 @@ DEFAULT_SIGNAL_SLOTS = (
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v7"
-    model_family: str = "causal_fill_conditional_return_v7"
+    strategy_id: str = "wp_t1_net_profit_v8"
+    model_family: str = "causal_all_in_net_return_v8"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
     candidate_freeze_time: str = "14:55"
@@ -64,8 +64,8 @@ class ExecutionContract:
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v7_nested_oos_policy_1"
-    feature_version: str = "wp_v7_causal_features_1"
+    policy_implementation_version: str = "wp_v8_nested_oos_policy_1"
+    feature_version: str = "wp_v8_causal_features_1"
     minimum_train_days: int = 252
     calibration_days: int = 42
     policy_design_days: int = 84
@@ -96,6 +96,7 @@ class ModelContract:
     max_probability_model_spread: float = 0.15
     max_fill_probability_model_spread: float = 0.10
     max_selection_rank_spread: float = 0.25
+    max_expected_return_model_spread_pct: float = 1.00
     min_train_rows: int = 20_000
     max_training_rows_per_slot: int = 240
     random_seed: int = 20_260_727
@@ -237,6 +238,8 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("temporal ensemble requires at least two distinct windows")
     if config.model.max_training_rows_per_slot < 100:
         raise ValueError("training sample must retain at least 100 rows per slot-day")
+    if config.model.max_expected_return_model_spread_pct <= 0:
+        raise ValueError("expected-return model spread limit must be positive")
     if config.execution.round_trip_cost_bps <= 0:
         raise ValueError("round-trip cost must be positive")
     if any(

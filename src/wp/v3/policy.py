@@ -27,6 +27,7 @@ class CandidatePolicy:
     severe_loss_probability_max: float = 0.0
     selection_rank_min: float = 1.0
     expected_utility_min_pct: float = 999.0
+    expected_utility_lower_min_pct: float = 999.0
     downside_min_pct: float = 999.0
 
 
@@ -122,6 +123,9 @@ def apply_candidate_policy(
         & _numeric(frame, "expected_utility_pct").ge(
             policy.expected_utility_min_pct
         )
+        & _numeric(frame, "expected_utility_lower_pct").ge(
+            policy.expected_utility_lower_min_pct
+        )
         & _numeric(frame, "downside_q10_pct").ge(policy.downside_min_pct)
         & _numeric(frame, "probability_model_spread").le(
             config.model.max_probability_model_spread
@@ -131,6 +135,9 @@ def apply_candidate_policy(
         )
         & _numeric(frame, "selection_rank_spread").le(
             config.model.max_selection_rank_spread
+        )
+        & _numeric(frame, "expected_return_model_spread").le(
+            config.model.max_expected_return_model_spread_pct
         )
     )
     return mask.fillna(False).astype(bool).rename("passes_policy")
@@ -156,6 +163,7 @@ def candidate_policy_diagnostics(
     severe_probability = _numeric(frame, "p_severe_loss")
     selection_rank = _numeric(frame, "selection_rank_pct")
     expected_utility = _numeric(frame, "expected_utility_pct")
+    expected_utility_lower = _numeric(frame, "expected_utility_lower_pct")
     downside = _numeric(frame, "downside_q10_pct")
     probability_spread = _numeric(frame, "probability_model_spread")
     fill_probability_spread = _numeric(
@@ -163,6 +171,10 @@ def candidate_policy_diagnostics(
         "fill_probability_model_spread",
     )
     rank_spread = _numeric(frame, "selection_rank_spread")
+    expected_return_spread = _numeric(
+        frame,
+        "expected_return_model_spread",
+    )
     execution = _boolean(
         frame.get("execution_eligible", pd.Series(True, index=frame.index))
     )
@@ -194,12 +206,18 @@ def candidate_policy_diagnostics(
     result["passes_expected_utility"] = expected_utility.ge(
         policy.expected_utility_min_pct
     )
+    result["passes_expected_utility_lower"] = expected_utility_lower.ge(
+        policy.expected_utility_lower_min_pct
+    )
     result["passes_downside"] = downside.ge(policy.downside_min_pct)
     result["passes_stability"] = probability_spread.le(
         config.model.max_probability_model_spread
     ) & fill_probability_spread.le(
         config.model.max_fill_probability_model_spread
     ) & rank_spread.le(config.model.max_selection_rank_spread)
+    result["passes_stability"] &= expected_return_spread.le(
+        config.model.max_expected_return_model_spread_pct
+    )
     result["passes_prior_oos_evidence"] = bool(policy.authorized)
 
     gate_columns = [
@@ -214,6 +232,7 @@ def candidate_policy_diagnostics(
         "passes_severe_loss",
         "passes_selection_rank",
         "passes_expected_utility",
+        "passes_expected_utility_lower",
         "passes_downside",
         "passes_stability",
         "passes_prior_oos_evidence",
@@ -233,6 +252,7 @@ def candidate_policy_diagnostics(
         "passes_severe_loss": "severe_loss",
         "passes_selection_rank": "selection_rank",
         "passes_expected_utility": "expected_utility",
+        "passes_expected_utility_lower": "expected_utility_lower",
         "passes_downside": "downside",
         "passes_stability": "model_stability",
         "passes_prior_oos_evidence": "prior_oos_evidence",
@@ -534,7 +554,6 @@ def _policy_grid(config: V3Config):
         entry_fill_probability,
         exit_fill_probability,
         probability,
-        conditional_probability,
         severe_probability,
         selection_rank,
         expected_utility,
@@ -543,7 +562,6 @@ def _policy_grid(config: V3Config):
         model.entry_fill_probability_grid,
         model.exit_fill_probability_grid,
         model.probability_grid,
-        model.conditional_probability_grid,
         model.severe_loss_probability_grid,
         model.selection_rank_grid,
         model.expected_utility_grid_pct,
@@ -557,14 +575,18 @@ def _policy_grid(config: V3Config):
             ),
             "probability_min": float(probability),
             "probability_lower_min": float(max(0.30, probability - 0.06)),
-            "conditional_probability_min": float(conditional_probability),
+            # This value is derived from direct P(net positive) and round-trip
+            # fill probability in V8. It remains an audit field, not a second
+            # near-duplicate search dimension.
+            "conditional_probability_min": 0.0,
             "severe_loss_probability_max": float(severe_probability),
             "selection_rank_min": float(selection_rank),
             "expected_utility_min_pct": float(expected_utility),
+            "expected_utility_lower_min_pct": float(expected_utility - 0.10),
             "downside_min_pct": float(downside),
         }
         yield CandidatePolicy(
-            policy_id="wpv7-" + _digest(payload),
+            policy_id="wpv8-" + _digest(payload),
             authorized=True,
             reason="under_evaluation",
             **payload,

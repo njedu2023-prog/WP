@@ -1,0 +1,4 @@
+WP V8 full all-in net-return research trigger.
+requested_at=2026-07-29T19:58:25+08:00
+source_run_id=
+reason=Replace conditional-only ranking with direct all-in net-return learning.

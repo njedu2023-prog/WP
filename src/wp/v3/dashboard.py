@@ -127,7 +127,7 @@ def render_v3_dashboard(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V7 尾盘候选助手</title>
+<title>WP V8 尾盘候选助手</title>
 <style>
 :root {{
   --ink:#151a20; --muted:#65707c; --line:#d9dee4; --paper:#ffffff;
@@ -271,7 +271,7 @@ gap:16px;padding:2px 0;font-weight:700}}
 <body>
 <header><div class="header-inner">
   <div>
-    <div class="brand-kicker">WP V7 · T+1 固定收盘退出</div>
+    <div class="brand-kicker">WP V8 · T+1 固定收盘退出</div>
     <h1>尾盘候选助手</h1>
     <div class="sub">14:20–14:50 观察全部合格票；没有合格票时明确保持空仓</div>
   </div>
@@ -435,7 +435,7 @@ def _candidate_table(
         '<div class="table-wrap desktop-only"><table><thead><tr><th>股票</th>'
         + timing_headers
         + "<th>出现次数</th><th>买入成交概率</th><th>T+1 可卖概率</th>"
-        "<th>可执行净盈利概率</th><th>保守下界</th><th>综合净效用</th>"
+        "<th>可执行净盈利概率</th><th>保守下界</th><th>全口径期望净收益</th>"
         "<th>下行 Q10</th><th>状态</th></tr></thead><tbody>"
         + "".join(rows)
         + '</tbody></table></div><div class="mobile-list">'
@@ -479,7 +479,8 @@ def _candidate_card(row: dict[str, Any], *, live: bool) -> str:
         f"<div><dt>保守概率</dt><dd>{_pct(row.get('p_net_positive_lower'))}</dd></div>"
         f"<div><dt>买入成交概率</dt><dd>{_pct(row.get('p_entry_fill'))}</dd></div>"
         f"<div><dt>T+1 可卖概率</dt><dd>{_pct(row.get('p_exit_fill_given_entry'))}</dd></div>"
-        f"<div><dt>综合净效用</dt><dd>{_pct(row.get('expected_utility_pct'), already_percent=True)}</dd></div>"
+        f"<div><dt>全口径期望净收益</dt><dd>{_pct(row.get('expected_utility_pct'), already_percent=True)}</dd></div>"
+        f"<div><dt>期望收益保守下界</dt><dd>{_pct(row.get('expected_utility_lower_pct'), already_percent=True)}</dd></div>"
         f"<div><dt>下行 Q10</dt><dd>{_pct(row.get('downside_q10_pct'), already_percent=True)}</dd></div>"
         f"<div><dt>同槽分位</dt><dd>{_pct(row.get('selection_rank_pct'))}</dd></div>"
         f"<div><dt>出现次数</dt><dd>{int(row.get('appearance_count') or 1)}</dd></div>"
@@ -592,7 +593,8 @@ def _near_table(frame: pd.DataFrame) -> str:
                 ("passes_probability_lower", "下界"),
                 ("passes_conditional_probability", "成交后盈利概率"),
                 ("passes_severe_loss", "严重亏损风险"),
-                ("passes_expected_utility", "综合净效用"),
+                ("passes_expected_utility", "全口径期望净收益"),
+                ("passes_expected_utility_lower", "期望净收益保守下界"),
                 ("passes_downside", "下行风险"),
                 ("passes_selection_rank", "同槽排序"),
                 ("passes_prior_oos_evidence", "此前样本外证据"),
@@ -751,7 +753,7 @@ def _legacy_audit_section(audit: dict[str, Any]) -> str:
     return (
         '<section class="band"><details class="disclosure"><summary><span>'
         '<span class="disclosure-title">7 月 21–24 日旧系统证据回补</span>'
-        '<span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入 V7 收益</span>'
+        '<span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入 V8 收益</span>'
         '</span></summary><div class="disclosure-body">'
         '<div class="table-wrap desktop-only"><table><thead><tr>'
         "<th>交易日</th><th>合法盘中快照</th><th>盘后无效快照</th>"
@@ -998,12 +1000,12 @@ def _candidate_empty_message(
 def _research_verdict(state: str, backtest: dict[str, Any]) -> str:
     if state in {"MODEL_NOT_READY", "MODEL_NOT_DESIGNATED"}:
         return (
-            "V7 三年滚动样本外研究尚未发布完成；当前没有实盘授权，"
-            "也不会把旧模型结果当作 V7 结论。"
+            "V8 三年滚动样本外研究尚未发布完成；当前没有实盘授权，"
+            "也不会把旧模型结果当作 V8 结论。"
         )
     if state == "MODEL_ARTIFACT_INVALID":
         return (
-            "V7 模型文件校验失败；系统已关闭候选发布，等待重新生成并验证。"
+            "V8 模型文件校验失败；系统已关闭候选发布，等待重新生成并验证。"
         )
     gate_passed = bool(backtest.get("backtest_gate", {}).get("passed"))
     if state == "PRODUCTION" and gate_passed:

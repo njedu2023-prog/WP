@@ -1,4 +1,4 @@
-"""WP V7 causal T+1 net-profit modelling system with compatible v3 paths."""
+"""WP V8 causal T+1 all-in net-profit modelling system with stable v3 paths."""
 
 from .contracts import V3Config, load_v3_config
 

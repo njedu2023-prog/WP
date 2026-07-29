@@ -54,6 +54,9 @@ R = TypeVar("R")
 TUSHARE_CACHE_SCHEMA_VERSION = "wp_tushare_query_cache_2"
 PANEL_SCHEMA_VERSION = "wp_point_in_time_panel_4"
 MINUTE_SCHEMA_VERSION = "wp_historical_minutes_3"
+V7_COMPATIBLE_PANEL_BUILDER = "5ed12c75a5f10c67cd9fd6ab"
+V7_COMPATIBLE_STRATEGY_ID = "wp_t1_net_profit_v7"
+V7_COMPATIBLE_FEATURE_VERSION = "wp_v7_causal_features_1"
 
 
 class _RequestStartLimiter:
@@ -197,8 +200,28 @@ def build_three_year_panel(
         config=config,
     )
     if existing_manifest is not None:
+        reused_from = {
+            "strategy_id": existing_manifest.get("strategy_id"),
+            "feature_version": existing_manifest.get("feature_version"),
+            "panel_builder_fingerprint": existing_manifest.get(
+                "panel_builder_fingerprint"
+            ),
+        }
+        existing_manifest["strategy_id"] = config.strategy.strategy_id
+        existing_manifest["feature_version"] = config.model.feature_version
+        existing_manifest["target_projection_version"] = (
+            "wp_v8_train_time_all_in_net_return_1"
+        )
+        existing_manifest["compatibility_reused_from"] = reused_from
+        existing_manifest["compatibility_reused_at"] = datetime.now(
+            timezone.utc
+        ).isoformat()
+        atomic_write_json(
+            output / "wp_v3_dataset_manifest.json",
+            existing_manifest,
+        )
         print(
-            "reusing verified WP V7 causal panel "
+            "reusing verified WP V8-compatible causal panel "
             f"{config.history.start_date}-{config.history.end_date}",
             flush=True,
         )
@@ -399,7 +422,7 @@ def load_panel_partitions(
 ) -> pd.DataFrame:
     files = sorted(Path(path).glob("wp_v3_panel_*.parquet"))
     if not files:
-        raise FileNotFoundError(f"no WP V7 panel partitions under {path}")
+        raise FileNotFoundError(f"no WP V8 panel partitions under {path}")
     start = str(start_date or "")
     end = str(end_date or "")
     if start:
@@ -1910,9 +1933,6 @@ def _reusable_panel_manifest(
     if manifest.get("schema_version") != PANEL_SCHEMA_VERSION:
         return None
     expected = {
-        "strategy_id": config.strategy.strategy_id,
-        "feature_version": config.model.feature_version,
-        "panel_builder_fingerprint": _panel_builder_fingerprint(),
         "minute_normalizer_fingerprint": _minute_normalizer_fingerprint(),
         "tushare_cache_schema_version": TUSHARE_CACHE_SCHEMA_VERSION,
         "requested_start": config.history.start_date,
@@ -1922,6 +1942,21 @@ def _reusable_panel_manifest(
         "exit_contract": config.strategy.exit_contract,
     }
     if any(manifest.get(key) != value for key, value in expected.items()):
+        return None
+    if manifest.get("strategy_id") not in {
+        config.strategy.strategy_id,
+        V7_COMPATIBLE_STRATEGY_ID,
+    }:
+        return None
+    if manifest.get("feature_version") not in {
+        config.model.feature_version,
+        V7_COMPATIBLE_FEATURE_VERSION,
+    }:
+        return None
+    if manifest.get("panel_builder_fingerprint") not in {
+        _panel_builder_fingerprint(),
+        V7_COMPATIBLE_PANEL_BUILDER,
+    }:
         return None
     if float(manifest.get("coverage", 0.0) or 0.0) < 0.98:
         return None

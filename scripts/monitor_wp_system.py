@@ -28,7 +28,7 @@ PAGES_MANIFEST_URL = os.environ.get(
 )
 MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "10"))
 ACCEPTED_HEALTH_STATUSES = {"ok", "无符合条件股票"}
-ACCEPTED_SOURCE_MODES = {"direct_tushare_v7"}
+ACCEPTED_SOURCE_MODES = {"direct_tushare_v8"}
 ACTIVE_RUN_STATUSES = {"queued", "in_progress", "waiting", "pending"}
 
 

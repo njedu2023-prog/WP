@@ -105,7 +105,7 @@ def walk_forward_backtest(
         training = ordered.loc[row_dates.isin(model_train_dates)]
         testing = ordered.loc[row_dates.isin(test_dates)]
         print(
-            f"[wp-v7] walk-forward fold {fold_number}/{total_folds} "
+            f"[wp-v8] walk-forward fold {fold_number}/{total_folds} "
             f"train={model_train_dates[0]}..{model_train_dates[-1]} "
             f"test={test_dates[0]}..{test_dates[-1]}",
             flush=True,
@@ -114,7 +114,7 @@ def walk_forward_backtest(
             training,
             config,
             allow_below_minimum=False,
-            model_version=f"wpv7-wf-{test_dates[0]}",
+            model_version=f"wpv8-wf-{test_dates[0]}",
         )
         prediction = predict_bundle(bundle, testing)
         prediction["fold"] = fold_number
@@ -122,7 +122,7 @@ def walk_forward_backtest(
         prediction["test_end"] = str(test_dates[-1])
         fold_rows.append(prediction)
         print(
-            f"[wp-v7] completed fold {fold_number}/{total_folds} "
+            f"[wp-v8] completed fold {fold_number}/{total_folds} "
             f"prediction_rows={len(prediction):,}",
             flush=True,
         )

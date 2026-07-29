@@ -185,8 +185,11 @@ def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFram
     )
 
     group_keys = [panel["trade_date"], panel["signal_slot"]]
-    eligible_return = panel["conditional_net_return_pct"].where(
-        round_trip_fill
+    # V8 learns the full executable outcome, not only the easy subset that
+    # completed both legs. Entry misses remain zero-return cash outcomes and
+    # failed exits retain the explicit conservative penalty in the rank target.
+    eligible_return = panel["net_return_pct"].where(
+        panel["execution_eligible"] & observable
     )
     return_rank = eligible_return.groupby(group_keys, sort=False).rank(
         method="average",
@@ -194,7 +197,7 @@ def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFram
     )
     panel["_target_net_return_rank"] = return_rank
     panel["target_cross_section_top"] = np.where(
-        round_trip_fill,
+        panel["execution_eligible"] & observable,
         return_rank.ge(1.0 - config.model.cross_section_top_fraction).astype("int8"),
         np.nan,
     )

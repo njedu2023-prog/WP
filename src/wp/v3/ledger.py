@@ -130,6 +130,12 @@ def record_shadow_slot(
                     row.get("conditional_expected_net_return_pct")
                 ),
                 "expected_utility_pct": _float(row.get("expected_utility_pct")),
+                "expected_utility_lower_pct": _float(
+                    row.get("expected_utility_lower_pct")
+                ),
+                "expected_return_model_spread": _float(
+                    row.get("expected_return_model_spread")
+                ),
                 "downside_q10_pct": _float(row.get("downside_q10_pct")),
                 "ranking_score": _float(row.get("ranking_score")),
                 "selection_score": _float(row.get("selection_score")),
@@ -171,6 +177,8 @@ def record_shadow_slot(
                         "fill_probability_model_spread",
                         "conditional_expected_net_return_pct",
                         "expected_utility_pct",
+                        "expected_utility_lower_pct",
+                        "expected_return_model_spread",
                         "downside_q10_pct",
                         "ranking_score",
                         "selection_score",
@@ -190,6 +198,7 @@ def record_shadow_slot(
                         "passes_conditional_probability",
                         "passes_severe_loss",
                         "passes_expected_utility",
+                        "passes_expected_utility_lower",
                         "passes_downside",
                         "passes_selection_rank",
                         "passes_prior_oos_evidence",

@@ -1,6 +1,6 @@
 strategy:
-  strategy_id: wp_t1_net_profit_v7
-  model_family: causal_fill_conditional_return_v7
+  strategy_id: wp_t1_net_profit_v8
+  model_family: causal_all_in_net_return_v8
   timezone: Asia/Shanghai
   signal_slots: ["14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50"]
   candidate_freeze_time: "14:55"
@@ -30,8 +30,8 @@ execution:
   non_fill_penalty_pct: -10.00
 
 model:
-  policy_implementation_version: wp_v7_nested_oos_policy_1
-  feature_version: wp_v7_causal_features_1
+  policy_implementation_version: wp_v8_nested_oos_policy_1
+  feature_version: wp_v8_causal_features_1
   minimum_train_days: 252
   calibration_days: 42
   policy_design_days: 84
@@ -62,6 +62,7 @@ model:
   max_probability_model_spread: 0.15
   max_fill_probability_model_spread: 0.10
   max_selection_rank_spread: 0.25
+  max_expected_return_model_spread_pct: 1.00
   min_train_rows: 20000
   max_training_rows_per_slot: 240
   random_seed: 20260727

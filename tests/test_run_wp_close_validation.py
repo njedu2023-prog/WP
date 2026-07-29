@@ -48,7 +48,7 @@ def test_v3_close_validation_commits_only_when_truth_state_changes(
 
     assert run_wp_close_validation.run_once() == 0
     assert len(commands) == 2
-    assert "Validate WP V7 next-day close" in commands[1]
+    assert "Validate WP V8 next-day close" in commands[1]
 
 
 def test_delayed_scheduled_validation_still_runs_once(monkeypatch):

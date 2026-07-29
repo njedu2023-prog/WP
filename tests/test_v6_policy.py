@@ -40,6 +40,8 @@ def _profitable_predictions(days: int, *, start: str = "2025-01-02") -> pd.DataF
                         "p_severe_loss": 0.12,
                         "selection_rank_pct": 0.999,
                         "expected_utility_pct": 0.55,
+                        "expected_utility_lower_pct": 0.45,
+                        "expected_return_model_spread": 0.05,
                         "downside_q10_pct": -1.0,
                         "probability_model_spread": 0.02,
                         "fill_probability_model_spread": 0.01,
@@ -145,6 +147,7 @@ def test_policy_rejects_each_execution_probability_below_its_gate():
         severe_loss_probability_max=0.25,
         selection_rank_min=0.998,
         expected_utility_min_pct=0.10,
+        expected_utility_lower_min_pct=0.00,
         downside_min_pct=-2.0,
     )
     frame.loc[frame.index[0], "p_entry_fill"] = 0.984
@@ -166,6 +169,31 @@ def test_policy_rejects_each_execution_probability_below_its_gate():
         diagnostics.loc[frame.index[2], "passes_round_trip_fill_probability"]
         == False
     )
+
+
+def test_policy_requires_conservative_expected_return_and_model_agreement():
+    frame = _profitable_predictions(1).iloc[:2].copy()
+    config = _test_config()
+    selection = select_candidate_policy(
+        _profitable_predictions(20),
+        _profitable_predictions(10, start="2025-03-03"),
+        config,
+    )
+    frame.loc[frame.index[0], "expected_utility_lower_pct"] = -1.0
+    frame.loc[frame.index[1], "expected_return_model_spread"] = 2.0
+
+    diagnostics = candidate_policy_diagnostics(
+        frame,
+        selection.policy,
+        config,
+    )
+
+    assert not diagnostics["passes_policy"].any()
+    assert not diagnostics.loc[
+        frame.index[0],
+        "passes_expected_utility_lower",
+    ]
+    assert not diagnostics.loc[frame.index[1], "passes_stability"]
 
 
 def test_failed_policy_search_reports_nearest_gate_failures():

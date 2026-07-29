@@ -23,9 +23,9 @@ from .io import atomic_write_json, atomic_write_parquet
 from .policy import apply_nested_oos_policies
 
 
-SHARD_SCHEMA_VERSION = "wp_v7_walk_forward_shard_1"
-SHARD_MANIFEST_NAME = "wp_v7_fold_shard_manifest.json"
-SHARD_PREDICTIONS_NAME = "wp_v7_fold_predictions.parquet"
+SHARD_SCHEMA_VERSION = "wp_v8_walk_forward_shard_1"
+SHARD_MANIFEST_NAME = "wp_v8_fold_shard_manifest.json"
+SHARD_PREDICTIONS_NAME = "wp_v8_fold_predictions.parquet"
 
 # Fold workers need the full feature panel, but aggregation only needs immutable
 # identity, execution truth, model outputs, and audit metadata. Keeping this
@@ -72,6 +72,8 @@ AGGREGATE_PREDICTION_COLUMNS = (
     "fill_probability_model_spread",
     "conditional_expected_net_return_pct",
     "expected_utility_pct",
+    "expected_utility_lower_pct",
+    "expected_return_model_spread",
     "downside_q10_pct",
     "ranking_score",
     "selection_score",

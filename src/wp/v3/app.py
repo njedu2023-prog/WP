@@ -221,7 +221,7 @@ def run_v3() -> dict[str, Any]:
         "signal_slot": signal_slot,
         "source_scheduled_slot": signal_slot,
         "market_data_time": source_manifest.get("market_data_time"),
-        "source_mode": "direct_tushare_v7",
+        "source_mode": "direct_tushare_v8",
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
         "signal_capture_started_at": source_manifest.get("capture_started_at"),
@@ -581,7 +581,7 @@ def _missing_input_state(
         return (
             "MODEL_NOT_READY",
             "model_not_ready",
-            "V7 研究模型尚未发布，所有候选保持关闭。",
+            "V8 研究模型尚未发布，所有候选保持关闭。",
         )
     if phase == "PRE_SIGNAL":
         return (

@@ -163,7 +163,7 @@ def test_shard_aggregation_rejects_missing_or_tampered_evidence(
     assert combined.metrics["nested_policy"]["final"]["policy"]["authorized"] is False
     assert "unneeded_training_feature" not in combined.predictions.columns
 
-    (shard_root / "shard-1" / "wp_v7_fold_shard_manifest.json").unlink()
+    (shard_root / "shard-1" / "wp_v8_fold_shard_manifest.json").unlink()
     with pytest.raises(RuntimeError, match="incomplete walk-forward shards"):
         load_walk_forward_shards(
             shard_root,

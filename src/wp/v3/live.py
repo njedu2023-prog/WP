@@ -43,7 +43,7 @@ def run_live_inference(
             policy_fingerprint=None,
             formal_authorization=False,
             predictions=empty,
-            message="V7 has no trained artifact; no candidate can be authorized.",
+            message="V8 has no trained artifact; no candidate can be authorized.",
         )
 
     try:
@@ -60,7 +60,7 @@ def run_live_inference(
             formal_authorization=False,
             predictions=rejected,
             message=(
-                "Model artifact failed the V7 schema or integrity check; "
+                "Model artifact failed the V8 schema or integrity check; "
                 f"all candidates are rejected ({type(error).__name__})."
             ),
         )

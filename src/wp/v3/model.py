@@ -38,7 +38,7 @@ from .statistics import clustered_binary_lower
 
 
 TARGET_RANK_COLUMN = "_target_net_return_rank"
-MODEL_SCHEMA_VERSION = "wp_v7_fill_conditional_bundle_1"
+MODEL_SCHEMA_VERSION = "wp_v8_all_in_net_return_bundle_1"
 
 
 @dataclass
@@ -90,9 +90,9 @@ class ModelMember:
     train_end: str
     entry_fill_classifier: Any
     exit_fill_classifier: Any
-    conditional_positive_classifier: Any
+    net_positive_classifier: Any
     cross_section_classifier: Any
-    conditional_severe_loss_classifier: Any
+    severe_loss_classifier: Any
     ranker: Any
     mean_regressor: Any
     downside_regressor: Any
@@ -134,7 +134,6 @@ class ModelBundle:
     members: list[ModelMember]
     entry_fill_calibrator: BetaCalibrator
     exit_fill_calibrator: BetaCalibrator
-    conditional_positive_calibrator: BetaCalibrator
     positive_calibrator: BetaCalibrator
     cross_section_calibrator: BetaCalibrator
     severe_loss_calibrator: BetaCalibrator
@@ -172,7 +171,7 @@ def train_bundle(
     eligible_rows = int(len(eligible))
     if not allow_below_minimum and len(eligible) < config.model.min_train_rows:
         raise ValueError(
-            f"V7 training requires {config.model.min_train_rows:,} eligible "
+            f"V8 training requires {config.model.min_train_rows:,} eligible "
             f"labelled rows; received {len(eligible):,}"
         )
 
@@ -184,19 +183,19 @@ def train_bundle(
     )
     if not allow_below_minimum and len(unique_dates) < minimum_dates:
         raise ValueError(
-            f"V7 temporal training requires at least {minimum_dates} dates; "
+            f"V8 temporal training requires at least {minimum_dates} dates; "
             f"received {len(unique_dates)}"
         )
     if allow_below_minimum and len(unique_dates) < (
         config.model.calibration_days + config.model.purge_days + 20
     ):
-        raise ValueError("insufficient temporal depth for V7 calibration")
+        raise ValueError("insufficient temporal depth for V8 calibration")
 
     calibration_dates = unique_dates[-config.model.calibration_days :]
     fit_end = len(unique_dates) - config.model.calibration_days - config.model.purge_days
     fit_dates = unique_dates[:fit_end]
     if len(fit_dates) < 20:
-        raise ValueError("V7 fit period is too short")
+        raise ValueError("V8 fit period is too short")
     development_dates = fit_dates[-min(max(config.model.ensemble_windows_days), len(fit_dates)) :]
     sampled_development = _deterministic_training_sample(
         eligible,
@@ -214,7 +213,7 @@ def train_bundle(
     sampled_development = enrich_feature_frame(sampled_development, copy=False)
     calibration = enrich_feature_frame(calibration, copy=False)
     print(
-        f"[wp-v7] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
+        f"[wp-v8] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
         f"rows={len(sampled_development):,} "
         f"calibration={calibration_dates[0]}..{calibration_dates[-1]} "
         f"rows={len(calibration):,}/{eligible_calibration_rows:,}",
@@ -241,8 +240,16 @@ def train_bundle(
         calibration["target_exit_fillable"],
         errors="coerce",
     ).notna()
-    conditional_mask = pd.to_numeric(
-        calibration["target_conditional_net_positive"],
+    positive_mask = pd.to_numeric(
+        calibration["target_net_positive"],
+        errors="coerce",
+    ).notna()
+    cross_mask = pd.to_numeric(
+        calibration["target_cross_section_top"],
+        errors="coerce",
+    ).notna()
+    severe_mask = pd.to_numeric(
+        calibration["target_severe_loss"],
         errors="coerce",
     ).notna()
     entry_fill_calibrator = BetaCalibrator().fit(
@@ -255,57 +262,43 @@ def train_bundle(
         calibration.loc[exit_mask, "target_exit_fillable"].astype(int).to_numpy(),
         calibration_weight[exit_mask.to_numpy()],
     )
-    conditional_positive_calibrator = BetaCalibrator().fit(
+    positive_calibrator = BetaCalibrator().fit(
         calibration_raw.loc[
-            conditional_mask,
-            "p_conditional_net_positive_raw",
+            positive_mask,
+            "p_net_positive_raw",
         ].to_numpy(),
         calibration.loc[
-            conditional_mask,
-            "target_conditional_net_positive",
+            positive_mask,
+            "target_net_positive",
         ].astype(int).to_numpy(),
-        calibration_weight[conditional_mask.to_numpy()],
-    )
-    calibrated_component_product = (
-        entry_fill_calibrator.predict(
-            calibration_raw["p_entry_fill_raw"].to_numpy()
-        )
-        * exit_fill_calibrator.predict(
-            calibration_raw["p_exit_fill_raw"].to_numpy()
-        )
-        * conditional_positive_calibrator.predict(
-            calibration_raw["p_conditional_net_positive_raw"].to_numpy()
-        )
-    )
-    positive_calibrator = BetaCalibrator().fit(
-        calibrated_component_product,
-        calibration["target_net_positive"].astype(int).to_numpy(),
-        calibration_weight,
+        calibration_weight[positive_mask.to_numpy()],
     )
     cross_calibrator = BetaCalibrator().fit(
         calibration_raw.loc[
-            conditional_mask,
+            cross_mask,
             "p_cross_section_top_raw",
         ].to_numpy(),
         calibration.loc[
-            conditional_mask,
+            cross_mask,
             "target_cross_section_top",
         ].astype(int).to_numpy(),
-        calibration_weight[conditional_mask.to_numpy()],
+        calibration_weight[cross_mask.to_numpy()],
     )
     severe_calibrator = BetaCalibrator().fit(
         calibration_raw.loc[
-            conditional_mask,
-            "p_conditional_severe_loss_raw",
+            severe_mask,
+            "p_severe_loss_raw",
         ].to_numpy(),
         calibration.loc[
-            conditional_mask,
-            "target_conditional_severe_loss",
+            severe_mask,
+            "target_severe_loss",
         ].astype(int).to_numpy(),
-        calibration_weight[conditional_mask.to_numpy()],
+        calibration_weight[severe_mask.to_numpy()],
     )
     calibration_table = _build_calibration_table(
-        positive_calibrator.predict(calibrated_component_product),
+        positive_calibrator.predict(
+            calibration_raw["p_net_positive_raw"].to_numpy()
+        ),
         calibration["target_net_positive"].astype(int).to_numpy(),
         calibration["trade_date"].astype(str).to_numpy(),
         seed=config.model.random_seed,
@@ -359,7 +352,7 @@ def train_bundle(
         contract,
         candidate_policy,
     )
-    version = model_version or f"wpv7-{unique_dates[-1]}-{eligible_rows}"
+    version = model_version or f"wpv8-{unique_dates[-1]}-{eligible_rows}"
     evidence = (
         dict(policy_selection.confirmation)
         if policy_selection is not None
@@ -421,7 +414,6 @@ def train_bundle(
         members=execution_members,
         entry_fill_calibrator=entry_fill_calibrator,
         exit_fill_calibrator=exit_fill_calibrator,
-        conditional_positive_calibrator=conditional_positive_calibrator,
         positive_calibrator=positive_calibrator,
         cross_section_calibrator=cross_calibrator,
         severe_loss_calibrator=severe_calibrator,
@@ -525,7 +517,7 @@ def save_bundle(bundle: ModelBundle, path: str | Path) -> None:
 def load_bundle(path: str | Path) -> ModelBundle:
     bundle = joblib.load(Path(path))
     if not isinstance(bundle, ModelBundle):
-        raise TypeError("model artifact is not a WP V7 ModelBundle")
+        raise TypeError("model artifact is not a WP V8 ModelBundle")
     if bundle.schema_version != MODEL_SCHEMA_VERSION:
         raise ValueError("unsupported WP model bundle schema")
     return bundle
@@ -537,7 +529,6 @@ def bundle_metadata(bundle: ModelBundle) -> dict[str, Any]:
         "members",
         "entry_fill_calibrator",
         "exit_fill_calibrator",
-        "conditional_positive_calibrator",
         "positive_calibrator",
         "cross_section_calibrator",
         "severe_loss_calibrator",
@@ -585,9 +576,13 @@ def _fit_members(
                 errors="coerce",
             ).notna()
         ].copy()
-        conditional_frame = member_frame.loc[
+        all_in_frame = member_frame.loc[
             pd.to_numeric(
-                member_frame["target_conditional_net_positive"],
+                member_frame["target_net_positive"],
+                errors="coerce",
+            ).notna()
+            & pd.to_numeric(
+                member_frame["net_return_pct"],
                 errors="coerce",
             ).notna()
             & pd.to_numeric(
@@ -595,11 +590,11 @@ def _fit_members(
                 errors="coerce",
             ).notna()
         ].copy()
-        if len(exit_frame) < 100 or len(conditional_frame) < 100:
+        if len(exit_frame) < 100 or len(all_in_frame) < 100:
             continue
         features = feature_matrix(member_frame)
         exit_features = feature_matrix(exit_frame)
-        conditional_features = feature_matrix(conditional_frame)
+        all_in_features = feature_matrix(all_in_frame)
         weights = _group_temporal_weights(
             member_frame,
             half_life_days=config.model.temporal_half_life_days,
@@ -608,12 +603,12 @@ def _fit_members(
             exit_frame,
             half_life_days=config.model.temporal_half_life_days,
         )
-        conditional_weights = _group_temporal_weights(
-            conditional_frame,
+        all_in_weights = _group_temporal_weights(
+            all_in_frame,
             half_life_days=config.model.temporal_half_life_days,
         )
         rank_percentile, rank_groups = _ranking_target_and_groups(
-            conditional_frame
+            all_in_frame
         )
         rank_relevance = np.clip(
             np.floor(rank_percentile * 5.0),
@@ -622,14 +617,14 @@ def _fit_members(
         ).astype(int)
         seed = config.model.random_seed + seed_offset + int(window)
         print(
-            f"[wp-v7] fit member window={len(member_dates)}d "
+            f"[wp-v8] fit member window={len(member_dates)}d "
             f"rows={len(member_frame):,} exit={len(exit_frame):,} "
-            f"round_trip={len(conditional_frame):,}",
+            f"all_in={len(all_in_frame):,}",
             flush=True,
         )
         members.append(
             ModelMember(
-                name=f"fill_conditional_{len(member_dates)}d",
+                name=f"all_in_net_return_{len(member_dates)}d",
                 window_days=int(len(member_dates)),
                 train_start=str(member_dates[0]),
                 train_end=str(member_dates[-1]),
@@ -645,38 +640,34 @@ def _fit_members(
                     exit_weights,
                     seed + 1_000,
                 ),
-                conditional_positive_classifier=_fit_classifier(
-                    conditional_features,
-                    conditional_frame[
-                        "target_conditional_net_positive"
-                    ].astype(int).to_numpy(),
-                    conditional_weights,
+                net_positive_classifier=_fit_classifier(
+                    all_in_features,
+                    all_in_frame["target_net_positive"].astype(int).to_numpy(),
+                    all_in_weights,
                     seed + 2_000,
                 ),
                 cross_section_classifier=_fit_classifier(
-                    conditional_features,
-                    conditional_frame[
+                    all_in_features,
+                    all_in_frame[
                         "target_cross_section_top"
                     ].astype(int).to_numpy(),
-                    conditional_weights,
+                    all_in_weights,
                     seed + 3_000,
                 ),
-                conditional_severe_loss_classifier=_fit_classifier(
-                    conditional_features,
-                    conditional_frame[
-                        "target_conditional_severe_loss"
-                    ].astype(int).to_numpy(),
-                    conditional_weights,
+                severe_loss_classifier=_fit_classifier(
+                    all_in_features,
+                    all_in_frame["target_severe_loss"].astype(int).to_numpy(),
+                    all_in_weights,
                     seed + 4_000,
                 ),
                 ranker=(
                     None
                     if calibration_only
                     else _fit_ranker(
-                        conditional_features,
+                        all_in_features,
                         rank_relevance,
                         rank_groups,
-                        conditional_weights,
+                        all_in_weights,
                         seed + 5_000,
                     )
                 ),
@@ -684,26 +675,26 @@ def _fit_members(
                     None
                     if calibration_only
                     else _fit_regressor(
-                        conditional_features,
+                        all_in_features,
                         pd.to_numeric(
-                            conditional_frame["conditional_net_return_pct"],
+                            all_in_frame["net_return_pct"],
                             errors="coerce",
                         ).clip(-15.0, 15.0).to_numpy(),
-                        conditional_weights,
+                        all_in_weights,
                         seed + 6_000,
-                        objective="regression_l1",
+                        objective="regression_l2",
                     )
                 ),
                 downside_regressor=(
                     None
                     if calibration_only
                     else _fit_regressor(
-                        conditional_features,
+                        all_in_features,
                         pd.to_numeric(
-                            conditional_frame["conditional_net_return_pct"],
+                            all_in_frame["net_return_pct"],
                             errors="coerce",
                         ).clip(-15.0, 15.0).to_numpy(),
-                        conditional_weights,
+                        all_in_weights,
                         seed + 7_000,
                         objective="quantile",
                         alpha=0.10,
@@ -713,12 +704,12 @@ def _fit_members(
         )
         del features
         del exit_features
-        del conditional_features
+        del all_in_features
         del exit_frame
-        del conditional_frame
+        del all_in_frame
         del member_frame
         del exit_weights
-        del conditional_weights
+        del all_in_weights
         del rank_groups
         del rank_percentile
         del rank_relevance
@@ -728,7 +719,7 @@ def _fit_members(
     required = 1 if allow_single else 2
     if len(members) < required:
         raise ValueError(
-            f"V7 temporal ensemble requires at least {required} trained members"
+            f"V8 temporal ensemble requires at least {required} trained members"
         )
     return members
 
@@ -750,10 +741,10 @@ def _raw_score_frame(
             for member in members
         ]
     )
-    conditional_positive_members = np.column_stack(
+    net_positive_members = np.column_stack(
         [
             _predict_probability(
-                member.conditional_positive_classifier,
+                member.net_positive_classifier,
                 features,
             )
             for member in members
@@ -768,25 +759,19 @@ def _raw_score_frame(
     severe_members = np.column_stack(
         [
             _predict_probability(
-                member.conditional_severe_loss_classifier,
+                member.severe_loss_classifier,
                 features,
             )
             for member in members
         ]
     )
-    positive_members = (
-        entry_members * exit_members * conditional_positive_members
-    )
     return pd.DataFrame(
         {
             "p_entry_fill_raw": entry_members.mean(axis=1),
             "p_exit_fill_raw": exit_members.mean(axis=1),
-            "p_conditional_net_positive_raw": (
-                conditional_positive_members.mean(axis=1)
-            ),
-            "p_net_positive_raw": positive_members.mean(axis=1),
+            "p_net_positive_raw": net_positive_members.mean(axis=1),
             "p_cross_section_top_raw": cross_members.mean(axis=1),
-            "p_conditional_severe_loss_raw": severe_members.mean(axis=1),
+            "p_severe_loss_raw": severe_members.mean(axis=1),
         },
         index=frame.index,
     )
@@ -808,10 +793,10 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
             for member in members
         ]
     )
-    conditional_positive_members_raw = np.column_stack(
+    net_positive_members_raw = np.column_stack(
         [
             _predict_probability(
-                member.conditional_positive_classifier,
+                member.net_positive_classifier,
                 features,
             )
             for member in members
@@ -826,14 +811,11 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     severe_members_raw = np.column_stack(
         [
             _predict_probability(
-                member.conditional_severe_loss_classifier,
+                member.severe_loss_classifier,
                 features,
             )
             for member in members
         ]
-    )
-    positive_members_raw = (
-        entry_members_raw * exit_members_raw * conditional_positive_members_raw
     )
     entry_members = np.column_stack(
         [
@@ -847,23 +829,12 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
             for index in range(exit_members_raw.shape[1])
         ]
     )
-    conditional_positive_members = np.column_stack(
-        [
-            bundle.conditional_positive_calibrator.predict(
-                conditional_positive_members_raw[:, index]
-            )
-            for index in range(conditional_positive_members_raw.shape[1])
-        ]
-    )
-    calibrated_component_members = (
-        entry_members * exit_members * conditional_positive_members
-    )
     positive_members = np.column_stack(
         [
             bundle.positive_calibrator.predict(
-                calibrated_component_members[:, index]
+                net_positive_members_raw[:, index]
             )
-            for index in range(calibrated_component_members.shape[1])
+            for index in range(net_positive_members_raw.shape[1])
         ]
     )
     cross_members = np.column_stack(
@@ -909,28 +880,32 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     exit_probability = bundle.exit_fill_calibrator.predict(
         exit_members_raw.mean(axis=1)
     )
-    conditional_probability = bundle.conditional_positive_calibrator.predict(
-        conditional_positive_members_raw.mean(axis=1)
-    )
-    calibrated_component_probability = (
-        entry_probability * exit_probability * conditional_probability
-    )
     probability = bundle.positive_calibrator.predict(
-        calibrated_component_probability
+        net_positive_members_raw.mean(axis=1)
     )
     round_trip_members = entry_members * exit_members
     round_trip_probability = entry_probability * exit_probability
+    conditional_probability = np.clip(
+        probability / np.maximum(round_trip_probability, 1e-4),
+        0.0,
+        1.0,
+    )
     cross_probability = bundle.cross_section_calibrator.predict(
         cross_members_raw.mean(axis=1)
     )
     severe_probability = bundle.severe_loss_calibrator.predict(
         severe_members_raw.mean(axis=1)
     )
-    conditional_expected = expected_members.mean(axis=1)
-    conditional_downside = downside_members.mean(axis=1)
-    expected_utility = entry_probability * (
-        exit_probability * conditional_expected
-        + (1.0 - exit_probability) * bundle.exit_non_fill_penalty_pct
+    expected_utility = expected_members.mean(axis=1)
+    expected_utility_lower = np.quantile(
+        expected_members,
+        0.10,
+        axis=1,
+    )
+    all_in_downside = downside_members.mean(axis=1)
+    conditional_expected = expected_utility / np.maximum(
+        entry_probability,
+        1e-4,
     )
     rank_score = rank_members.mean(axis=1)
     positive_rank = _group_percentile_rank(probability, frame)
@@ -938,16 +913,11 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     cross_rank = _group_percentile_rank(cross_probability, frame)
     severe_safe_rank = _group_percentile_rank(1.0 - severe_probability, frame)
     expected_rank = _group_percentile_rank(expected_utility, frame)
-    conditional_expected_rank = _group_percentile_rank(
-        conditional_expected,
-        frame,
-    )
-    downside_rank = _group_percentile_rank(conditional_downside, frame)
+    downside_rank = _group_percentile_rank(all_in_downside, frame)
     selection_score = (
-        0.30 * positive_rank
-        + 0.20 * expected_rank
-        + 0.15 * rank_score
-        + 0.10 * conditional_expected_rank
+        0.30 * expected_rank
+        + 0.25 * rank_score
+        + 0.20 * positive_rank
         + 0.10 * fill_rank
         + 0.05 * cross_rank
         + 0.05 * downside_rank
@@ -955,9 +925,9 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     )
 
     result = frame.copy()
-    result["p_net_positive_raw"] = positive_members_raw.mean(axis=1)
+    result["p_net_positive_raw"] = net_positive_members_raw.mean(axis=1)
     result["p_net_positive_component_product"] = (
-        calibrated_component_probability
+        round_trip_probability * conditional_probability
     )
     result["p_entry_fill"] = entry_probability
     result["p_exit_fill_given_entry"] = exit_probability
@@ -980,7 +950,9 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     result["fill_probability_model_spread"] = round_trip_members.std(axis=1)
     result["conditional_expected_net_return_pct"] = conditional_expected
     result["expected_utility_pct"] = expected_utility
-    result["downside_q10_pct"] = conditional_downside
+    result["expected_utility_lower_pct"] = expected_utility_lower
+    result["expected_return_model_spread"] = expected_members.std(axis=1)
+    result["downside_q10_pct"] = all_in_downside
     result["ranking_score"] = rank_score
     result["selection_score"] = selection_score
     result["selection_rank_pct"] = _group_percentile_rank(
@@ -1155,7 +1127,10 @@ def _fit_regressor(
             **kwargs,
         )
         return model.fit(features, target, sample_weight=weights)
-    loss = "absolute_error" if objective == "regression_l1" else objective
+    loss = {
+        "regression_l1": "absolute_error",
+        "regression_l2": "squared_error",
+    }.get(objective, objective)
     kwargs = {"loss": loss}
     if alpha is not None:
         kwargs["quantile"] = alpha
@@ -1198,7 +1173,7 @@ def _ranking_target_and_groups(
     else:
         percentile = (
             pd.to_numeric(
-                frame["conditional_net_return_pct"],
+                frame["net_return_pct"],
                 errors="coerce",
             )
             .groupby([frame[column] for column in keys], sort=False)
@@ -1220,18 +1195,17 @@ def _attach_full_universe_rank_target(
     copy: bool = True,
 ) -> pd.DataFrame:
     result = frame.copy() if copy else frame
-    if TARGET_RANK_COLUMN not in result:
-        result[TARGET_RANK_COLUMN] = (
-            pd.to_numeric(
-                result["conditional_net_return_pct"],
-                errors="coerce",
-            )
-            .groupby(
-                [result["trade_date"], result["signal_slot"]],
-                sort=False,
-            )
-            .rank(method="average", pct=True)
+    result[TARGET_RANK_COLUMN] = (
+        pd.to_numeric(
+            result["net_return_pct"],
+            errors="coerce",
         )
+        .groupby(
+            [result["trade_date"], result["signal_slot"]],
+            sort=False,
+        )
+        .rank(method="average", pct=True)
+    )
     return result
 
 
@@ -1242,6 +1216,7 @@ def _ensure_multitask_targets(
     copy: bool = True,
 ) -> pd.DataFrame:
     result = frame.copy() if copy else frame
+    all_in_returns = pd.to_numeric(result["net_return_pct"], errors="coerce")
     conditional_returns = pd.to_numeric(
         result["conditional_net_return_pct"],
         errors="coerce",
@@ -1272,18 +1247,17 @@ def _ensure_multitask_targets(
         )
     if "target_severe_loss" not in result:
         result["target_severe_loss"] = (
-            pd.to_numeric(result["net_return_pct"], errors="coerce")
+            all_in_returns
             .le(config.model.severe_loss_threshold_pct)
             .astype("int8")
         )
-    if "target_cross_section_top" not in result:
-        rank = pd.to_numeric(
-            result[TARGET_RANK_COLUMN],
-            errors="coerce",
-        )
-        result["target_cross_section_top"] = rank.ge(
-            1.0 - config.model.cross_section_top_fraction
-        ).where(round_trip).astype("Int8")
+    rank = pd.to_numeric(
+        result[TARGET_RANK_COLUMN],
+        errors="coerce",
+    )
+    result["target_cross_section_top"] = rank.ge(
+        1.0 - config.model.cross_section_top_fraction
+    ).astype("Int8")
     return result
 
 

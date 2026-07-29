@@ -52,18 +52,18 @@ def run_once() -> int:
         )
     )
     if before == after:
-        print(f"No V7 close-truth state change; pending_due={pending}.")
+        print(f"No V8 close-truth state change; pending_due={pending}.")
         return pending
     commit_paths = list(CLOSE_COMMIT_PATHS)
     archive = _latest_close_archive()
     if archive:
         commit_paths.append(archive)
     subprocess.run(
-        [sys.executable, "scripts/github_commit_paths.py", "Validate WP V7 next-day close", *commit_paths],
+        [sys.executable, "scripts/github_commit_paths.py", "Validate WP V8 next-day close", *commit_paths],
         check=True,
         env=env,
     )
-    print(f"V7 close-truth state committed; pending_due={pending}.")
+    print(f"V8 close-truth state committed; pending_due={pending}.")
     return pending
 
 

@@ -45,7 +45,7 @@ def _strict_json(value: object) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run full nested walk-forward research and register a WP V7 shadow model."
+        description="Run full nested walk-forward research and register a WP V8 shadow model."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument(
@@ -96,7 +96,7 @@ def main() -> int:
         if args.max_folds is not None:
             raise ValueError("--max-folds cannot be used with --shard-dir")
         print(
-            f"[wp-v7] validating and aggregating walk-forward shards "
+            f"[wp-v8] validating and aggregating walk-forward shards "
             f"from {args.shard_dir}",
             flush=True,
         )
@@ -124,7 +124,7 @@ def main() -> int:
             max_folds=args.max_folds,
         )
     print(
-        f"[wp-v7] OOS aggregation complete folds={len(backtest.folds)} "
+        f"[wp-v8] OOS aggregation complete folds={len(backtest.folds)} "
         f"rows={len(backtest.predictions):,} "
         f"candidates={len(backtest.candidates):,}",
         flush=True,
@@ -147,7 +147,7 @@ def main() -> int:
             end_date=panel_end,
         )
         print(
-            f"[wp-v7] final model panel={panel_start}..{panel_end} "
+            f"[wp-v8] final model panel={panel_start}..{panel_end} "
             f"rows={len(panel):,}",
             flush=True,
         )
@@ -194,7 +194,7 @@ def main() -> int:
     save_registry(registry, args.registry)
 
     summary = {
-        "schema_version": "wp_v7_research_summary_1",
+        "schema_version": "wp_v8_research_summary_1",
         "dataset": dataset_summary,
         "date_start": calendar_summary["evaluation_start_date"],
         "date_end": calendar_summary["evaluation_end_date"],

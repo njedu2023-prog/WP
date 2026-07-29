@@ -24,8 +24,9 @@ SCORE_COLUMNS = {
     "exit_fill_probability": "p_exit_fill_given_entry",
     "round_trip_fill_probability": "p_round_trip_fill",
     "conditional_positive_probability": "p_conditional_net_positive",
-    "expected_utility": "expected_utility_pct",
-    "conditional_expected_return": "conditional_expected_net_return_pct",
+    "all_in_expected_return": "expected_utility_pct",
+    "all_in_expected_return_lower": "expected_utility_lower_pct",
+    "expected_return_given_entry": "conditional_expected_net_return_pct",
     "cross_section_probability": "p_cross_section_top",
     "severe_loss_safety": "_severe_loss_safety",
     "learned_rank": "ranking_score",
@@ -40,7 +41,7 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v7_prediction_diagnostics_2",
+            "schema_version": "wp_v8_prediction_diagnostics_1",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
@@ -70,6 +71,8 @@ def build_prediction_diagnostics(
         "p_round_trip_fill",
         "p_conditional_net_positive",
         "expected_utility_pct",
+        "expected_utility_lower_pct",
+        "expected_return_model_spread",
         "conditional_expected_net_return_pct",
         "p_cross_section_top",
         "p_severe_loss",
@@ -129,7 +132,7 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v7_prediction_diagnostics_2",
+        "schema_version": "wp_v8_prediction_diagnostics_1",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),
@@ -151,6 +154,7 @@ def build_prediction_diagnostics(
                 **score_columns,
                 "downside_q10": "downside_q10_pct",
                 "model_spread": "probability_model_spread",
+                "expected_return_model_spread": "expected_return_model_spread",
                 "selection_rank_spread": "selection_rank_spread",
                 "selection_rank_percentile": "selection_rank_pct",
             }.items()
@@ -163,7 +167,8 @@ def build_prediction_diagnostics(
             config,
             score_columns={
                 "executable_positive_probability": "p_net_positive",
-                "expected_utility": "expected_utility_pct",
+                "all_in_expected_return": "expected_utility_pct",
+                "all_in_expected_return_lower": "expected_utility_lower_pct",
                 "selection_score": "selection_score",
                 "legacy_composite_rank": "_composite_rank",
             },
@@ -426,6 +431,9 @@ def _joint_gate_cohorts(
                     clean["_diagnostic_selected"] = (
                         utility_rank.ge(rank_threshold)
                         & clean["expected_utility_pct"].ge(utility_threshold)
+                        & clean["expected_utility_lower_pct"].ge(
+                            utility_threshold - 0.10
+                        )
                         & clean["p_entry_fill"].ge(entry_threshold)
                         & clean["p_exit_fill_given_entry"].ge(exit_threshold)
                     )
@@ -438,6 +446,9 @@ def _joint_gate_cohorts(
                         {
                             "rank_percentile_min": float(rank_threshold),
                             "expected_utility_min_pct": float(utility_threshold),
+                            "expected_utility_lower_min_pct": float(
+                                utility_threshold - 0.10
+                            ),
                             "entry_fill_probability_min": float(entry_threshold),
                             "exit_fill_probability_min": float(exit_threshold),
                             **_return_summary(selected, clustered=True),
