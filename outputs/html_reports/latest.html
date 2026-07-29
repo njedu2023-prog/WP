@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V7 尾盘候选助手</title>
+<title>WP V9 尾盘候选助手</title>
 <style>
 :root {
   --ink:#151a20; --muted:#65707c; --line:#d9dee4; --paper:#ffffff;
@@ -147,14 +147,14 @@ gap:16px;padding:2px 0;font-weight:700}
 <body>
 <header><div class="header-inner">
   <div>
-    <div class="brand-kicker">WP V7 · T+1 固定收盘退出</div>
+    <div class="brand-kicker">WP V9 · 可成交概率 × 条件收益</div>
     <h1>尾盘候选助手</h1>
     <div class="sub">14:20–14:50 观察全部合格票；没有合格票时明确保持空仓</div>
   </div>
   <div class="header-meta">
-    <div class="header-meta-row"><strong>20260729</strong><span class="phase-chip">收盘复盘</span></div>
-    <strong class="header-state warn">模型尚未就绪</strong>
-    <span class="header-update">更新于 2026-07-29 17:46:57</span>
+    <div class="header-meta-row"><strong>20260730</strong><span class="phase-chip">收盘复盘</span></div>
+    <strong class="header-state warn">影子观察（回测未通过）</strong>
+    <span class="header-update">更新于 2026-07-30 03:08:30</span>
   </div>
 </div></header>
 <main>
@@ -193,7 +193,7 @@ gap:16px;padding:2px 0;font-weight:700}
   
   <div class="empty"><strong>暂无候选需要验证</strong>候选出现后，会在下一交易日收盘后自动补齐净收益结果。</div>
 </section>
-
+<section class="band"><details class="disclosure"><summary><span><span class="disclosure-title">7 月 21–24 日旧系统证据回补</span><span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入正式策略收益</span></span></summary><div class="disclosure-body"><div class="table-wrap desktop-only"><table><thead><tr><th>交易日</th><th>合法盘中快照</th><th>盘后无效快照</th><th>最早快照</th><th>最晚快照</th><th>结论</th><th>说明</th></tr></thead><tbody><tr><td>2026-07-24</td><td class='num'>0</td><td class='num'>1</td><td>2026-07-24 15:30:54</td><td>2026-07-24 15:30:54</td><td class='warn'>无合法盘中名单</td><td>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</td></tr><tr><td>2026-07-23</td><td class='num'>0</td><td class='num'>1</td><td>2026-07-23 15:31:44</td><td>2026-07-23 15:31:44</td><td class='warn'>无合法盘中名单</td><td>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</td></tr><tr><td>2026-07-22</td><td class='num'>0</td><td class='num'>2</td><td>2026-07-22 15:34:27</td><td>2026-07-22 15:36:00</td><td class='warn'>无合法盘中名单</td><td>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</td></tr><tr><td>2026-07-21</td><td class='num'>2</td><td class='num'>2</td><td>2026-07-21 14:30:05</td><td>2026-07-21 15:16:24</td><td class='good'>有盘中证据，无合格票</td><td>旧版盘中正式意见为空仓；只保留为研究历史</td></tr></tbody></table></div><div class="mobile-list"><article class="validation-card"><div class="validation-card-head"><div><strong>2026-07-24</strong><span class='code'>旧系统盘中证据</span></div><span class='tag warn'>无合法盘中名单</span></div><dl class="card-stats" style="margin-top:12px"><div><dt>合法盘中快照</dt><dd>0</dd></div><div><dt>盘后无效快照</dt><dd>1</dd></div></dl><p class='foot'>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</p></article><article class="validation-card"><div class="validation-card-head"><div><strong>2026-07-23</strong><span class='code'>旧系统盘中证据</span></div><span class='tag warn'>无合法盘中名单</span></div><dl class="card-stats" style="margin-top:12px"><div><dt>合法盘中快照</dt><dd>0</dd></div><div><dt>盘后无效快照</dt><dd>1</dd></div></dl><p class='foot'>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</p></article><article class="validation-card"><div class="validation-card-head"><div><strong>2026-07-22</strong><span class='code'>旧系统盘中证据</span></div><span class='tag warn'>无合法盘中名单</span></div><dl class="card-stats" style="margin-top:12px"><div><dt>合法盘中快照</dt><dd>0</dd></div><div><dt>盘后无效快照</dt><dd>2</dd></div></dl><p class='foot'>没有14:20-14:50可交易时点快照；盘后名单无效，按未交易记账</p></article><article class="validation-card"><div class="validation-card-head"><div><strong>2026-07-21</strong><span class='code'>旧系统盘中证据</span></div><span class='tag good'>有盘中证据，无合格票</span></div><dl class="card-stats" style="margin-top:12px"><div><dt>合法盘中快照</dt><dd>2</dd></div><div><dt>盘后无效快照</dt><dd>2</dd></div></dl><p class='foot'>旧版盘中正式意见为空仓；只保留为研究历史</p></article></div></div></details></section>
 <section class="band" id="research">
   <details class="disclosure">
     <summary>
@@ -201,7 +201,7 @@ gap:16px;padding:2px 0;font-weight:700}
       <span class="disclosure-sub">三年样本外结果、150 日影子进度和全部晋级门槛</span></span>
     </summary>
     <div class="disclosure-body">
-      <div class="research-verdict">V7 三年滚动样本外研究尚未发布完成；当前没有实盘授权，也不会把旧模型结果当作 V7 结论。</div>
+      <div class="research-verdict">回测未通过：三年滚动样本外研究没有找到可在固定成本后稳定盈利、并通过独立确认的候选政策。</div>
       <div class="two-col">
         <div><h3>三年样本外证据</h3>
           <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
@@ -217,13 +217,13 @@ gap:16px;padding:2px 0;font-weight:700}
           <strong>0 / 150 个交易日</strong>
           <div class="progress" aria-label="150 日影子进度"><div></div></div>
           <p class="foot">只有三年回测和至少 150 个真实交易日的影子验证全部通过，模型才有资格进入生产。策略合同发生实质变化后重新计时。</p>
-          <p class="foot">尚未形成可评估的晋级记录。</p>
+          <div class="gate-list"><div class='gate'><span>三年回测</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_bound_to_exact_model</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子交易日</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子候选日</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子候选数量</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子胜率</span><strong class='no'>未通过</strong></div><div class='gate'><span>胜率置信下界</span><strong class='no'>未通过</strong></div><div class='gate'><span>按日胜率下界</span><strong class='no'>未通过</strong></div><div class='gate'><span>平均净收益</span><strong class='no'>未通过</strong></div><div class='gate'><span>按日收益下界</span><strong class='no'>未通过</strong></div><div class='gate'><span>净收益中位数</span><strong class='no'>未通过</strong></div><div class='gate'><span>盈亏因子</span><strong class='no'>未通过</strong></div><div class='gate'><span>入场可成交率</span><strong class='no'>未通过</strong></div><div class='gate'><span>退出可成交率</span><strong class='no'>未通过</strong></div><div class='gate'><span>概率校准误差</span><strong class='no'>未通过</strong></div><div class='gate'><span>50bp 压力测试</span><strong class='no'>未通过</strong></div></div>
         </div>
       </div>
     </div>
   </details>
 </section>
-
+<section class="band"><details class="disclosure"><summary><span><span class="disclosure-title">样本外模型诊断</span><span class="disclosure-sub">排序能力、逐层淘汰漏斗和每时点 Top-N；不会改变固定门槛</span></span></summary><div class="disclosure-body"><div class="metrics" style="grid-template-columns:repeat(4,1fr)"><div class='metric'><span>概率 ROC AUC</span><strong class=''>0.605</strong></div><div class='metric'><span>概率-收益秩相关</span><strong class=''>-0.054</strong></div><div class='metric'><span>选择分 ROC AUC</span><strong class=''>0.480</strong></div><div class='metric'><span>选择分-收益秩相关</span><strong class=''>0.073</strong></div></div><h3 style="margin-top:16px">逐层淘汰漏斗</h3><div class="table-wrap"><table><thead><tr><th>门槛</th><th>单项通过</th><th>单项比例</th><th>累计通过</th><th>累计比例</th></tr></thead><tbody><tr><td>可成交与流动性</td><td class='num'>1,551,890</td><td class='num'>100.00%</td><td class='num'>1,551,890</td><td class='num'>100.00%</td></tr><tr><td>此前样本外政策已授权</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>全部候选门槛</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>最终政策</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr></tbody></table></div><h3 style="margin-top:16px">每时点 Top-N 诊断</h3><p class="foot">仅检验排序能力；这些诊断组合没有被用来回填或改写固定策略。</p><div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th><th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th></tr></thead><tbody><tr><td>全路径净盈利概率</td><td class='num'>1</td><td class='num'>2,258</td><td class='num'>40.97%</td><td class='num'>38.95%</td><td class='num'>-0.50%</td></tr><tr><td>全路径净盈利概率</td><td class='num'>3</td><td class='num'>5,888</td><td class='num'>42.10%</td><td class='num'>40.85%</td><td class='num'>-0.35%</td></tr><tr><td>全路径净盈利概率</td><td class='num'>5</td><td class='num'>9,307</td><td class='num'>42.03%</td><td class='num'>41.03%</td><td class='num'>-0.34%</td></tr><tr><td>综合选择分</td><td class='num'>1</td><td class='num'>3,020</td><td class='num'>26.36%</td><td class='num'>24.82%</td><td class='num'>-0.16%</td></tr><tr><td>综合选择分</td><td class='num'>3</td><td class='num'>7,977</td><td class='num'>24.67%</td><td class='num'>23.74%</td><td class='num'>-0.14%</td></tr><tr><td>综合选择分</td><td class='num'>5</td><td class='num'>12,669</td><td class='num'>23.90%</td><td class='num'>23.17%</td><td class='num'>-0.16%</td></tr></tbody></table></div></div></details></section>
 <section class="band"><details class="disclosure"><summary><span><span class="disclosure-title">为什么没有成为候选</span><span class="disclosure-sub">查看接近门槛但未通过的股票及具体原因；这些股票不是候选名单</span></span></summary><div class="disclosure-body"><div class="empty">当前没有可解释的近门槛样本。</div></div></details></section>
 <section class="band">
   <details class="disclosure">
@@ -241,6 +241,6 @@ gap:16px;padding:2px 0;font-weight:700}
     退出：下一 A 股交易日 14:57 提交跌停价限价卖单参加收盘集合竞价；同一股票当日首次通过即锁定信号与后续结算价；人工实际成交与模型候选统计相互独立。</div>
   </details>
 </section>
-<section class="band tech-footer">报告版本 2026-07-29 17:46:57 · 政策指纹 无 · 模型指纹 无</section>
+<section class="band tech-footer">报告版本 2026-07-30 03:08:30 · 政策指纹 286ec59d00afd7f8e80d · 模型指纹 16695b7fab38a5428f70</section>
 </main>
 </body></html>
