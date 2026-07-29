@@ -1,0 +1,4 @@
+WP V9 causal hurdle net-return research trigger.
+requested_at=2026-07-29T22:54:36+08:00
+source_run_id=
+reason=Replace weak all-in ranking with separately calibrated execution and conditional-return models.

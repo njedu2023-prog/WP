@@ -127,7 +127,7 @@ def render_v3_dashboard(
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V8 尾盘候选助手</title>
+<title>WP V9 尾盘候选助手</title>
 <style>
 :root {{
   --ink:#151a20; --muted:#65707c; --line:#d9dee4; --paper:#ffffff;
@@ -271,7 +271,7 @@ gap:16px;padding:2px 0;font-weight:700}}
 <body>
 <header><div class="header-inner">
   <div>
-    <div class="brand-kicker">WP V8 · T+1 固定收盘退出</div>
+    <div class="brand-kicker">WP V9 · 可成交概率 × 条件收益</div>
     <h1>尾盘候选助手</h1>
     <div class="sub">14:20–14:50 观察全部合格票；没有合格票时明确保持空仓</div>
   </div>
@@ -418,6 +418,7 @@ def _candidate_table(
             + f"<td class='num'>{int(row.get('appearance_count') or 1)}</td>"
             f"<td class='num'>{_pct(row.get('p_entry_fill'))}</td>"
             f"<td class='num'>{_pct(row.get('p_exit_fill_given_entry'))}</td>"
+            f"<td class='num'>{_pct(row.get('p_conditional_net_positive'))}</td>"
             f"<td class='num good'>{_pct(row.get('p_net_positive'))}</td>"
             f"<td class='num'>{_pct(row.get('p_net_positive_lower'))}</td>"
             f"<td class='num'>{_pct(row.get('expected_utility_pct'), already_percent=True)}</td>"
@@ -435,7 +436,7 @@ def _candidate_table(
         '<div class="table-wrap desktop-only"><table><thead><tr><th>股票</th>'
         + timing_headers
         + "<th>出现次数</th><th>买入成交概率</th><th>T+1 可卖概率</th>"
-        "<th>可执行净盈利概率</th><th>保守下界</th><th>全口径期望净收益</th>"
+        "<th>完成往返后盈利</th><th>全路径净盈利</th><th>保守下界</th><th>全口径期望净收益</th>"
         "<th>下行 Q10</th><th>状态</th></tr></thead><tbody>"
         + "".join(rows)
         + '</tbody></table></div><div class="mobile-list">'
@@ -475,10 +476,11 @@ def _candidate_card(row: dict[str, Any], *, live: bool) -> str:
         f"<strong>{_number(primary_price, 2)}</strong></div>"
         f"<small>{_e(primary_time)}<br>{locked_note}</small></div>"
         '<dl class="card-stats">'
-        f"<div><dt>可执行净盈利概率</dt><dd class='good'>{_pct(row.get('p_net_positive'))}</dd></div>"
+        f"<div><dt>全路径净盈利概率</dt><dd class='good'>{_pct(row.get('p_net_positive'))}</dd></div>"
         f"<div><dt>保守概率</dt><dd>{_pct(row.get('p_net_positive_lower'))}</dd></div>"
         f"<div><dt>买入成交概率</dt><dd>{_pct(row.get('p_entry_fill'))}</dd></div>"
         f"<div><dt>T+1 可卖概率</dt><dd>{_pct(row.get('p_exit_fill_given_entry'))}</dd></div>"
+        f"<div><dt>完成往返后盈利</dt><dd>{_pct(row.get('p_conditional_net_positive'))}</dd></div>"
         f"<div><dt>全口径期望净收益</dt><dd>{_pct(row.get('expected_utility_pct'), already_percent=True)}</dd></div>"
         f"<div><dt>期望收益保守下界</dt><dd>{_pct(row.get('expected_utility_lower_pct'), already_percent=True)}</dd></div>"
         f"<div><dt>下行 Q10</dt><dd>{_pct(row.get('downside_q10_pct'), already_percent=True)}</dd></div>"
@@ -753,7 +755,7 @@ def _legacy_audit_section(audit: dict[str, Any]) -> str:
     return (
         '<section class="band"><details class="disclosure"><summary><span>'
         '<span class="disclosure-title">7 月 21–24 日旧系统证据回补</span>'
-        '<span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入 V8 收益</span>'
+        '<span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入正式策略收益</span>'
         '</span></summary><div class="disclosure-body">'
         '<div class="table-wrap desktop-only"><table><thead><tr>'
         "<th>交易日</th><th>合法盘中快照</th><th>盘后无效快照</th>"
@@ -810,14 +812,14 @@ def _diagnostic_section(backtest: dict[str, Any]) -> str:
     if not diagnostics:
         return ""
     quality = diagnostics.get("score_quality", {})
-    probability = quality.get("executable_positive_probability", {})
+    probability = quality.get("factorized_positive_probability", {})
     composite = quality.get("selection_score", {})
     funnel = diagnostics.get("policy_funnel", [])
     top_rows = [
         row
         for row in diagnostics.get("top_n_per_slot", [])
         if row.get("score")
-        in {"executable_positive_probability", "selection_score"}
+        in {"factorized_positive_probability", "selection_score"}
         and int(row.get("top_n") or 0) in {1, 3, 5}
     ]
     gate_labels = {
@@ -827,7 +829,7 @@ def _diagnostic_section(backtest: dict[str, Any]) -> str:
         "final_policy": "最终政策",
     }
     score_labels = {
-        "executable_positive_probability": "可执行净盈利概率",
+        "factorized_positive_probability": "全路径净盈利概率",
         "selection_score": "综合选择分",
     }
     funnel_rows = "".join(
@@ -1000,12 +1002,12 @@ def _candidate_empty_message(
 def _research_verdict(state: str, backtest: dict[str, Any]) -> str:
     if state in {"MODEL_NOT_READY", "MODEL_NOT_DESIGNATED"}:
         return (
-            "V8 三年滚动样本外研究尚未发布完成；当前没有实盘授权，"
-            "也不会把旧模型结果当作 V8 结论。"
+            "V9 三年滚动样本外研究尚未发布完成；当前没有实盘授权，"
+            "也不会把旧模型结果当作 V9 结论。"
         )
     if state == "MODEL_ARTIFACT_INVALID":
         return (
-            "V8 模型文件校验失败；系统已关闭候选发布，等待重新生成并验证。"
+            "V9 模型文件校验失败；系统已关闭候选发布，等待重新生成并验证。"
         )
     gate_passed = bool(backtest.get("backtest_gate", {}).get("passed"))
     if state == "PRODUCTION" and gate_passed:

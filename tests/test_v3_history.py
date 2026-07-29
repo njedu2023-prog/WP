@@ -13,9 +13,6 @@ from wp.v3.contracts import V3Config
 from wp.v3.history import (
     PANEL_SCHEMA_VERSION,
     TUSHARE_CACHE_SCHEMA_VERSION,
-    V7_COMPATIBLE_FEATURE_VERSION,
-    V7_COMPATIBLE_PANEL_BUILDER,
-    V7_COMPATIBLE_STRATEGY_ID,
     TushareHistoryClient,
     _build_prior_day_features,
     _day,
@@ -454,22 +451,23 @@ def test_verified_panel_cache_is_reused_only_for_the_same_contract(tmp_path):
     assert reused["requested_start"] == manifest["requested_start"]
     assert reused["partitions"] == manifest["partitions"]
 
-    legacy = {
+    incompatible = {
         **manifest,
-        "strategy_id": V7_COMPATIBLE_STRATEGY_ID,
-        "feature_version": V7_COMPATIBLE_FEATURE_VERSION,
-        "panel_builder_fingerprint": V7_COMPATIBLE_PANEL_BUILDER,
+        "strategy_id": "wp_t1_net_profit_v8",
+        "feature_version": "wp_v8_causal_features_1",
+        "panel_builder_fingerprint": "legacy-builder",
     }
-    manifest_path.write_text(json.dumps(legacy), encoding="utf-8")
+    manifest_path.write_text(json.dumps(incompatible), encoding="utf-8")
     assert (
         _reusable_panel_manifest(
             manifest_path,
             partition_dir=partition_dir,
             config=config,
         )
-        is not None
+        is None
     )
 
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
     partition.write_bytes(b"tampered")
     assert (
         _reusable_panel_manifest(

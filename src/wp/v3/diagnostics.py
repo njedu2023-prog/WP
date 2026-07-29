@@ -18,15 +18,17 @@ GATE_ORDER = (
 )
 
 SCORE_COLUMNS = {
-    "executable_positive_probability": "p_net_positive",
+    "factorized_positive_probability": "p_net_positive",
+    "direct_all_in_positive_probability": "p_net_positive_direct",
     "conservative_probability": "p_net_positive_lower",
     "entry_fill_probability": "p_entry_fill",
     "exit_fill_probability": "p_exit_fill_given_entry",
     "round_trip_fill_probability": "p_round_trip_fill",
     "conditional_positive_probability": "p_conditional_net_positive",
-    "all_in_expected_return": "expected_utility_pct",
-    "all_in_expected_return_lower": "expected_utility_lower_pct",
-    "expected_return_given_entry": "conditional_expected_net_return_pct",
+    "factorized_expected_utility": "expected_utility_pct",
+    "factorized_expected_utility_lower": "expected_utility_lower_pct",
+    "conditional_expected_return": "conditional_expected_net_return_pct",
+    "direct_all_in_expected_return": "direct_all_in_expected_return_pct",
     "cross_section_probability": "p_cross_section_top",
     "severe_loss_safety": "_severe_loss_safety",
     "learned_rank": "ranking_score",
@@ -41,7 +43,7 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v8_prediction_diagnostics_1",
+            "schema_version": "wp_v9_prediction_diagnostics_1",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
@@ -132,7 +134,7 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v8_prediction_diagnostics_1",
+        "schema_version": "wp_v9_prediction_diagnostics_1",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),
@@ -166,9 +168,14 @@ def build_prediction_diagnostics(
             frame,
             config,
             score_columns={
-                "executable_positive_probability": "p_net_positive",
-                "all_in_expected_return": "expected_utility_pct",
-                "all_in_expected_return_lower": "expected_utility_lower_pct",
+                "factorized_positive_probability": "p_net_positive",
+                "factorized_expected_utility": "expected_utility_pct",
+                "factorized_expected_utility_lower": (
+                    "expected_utility_lower_pct"
+                ),
+                "conditional_expected_return": (
+                    "conditional_expected_net_return_pct"
+                ),
                 "selection_score": "selection_score",
                 "legacy_composite_rank": "_composite_rank",
             },

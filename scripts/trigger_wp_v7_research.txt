@@ -1,4 +1,0 @@
-WP V7 retained-fold failure diagnostics trigger.
-
-requested_at=2026-07-29T19:40:47+08:00
-source_run_id=30418392301

@@ -25,8 +25,8 @@ DEFAULT_SIGNAL_SLOTS = (
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v8"
-    model_family: str = "causal_all_in_net_return_v8"
+    strategy_id: str = "wp_t1_net_profit_v9"
+    model_family: str = "causal_hurdle_net_return_v9"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
     candidate_freeze_time: str = "14:55"
@@ -64,8 +64,8 @@ class ExecutionContract:
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v8_nested_oos_policy_1"
-    feature_version: str = "wp_v8_causal_features_1"
+    policy_implementation_version: str = "wp_v9_nested_oos_policy_1"
+    feature_version: str = "wp_v9_causal_features_1"
     minimum_train_days: int = 252
     calibration_days: int = 42
     policy_design_days: int = 84
@@ -78,11 +78,11 @@ class ModelContract:
     severe_loss_threshold_pct: float = -2.00
     entry_fill_probability_grid: tuple[float, ...] = (0.97, 0.985)
     exit_fill_probability_grid: tuple[float, ...] = (0.985, 0.995)
-    probability_grid: tuple[float, ...] = (0.38, 0.42, 0.46)
-    conditional_probability_grid: tuple[float, ...] = (0.48, 0.52)
+    probability_grid: tuple[float, ...] = (0.46, 0.50, 0.54)
+    conditional_probability_grid: tuple[float, ...] = (0.50, 0.54, 0.58)
     severe_loss_probability_grid: tuple[float, ...] = (0.25, 0.35)
-    selection_rank_grid: tuple[float, ...] = (0.995, 0.998)
-    expected_utility_grid_pct: tuple[float, ...] = (-0.10, 0.00, 0.10)
+    selection_rank_grid: tuple[float, ...] = (0.97, 0.98, 0.99)
+    expected_utility_grid_pct: tuple[float, ...] = (0.00, 0.10, 0.20)
     downside_grid_pct: tuple[float, ...] = (-3.00, -2.00)
     policy_min_design_events: int = 150
     policy_min_design_days: int = 30

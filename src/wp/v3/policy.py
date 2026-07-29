@@ -554,6 +554,7 @@ def _policy_grid(config: V3Config):
         entry_fill_probability,
         exit_fill_probability,
         probability,
+        conditional_probability,
         severe_probability,
         selection_rank,
         expected_utility,
@@ -562,6 +563,7 @@ def _policy_grid(config: V3Config):
         model.entry_fill_probability_grid,
         model.exit_fill_probability_grid,
         model.probability_grid,
+        model.conditional_probability_grid,
         model.severe_loss_probability_grid,
         model.selection_rank_grid,
         model.expected_utility_grid_pct,
@@ -574,11 +576,10 @@ def _policy_grid(config: V3Config):
                 entry_fill_probability * exit_fill_probability
             ),
             "probability_min": float(probability),
-            "probability_lower_min": float(max(0.30, probability - 0.06)),
-            # This value is derived from direct P(net positive) and round-trip
-            # fill probability in V8. It remains an audit field, not a second
-            # near-duplicate search dimension.
-            "conditional_probability_min": 0.0,
+            "probability_lower_min": float(max(0.30, probability - 0.05)),
+            # V9 estimates this quantity directly on completed round trips.
+            # It is deliberately independent from the all-in probability gate.
+            "conditional_probability_min": float(conditional_probability),
             "severe_loss_probability_max": float(severe_probability),
             "selection_rank_min": float(selection_rank),
             "expected_utility_min_pct": float(expected_utility),
@@ -586,7 +587,7 @@ def _policy_grid(config: V3Config):
             "downside_min_pct": float(downside),
         }
         yield CandidatePolicy(
-            policy_id="wpv8-" + _digest(payload),
+            policy_id="wpv9-" + _digest(payload),
             authorized=True,
             reason="under_evaluation",
             **payload,

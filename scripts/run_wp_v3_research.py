@@ -16,7 +16,7 @@ from wp.v3.dashboard import render_v3_dashboard
 from wp.v3.diagnostics import diagnostics_tables
 from wp.v3.history import load_panel_partitions
 from wp.v3.io import atomic_write_csv, atomic_write_json
-from wp.v3.ledger import empty_shadow_ledger
+from wp.v3.ledger import load_shadow_ledger
 from wp.v3.model import bundle_metadata, save_bundle, train_bundle
 from wp.v3.policy import policy_selection_from_dict
 from wp.v3.registry import (
@@ -45,7 +45,7 @@ def _strict_json(value: object) -> str:
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
-        description="Run full nested walk-forward research and register a WP V8 shadow model."
+        description="Run full nested walk-forward research and register a WP V9 shadow model."
     )
     parser.add_argument("--config", default=str(ROOT / "config" / "wp_v3.yml"))
     parser.add_argument(
@@ -96,7 +96,7 @@ def main() -> int:
         if args.max_folds is not None:
             raise ValueError("--max-folds cannot be used with --shard-dir")
         print(
-            f"[wp-v8] validating and aggregating walk-forward shards "
+            f"[wp-v9] validating and aggregating walk-forward shards "
             f"from {args.shard_dir}",
             flush=True,
         )
@@ -124,7 +124,7 @@ def main() -> int:
             max_folds=args.max_folds,
         )
     print(
-        f"[wp-v8] OOS aggregation complete folds={len(backtest.folds)} "
+        f"[wp-v9] OOS aggregation complete folds={len(backtest.folds)} "
         f"rows={len(backtest.predictions):,} "
         f"candidates={len(backtest.candidates):,}",
         flush=True,
@@ -147,7 +147,7 @@ def main() -> int:
             end_date=panel_end,
         )
         print(
-            f"[wp-v8] final model panel={panel_start}..{panel_end} "
+            f"[wp-v9] final model panel={panel_start}..{panel_end} "
             f"rows={len(panel):,}",
             flush=True,
         )
@@ -194,7 +194,7 @@ def main() -> int:
     save_registry(registry, args.registry)
 
     summary = {
-        "schema_version": "wp_v8_research_summary_1",
+        "schema_version": "wp_v9_research_summary_1",
         "dataset": dataset_summary,
         "date_start": calendar_summary["evaluation_start_date"],
         "date_end": calendar_summary["evaluation_end_date"],
@@ -450,18 +450,45 @@ def _render_research_audit_dashboard(
         "research_start": research_start,
         "research_end": research_end,
     }
+    replay = json.loads(
+        (ROOT / "outputs" / "json" / "wp_v3_historical_replay.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    ledger = load_shadow_ledger(
+        ROOT / "outputs" / "json" / "wp_v3_candidate_ledger.json"
+    )
+    legacy_audit_path = (
+        ROOT / "outputs" / "json" / "wp_legacy_history_audit.json"
+    )
+    legacy_audit = (
+        json.loads(legacy_audit_path.read_text(encoding="utf-8"))
+        if legacy_audit_path.exists()
+        else {}
+    )
     render_v3_dashboard(
         output / "wp_v3_research_report.html",
         manifest=manifest,
         predictions=pd.DataFrame(),
-        ledger=empty_shadow_ledger(),
+        ledger=ledger,
         registry=registry,
         config=config,
-        replay=json.loads(
-            (ROOT / "outputs" / "json" / "wp_v3_historical_replay.json").read_text(
-                encoding="utf-8"
-            )
-        ),
+        replay=replay,
+        legacy_audit=legacy_audit,
+    )
+    atomic_write_json(
+        ROOT / "outputs" / "json" / "wp_manifest.json",
+        manifest,
+    )
+    render_v3_dashboard(
+        ROOT / "outputs" / "html_reports" / "latest.html",
+        manifest=manifest,
+        predictions=pd.DataFrame(),
+        ledger=ledger,
+        registry=registry,
+        config=config,
+        replay=replay,
+        legacy_audit=legacy_audit,
     )
 
 

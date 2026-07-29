@@ -54,14 +54,14 @@ def test_prediction_diagnostics_exposes_discrimination_and_policy_funnel():
     diagnostics = build_prediction_diagnostics(_predictions(), V3Config())
 
     assert (
-        diagnostics["score_quality"]["executable_positive_probability"]["roc_auc"]
+        diagnostics["score_quality"]["factorized_positive_probability"]["roc_auc"]
         > 0.99
     )
     assert diagnostics["score_deciles"]
     probability_top_one = next(
         row
         for row in diagnostics["top_n_per_slot"]
-        if row["score"] == "executable_positive_probability"
+        if row["score"] == "factorized_positive_probability"
         and row["top_n"] == 1
     )
     assert probability_top_one["win_rate"] == 1.0

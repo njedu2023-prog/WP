@@ -1,4 +1,4 @@
-# WP V8 字段合同
+# WP V9 字段合同
 
 字段按用途分层。`v3` 仅是既有文件路径和 JSON schema 的兼容名称，不代表仍在运行旧模型。
 
@@ -33,17 +33,25 @@
 - `p_entry_fill`：信号后下一根 5 分钟线按容量与涨停约束可成交买入的概率。
 - `p_exit_fill_given_entry`：已买入后，T+1 收盘合同可执行卖出的条件概率。
 - `p_round_trip_fill` / `p_round_trip_fill_lower`：买卖完整成交概率及集成保守值。
-- `p_net_positive`：对全部可执行信号直接估计并校准的最终正净收益概率。
-- `p_net_positive_lower`：直接盈利概率在长短训练窗集成中的保守值。
-- `p_conditional_net_positive`：由直接盈利概率除以完整成交概率推导的解释值，
-  不作为独立搜索维度。
-- `p_cross_section_top`：该票最终净收益进入同槽前 20% 的概率。
-- `p_severe_loss`：该票最终净收益不高于 -2% 的概率，包含退出失败惩罚。
-- `conditional_expected_net_return_pct`：由全口径期望值折算的已成交条件解释值。
-- `expected_utility_pct`：全部可执行结果的直接期望净收益估计。
-- `expected_utility_lower_pct`：长短训练窗期望净收益的集成保守下界。
+- `p_conditional_net_positive`：完成买卖往返后净收益为正的独立条件概率。
+- `p_net_positive`：`p_entry_fill * p_exit_fill_given_entry *
+  p_conditional_net_positive`，即主全路径净盈利概率。
+- `p_net_positive_lower`：长短训练窗因子化概率的 10% 保守分位。
+- `p_net_positive_direct`：直接全路径分类器输出，仅用于审计。
+- `p_net_positive_model_gap`：因子化主概率与直接审计概率之差。
+- `p_cross_section_top`：完成往返后条件净收益进入同槽前 20% 的概率。
+- `p_conditional_severe_loss`：完成往返后条件净收益不高于 -2% 的概率。
+- `p_severe_loss`：退出失败和条件严重亏损的因子化概率，与直接审计模型取
+  更保守者。
+- `conditional_expected_net_return_pct`：完成往返后的条件期望净收益。
+- `expected_utility_pct`：条件收益按入场、退出概率和固定退出失败惩罚合成的
+  全路径期望净收益。
+- `expected_utility_lower_pct`：因子化期望收益加历史校准残差 10% 分位。
+- `expected_utility_residual_q10_adjustment_pct`：同槽校准残差下界调整量，
+  强制不大于 0。
 - `expected_return_model_spread`：长短训练窗期望净收益估计的标准差。
-- `downside_q10_pct`：全部可执行结果的净收益第 10 分位估计。
+- `conditional_downside_q10_pct`：完成往返后条件净收益第 10 分位。
+- `downside_q10_pct`：计入退出失败概率后的保守全路径下行分位。
 - `selection_score` / `selection_rank_pct`：LambdaRank 横截面排序分和同槽百分位。
 - `probability_model_spread` / `fill_probability_model_spread` /
   `selection_rank_spread`：长短训练窗成员间不稳定度。
@@ -56,7 +64,7 @@
 - `passes_round_trip_fill_probability`：完整成交保守概率通过。
 - `passes_probability`：主概率通过。
 - `passes_probability_lower`：保守概率下界通过。
-- `passes_conditional_probability`：兼容解释字段；V8 固定为非搜索门槛。
+- `passes_conditional_probability`：独立条件正收益概率门槛通过。
 - `passes_severe_loss`：严重损失概率通过。
 - `passes_expected_utility`：全口径期望净收益通过。
 - `passes_expected_utility_lower`：期望净收益集成保守下界通过。

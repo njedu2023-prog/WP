@@ -1,4 +1,4 @@
-name: Run WP V8 Tail Session
+name: Run WP V9 Tail Session
 
 on:
   workflow_dispatch:
@@ -33,7 +33,7 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: pip install -r requirements.lock
-      - name: Run causal V8 tail session
+      - name: Run causal V9 tail session
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src

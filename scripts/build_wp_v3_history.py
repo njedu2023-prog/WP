@@ -68,7 +68,7 @@ def main() -> int:
     payload["history"]["end_date"] = end_date
     payload["history"]["evaluation_start_date"] = evaluation_start_date
     payload["history"]["evaluation_end_date"] = evaluation_end_date
-    resolved_config = Path(args.output_dir) / "wp_v8_resolved_config.yml"
+    resolved_config = Path(args.output_dir) / "wp_v9_resolved_config.yml"
     resolved_config.parent.mkdir(parents=True, exist_ok=True)
     atomic_write_text(
         resolved_config,

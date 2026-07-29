@@ -186,7 +186,7 @@ def test_dashboard_discloses_legacy_backfill_without_counting_it_as_v7_truth(
     assert "2026-07-23" in text
     assert "有盘中证据，无合格票" in text
     assert "无合法盘中名单" in text
-    assert "不计入 V8 收益" in text
+    assert "不计入正式策略收益" in text
 
 
 def test_not_ready_dashboard_does_not_report_research_as_failed(tmp_path):
@@ -205,6 +205,6 @@ def test_not_ready_dashboard_does_not_report_research_as_failed(tmp_path):
     )
 
     text = path.read_text(encoding="utf-8")
-    assert "V8 三年滚动样本外研究尚未发布完成" in text
-    assert "旧模型结果当作 V8 结论" in text
+    assert "V9 三年滚动样本外研究尚未发布完成" in text
+    assert "旧模型结果当作 V9 结论" in text
     assert "回测未通过" not in text

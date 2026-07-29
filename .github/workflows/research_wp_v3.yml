@@ -1,4 +1,4 @@
-name: Research WP V8 Full Three-Year OOS Model
+name: Research WP V9 Hurdle Full Three-Year OOS Model
 
 on:
   workflow_dispatch:
@@ -36,7 +36,7 @@ on:
   push:
     branches: [main]
     paths:
-      - scripts/trigger_wp_v8_research.txt
+      - scripts/trigger_wp_v9_research.txt
   schedule:
     # Monthly challenger research outside trading hours.
     - cron: "20 18 1 * *"
@@ -46,7 +46,7 @@ permissions:
   contents: write
 
 concurrency:
-  group: wp-v8-research-${{ github.ref }}
+  group: wp-v9-research-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -67,7 +67,7 @@ jobs:
           source_run_id="$REQUESTED_SOURCE_RUN_ID"
           if [[ -z "$source_run_id" && "$EVENT_NAME" == "push" ]]; then
             source_run_id="$(
-              sed -n 's/^source_run_id=//p' scripts/trigger_wp_v8_research.txt \
+              sed -n 's/^source_run_id=//p' scripts/trigger_wp_v9_research.txt \
                 | tail -n 1 \
                 | tr -cd '0-9'
             )"
@@ -92,8 +92,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: .cache/wp_v3_tushare
-          key: wp-v8-raw-${{ github.run_id }}
+          key: wp-v9-raw-${{ github.run_id }}
           restore-keys: |
+            wp-v9-raw-
             wp-v8-raw-
             wp-v7-raw-
             wp-v4-raw-
@@ -103,12 +104,9 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v8-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r14-${{ github.run_id }}
+          key: wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-${{ github.run_id }}
           restore-keys: |
-            wp-v8-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r14-
-            wp-v7-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r13-
-            wp-v4-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
-            wp-v3-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-r8-
+            wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-
       - name: Build five-year causal panel for a full three-year OOS audit
         shell: bash
         run: |
@@ -134,13 +132,13 @@ jobs:
         uses: actions/cache/save@v4
         with:
           path: .cache/wp_v3_tushare
-          key: wp-v8-raw-${{ github.run_id }}
+          key: wp-v9-raw-${{ github.run_id }}
       - name: Save rebuilt causal panel cache
         if: success()
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v8-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r14-${{ github.run_id }}
+          key: wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-${{ github.run_id }}
 
   folds:
     needs: prepare
@@ -165,12 +163,12 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v8-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r14-${{ github.run_id }}
+          key: wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-${{ github.run_id }}
           fail-on-cache-miss: true
       - name: Run deterministic walk-forward shard
         run: >-
           python -u scripts/run_wp_v3_fold_shard.py
-          --config "artifacts/wp_v3_history/wp_v8_resolved_config.yml"
+          --config "artifacts/wp_v3_history/wp_v9_resolved_config.yml"
           --shard-index "${{ matrix.shard }}"
           --shard-count "11"
           --output-dir "artifacts/wp_v3_fold_shards/shard-${{ matrix.shard }}"
@@ -181,7 +179,7 @@ jobs:
       - name: Upload immutable fold evidence
         uses: actions/upload-artifact@v5
         with:
-          name: wp-v8-fold-${{ matrix.shard }}
+          name: wp-v9-fold-${{ matrix.shard }}
           path: artifacts/wp_v3_fold_shards/shard-${{ matrix.shard }}
           compression-level: 0
           retention-days: 1
@@ -204,16 +202,15 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v3_history
-          key: wp-v8-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r14-${{ github.run_id }}
+          key: wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-${{ github.run_id }}
           restore-keys: |
-            wp-v8-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r14-
-            wp-v7-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r13-
+            wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-
           fail-on-cache-miss: true
       - name: Download current-run walk-forward shards
         if: ${{ needs.route.outputs.source_run_id == '' }}
         uses: actions/download-artifact@v5
         with:
-          pattern: wp-v8-fold-*
+          pattern: wp-v9-fold-*
           path: artifacts/wp_v3_shards
           merge-multiple: false
       - name: Download retained walk-forward shards for recovery
@@ -222,7 +219,7 @@ jobs:
         with:
           run-id: ${{ needs.route.outputs.source_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
-          pattern: wp-v8-fold-*
+          pattern: wp-v9-fold-*
           path: artifacts/wp_v3_shards
           merge-multiple: false
       - name: Aggregate OOS evidence and train frozen model
@@ -230,11 +227,11 @@ jobs:
         run: |
           set -euo pipefail
           python -u scripts/run_wp_v3_research.py \
-            --config artifacts/wp_v3_history/wp_v8_resolved_config.yml \
+            --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
             --shard-dir artifacts/wp_v3_shards &
           research_pid=$!
           while kill -0 "$research_pid" 2>/dev/null; do
-            echo "[wp-v8] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            echo "[wp-v9] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
             sleep 120
           done
           wait "$research_pid"
@@ -242,7 +239,7 @@ jobs:
           PYTHONPATH: src
           PYTHONUNBUFFERED: "1"
           LOKY_MAX_CPU_COUNT: "2"
-      - name: Verify V8 contracts and tests
+      - name: Verify V9 contracts and tests
         run: python -m pytest tests/test_v3_*.py tests/test_v6_*.py -q
         env:
           PYTHONPATH: src
@@ -250,13 +247,15 @@ jobs:
       - name: Publish model, registry, and audit evidence through GitHub API
         run: >-
           python scripts/github_commit_paths.py
-          "Publish WP V8 full three-year OOS research"
-          artifacts/wp_v3_history/wp_v8_resolved_config.yml
+          "Publish WP V9 hurdle full three-year OOS research"
+          artifacts/wp_v3_history/wp_v9_resolved_config.yml
           artifacts/wp_v3_history/wp_v3_dataset_manifest.json
           artifacts/wp_v3_research
           outputs/json/wp_model_registry_v3.json
+          outputs/json/wp_manifest.json
           outputs/json/wp_v3_historical_replay.json
           outputs/csv/wp_v3_historical_replay.csv
+          outputs/html_reports/latest.html
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -267,8 +266,8 @@ jobs:
           name: wp-v3-research-${{ github.run_id }}
           path: |
             artifacts/wp_v3_history/wp_v3_dataset_manifest.json
-            artifacts/wp_v3_history/wp_v8_resolved_config.yml
-            artifacts/wp_v3_shards/**/wp_v8_fold_shard_manifest.json
+            artifacts/wp_v3_history/wp_v9_resolved_config.yml
+            artifacts/wp_v3_shards/**/wp_v9_fold_shard_manifest.json
             artifacts/wp_v3_research/wp_v3_backtest.json
             artifacts/wp_v3_research/wp_v3_model_metadata.json
             artifacts/wp_v3_research/wp_v3_research_summary.json

@@ -13,6 +13,7 @@ from wp.v3.model import (
     TARGET_RANK_COLUMN,
     _attach_full_universe_rank_target,
     _deterministic_training_sample,
+    _one_sided_residual_adjustment,
     _ranking_target_and_groups,
     predict_bundle,
     train_bundle,
@@ -77,10 +78,35 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
     assert prediction["p_exit_fill_given_entry"].between(0, 1).all()
     assert prediction["p_round_trip_fill"].between(0, 1).all()
     assert prediction["p_conditional_net_positive"].between(0, 1).all()
+    expected_probability = (
+        prediction["p_entry_fill"]
+        * prediction["p_exit_fill_given_entry"]
+        * prediction["p_conditional_net_positive"]
+    )
+    assert np.allclose(prediction["p_net_positive"], expected_probability)
+    assert np.allclose(
+        prediction["p_net_positive"],
+        prediction["p_net_positive_component_product"],
+    )
+    assert (
+        prediction["p_net_positive_lower"] <= prediction["p_net_positive"]
+    ).all()
     assert prediction["p_cross_section_top"].between(0, 1).all()
     assert prediction["p_severe_loss"].between(0, 1).all()
+    assert (
+        prediction["p_severe_loss"]
+        >= prediction["p_severe_loss_direct"]
+    ).all()
+    assert (
+        prediction["p_severe_loss"]
+        >= prediction["p_severe_loss_component_product"]
+    ).all()
     assert prediction["expected_utility_pct"].notna().all()
     assert prediction["expected_utility_lower_pct"].notna().all()
+    assert (
+        prediction["expected_utility_lower_pct"]
+        <= prediction["expected_utility_pct"]
+    ).all()
     assert prediction["expected_return_model_spread"].ge(0).all()
     assert prediction["conditional_expected_net_return_pct"].notna().all()
     assert prediction["selection_rank_pct"].between(0, 1).all()
@@ -156,6 +182,24 @@ def test_rank_target_is_computed_on_full_slot_before_training_sample():
     assert np.array_equal(target, expected)
     assert groups.tolist() == [7]
     assert set(np.round(target * 20).astype(int)).issubset(set(range(1, 21)))
+
+
+def test_expected_return_residual_adjustment_is_one_sided_and_slot_specific():
+    residuals = np.concatenate(
+        (
+            np.linspace(-2.0, 1.0, 120),
+            np.linspace(-0.5, 2.0, 120),
+        )
+    )
+    slots = np.array(["14:20"] * 120 + ["14:50"] * 120)
+
+    by_slot, global_adjustment = _one_sided_residual_adjustment(
+        residuals,
+        slots,
+    )
+
+    assert global_adjustment <= 0
+    assert by_slot["14:20"] < by_slot["14:50"] <= 0
 
 
 def test_backtest_gate_treats_zero_boundary_as_observed_value():

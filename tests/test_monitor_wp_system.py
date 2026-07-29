@@ -12,7 +12,7 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 def _manifest(slot: str = "2026-07-16 14:35:00") -> dict:
     return {
         "health_status": "ok",
-        "source_mode": "direct_tushare_v8",
+        "source_mode": "direct_tushare_v9",
         "source_trade_date": "20260716",
         "source_scheduled_slot": slot,
         "source_generated_at": "2026-07-16 14:37:00",

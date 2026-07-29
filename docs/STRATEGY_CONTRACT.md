@@ -1,4 +1,4 @@
-# WP V8 不可变策略合同
+# WP V9 不可变策略合同
 
 ## 唯一目标
 
@@ -15,7 +15,17 @@ Y = 1[
 ]
 ```
 
-模型优化并报告 `P(Y=1 | T 日信号时点可观测信息)`。任何 T 日收盘后数据、T+1 数据、未来最高价或事后人工选择均不得进入特征。
+模型使用 execution hurdle 分解并报告：
+
+```text
+P(Y=1) =
+P(entry_fillable)
+* P(exit_fillable | entry_fillable)
+* P(conditional_net_return > 0 | round_trip_filled)
+```
+
+直接全路径模型只能作为独立审计，不能覆盖上述主概率。任何 T 日收盘后数据、
+T+1 数据、未来最高价或事后人工选择均不得进入特征。
 
 ## 时间状态机
 
