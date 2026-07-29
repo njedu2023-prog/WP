@@ -377,8 +377,10 @@ def refresh_shadow_metrics(
     entry_fill_count = int(entry_fillable.sum())
     exit_fill_count = int(np.sum(entry_fillable & exit_fillable))
     stress_50 = returns - (
-        50.0 - config.execution.baseline_all_in_cost_bps
-    ) / 100.0
+        (50.0 - config.execution.baseline_all_in_cost_bps)
+        / 100.0
+        * entry_fillable.astype(float)
+    )
     shadow = {
         "evidence_scope": "exact_model",
         "model_fingerprint": fingerprint,
