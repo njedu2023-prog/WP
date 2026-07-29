@@ -105,8 +105,10 @@ jobs:
         with:
           path: artifacts/wp_v3_history
           key: wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-${{ github.run_id }}
+          # V9 rejects the V8 panel manifest, but can reuse its verified minute substrate.
           restore-keys: |
             wp-v9-panel-${{ github.event.inputs.start_date || 'auto' }}-${{ github.event.inputs.end_date || 'auto' }}-${{ github.event.inputs.evaluation_start_date || 'auto' }}-${{ github.event.inputs.evaluation_end_date || 'auto' }}-r15-
+            wp-v8-panel-auto-auto-auto-auto-r14-
       - name: Build five-year causal panel for a full three-year OOS audit
         shell: bash
         run: |

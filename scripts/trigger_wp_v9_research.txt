@@ -1,4 +1,4 @@
 WP V9 causal hurdle net-return research trigger.
-requested_at=2026-07-29T22:54:36+08:00
+requested_at=2026-07-29T23:29:42+08:00
 source_run_id=
-reason=Replace weak all-in ranking with separately calibrated execution and conditional-return models.
+reason=Reuse only the verified minute substrate while rebuilding all V9 labels and OOS evidence.
