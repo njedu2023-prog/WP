@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-07-29 00:25:49",
+  "generated_at": "2026-07-29 17:46:57",
   "records": [],
   "schema_version": "wp_v3_candidate_truth_1",
   "summary": {
@@ -7,7 +7,7 @@
     "pending_count": 0,
     "pending_due_count": 0,
     "promotion": {
-      "05928ce9adc35aa0c55d": {
+      "05ea1db72782e2fca371": {
         "checks": {
           "backtest_gate": false,
           "shadow_50bps_stress": false,

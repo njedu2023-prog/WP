@@ -1,7 +1,7 @@
 {
   "active_model_fingerprint": null,
   "active_policy_fingerprint": null,
-  "generated_at": "2026-07-29T09:24:54.325397+00:00",
+  "generated_at": "2026-07-29T09:46:57.177466+00:00",
   "models": [
     {
       "artifact_path": "artifacts/wp_v3_research/models/b5ec1c4c5980948d64e3.joblib",
@@ -20086,7 +20086,7 @@
         "checks": {
           "backtest_gate": false,
           "shadow_50bps_stress": false,
-          "shadow_bound_to_exact_model": false,
+          "shadow_bound_to_exact_model": true,
           "shadow_candidate_days": false,
           "shadow_candidates": false,
           "shadow_clustered_mean_return_lower": false,
@@ -20102,8 +20102,8 @@
           "shadow_win_rate_lower": false
         },
         "eligible": false,
-        "evaluated_at": "2026-07-29T09:24:54.325380+00:00",
-        "reason": "failed:backtest_gate,shadow_bound_to_exact_model,shadow_trading_days,shadow_candidate_days,shadow_candidates,shadow_win_rate,shadow_win_rate_lower,shadow_clustered_win_rate_lower,shadow_mean_net_return,shadow_clustered_mean_return_lower,shadow_median_net_return,shadow_profit_factor,shadow_entry_fill_rate,shadow_exit_fill_rate,shadow_ece,shadow_50bps_stress"
+        "evaluated_at": "2026-07-29T09:46:57.169299+00:00",
+        "reason": "failed:backtest_gate,shadow_trading_days,shadow_candidate_days,shadow_candidates,shadow_win_rate,shadow_win_rate_lower,shadow_clustered_win_rate_lower,shadow_mean_net_return,shadow_clustered_mean_return_lower,shadow_median_net_return,shadow_profit_factor,shadow_entry_fill_rate,shadow_exit_fill_rate,shadow_ece,shadow_50bps_stress"
       },
       "selection_evidence": {
         "entry_fill_rate": 0.0,
@@ -20134,10 +20134,10 @@
         "mean_net_return_day_clustered_upper_pct": null,
         "mean_net_return_pct": null,
         "median_net_return_pct": null,
-        "model_fingerprint": null,
-        "model_trained_at": null,
-        "observation_after_trade_date": null,
-        "policy_fingerprint": null,
+        "model_fingerprint": "05ea1db72782e2fca371",
+        "model_trained_at": "2026-07-29T09:24:53.849215+00:00",
+        "observation_after_trade_date": "20260724",
+        "policy_fingerprint": "cdcccb26038cd05df712",
         "profit_factor": null,
         "round_trip_fill_rate": null,
         "started_trade_date": null,

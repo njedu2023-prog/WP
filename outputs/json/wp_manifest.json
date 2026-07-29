@@ -1,12 +1,14 @@
 {
   "buy_plan_count": 0,
   "health_status": "model_not_ready",
-  "latest_update": "2026-07-29 11:35:05",
+  "latest_update": "2026-07-29 17:46:57",
   "live_display_allowed": false,
   "market_data_time": null,
-  "report_revision": "2026-07-29 11:35:05",
+  "pending_due_truth_count": 0,
+  "pending_truth_count": 0,
+  "report_revision": "2026-07-29 17:46:57",
   "schema_version": "wp_manifest_v3",
-  "session_phase": "PRE_SIGNAL",
+  "session_phase": "CLOSED",
   "shadow_qualified_count": 0,
   "source_trade_date": "20260729",
   "v3_formal_authorization": false,
@@ -14,5 +16,7 @@
   "v3_model_fingerprint": null,
   "v3_model_version": null,
   "v3_policy_fingerprint": null,
-  "v3_state": "MODEL_NOT_READY"
+  "v3_state": "MODEL_NOT_READY",
+  "validation_updated_at": "2026-07-29 17:46:57",
+  "verified_candidate_count": 0
 }
