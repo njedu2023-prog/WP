@@ -187,3 +187,24 @@ def test_dashboard_discloses_legacy_backfill_without_counting_it_as_v7_truth(
     assert "有盘中证据，无合格票" in text
     assert "无合法盘中名单" in text
     assert "不计入 V7 收益" in text
+
+
+def test_not_ready_dashboard_does_not_report_research_as_failed(tmp_path):
+    path = tmp_path / "latest.html"
+    render_v3_dashboard(
+        path,
+        manifest={
+            "source_trade_date": "20260729",
+            "session_phase": "PRE_SIGNAL",
+            "v3_state": "MODEL_NOT_READY",
+        },
+        predictions=pd.DataFrame(),
+        ledger=empty_shadow_ledger(),
+        registry=empty_registry(),
+        config=V3Config(),
+    )
+
+    text = path.read_text(encoding="utf-8")
+    assert "V7 三年滚动样本外研究尚未发布完成" in text
+    assert "旧模型结果当作 V7 结论" in text
+    assert "回测未通过" not in text

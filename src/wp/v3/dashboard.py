@@ -996,6 +996,15 @@ def _candidate_empty_message(
 
 
 def _research_verdict(state: str, backtest: dict[str, Any]) -> str:
+    if state in {"MODEL_NOT_READY", "MODEL_NOT_DESIGNATED"}:
+        return (
+            "V7 三年滚动样本外研究尚未发布完成；当前没有实盘授权，"
+            "也不会把旧模型结果当作 V7 结论。"
+        )
+    if state == "MODEL_ARTIFACT_INVALID":
+        return (
+            "V7 模型文件校验失败；系统已关闭候选发布，等待重新生成并验证。"
+        )
     gate_passed = bool(backtest.get("backtest_gate", {}).get("passed"))
     if state == "PRODUCTION" and gate_passed:
         return "三年样本外与前瞻影子门槛均已通过，当前模型具有生产资格。"
