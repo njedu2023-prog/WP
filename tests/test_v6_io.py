@@ -59,7 +59,7 @@ def test_slot_evidence_is_idempotent_but_rejects_changed_decisions(
         rejection_reasons="",
     )
     source_manifest = {
-        "schema_version": "wp_live_input_v6",
+        "schema_version": "wp_live_input_v7",
         "trade_date": "20260728",
         "target_trade_date": "20260729",
         "signal_slot": "14:20",

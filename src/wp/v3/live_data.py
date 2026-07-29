@@ -433,7 +433,7 @@ def capture_entry_settlement_frame(
     codes = sorted({str(code) for code in ts_codes if str(code)})
     if not codes:
         return pd.DataFrame(columns=columns), {
-            "schema_version": "wp_v6_entry_settlement_1",
+            "schema_version": "wp_v7_entry_settlement_1",
             "trade_date": trade_date,
             "settlement_slot": settlement_slot,
             "requested_symbols": 0,
@@ -495,7 +495,7 @@ def capture_entry_settlement_frame(
         inclusive="both",
     )
     return result.reset_index(drop=True), {
-        "schema_version": "wp_v6_entry_settlement_1",
+        "schema_version": "wp_v7_entry_settlement_1",
         "trade_date": trade_date,
         "settlement_slot": settlement_slot,
         "requested_symbols": len(codes),

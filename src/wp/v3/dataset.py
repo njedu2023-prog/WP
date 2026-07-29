@@ -92,48 +92,101 @@ def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFram
     slippage = config.execution.entry_slippage_bps / 10_000.0
     cost_pct = config.execution.round_trip_cost_bps / 100.0
     panel["entry_price"] = entry_reference * (1.0 + slippage)
-    panel["gross_return_pct"] = (exit_price / panel["entry_price"] - 1.0) * 100.0
-    panel["net_return_pct"] = panel["gross_return_pct"] - cost_pct
+    panel["conditional_gross_return_pct"] = (
+        exit_price / panel["entry_price"] - 1.0
+    ) * 100.0
+    panel["conditional_net_return_pct"] = (
+        panel["conditional_gross_return_pct"] - cost_pct
+    )
 
     entry_truth_known = entry_reference.gt(0) | ~panel["entry_fillable"]
     exit_truth_known = exit_price.gt(0) | ~panel["exit_fillable"]
-    observable = signal_price.gt(0) & entry_truth_known & exit_truth_known
-    executable = (
+    observable = (
+        signal_price.gt(0)
+        & entry_truth_known
+        & (~panel["entry_fillable"] | exit_truth_known)
+    )
+    round_trip_fill = (
         panel["execution_eligible"]
         & panel["entry_fillable"]
         & panel["exit_fillable"]
         & observable
     )
     panel["label_available"] = observable
-    panel["execution_success"] = executable
-    panel.loc[observable & ~panel["exit_fillable"], "gross_return_pct"] = (
-        panel.loc[observable & ~panel["exit_fillable"], "gross_return_pct"].fillna(0.0)
+    panel["execution_success"] = round_trip_fill
+    panel["target_entry_fillable"] = np.where(
+        observable,
+        panel["entry_fillable"].astype("int8"),
+        np.nan,
     )
-    panel.loc[observable & ~executable, "net_return_pct"] = np.minimum(
-        panel.loc[observable & ~executable, "net_return_pct"].fillna(
-            config.execution.non_fill_penalty_pct
+    panel["target_exit_fillable"] = np.where(
+        observable & panel["entry_fillable"],
+        panel["exit_fillable"].astype("int8"),
+        np.nan,
+    )
+    panel["target_conditional_net_positive"] = np.where(
+        round_trip_fill,
+        panel["conditional_net_return_pct"].gt(0).astype("int8"),
+        np.nan,
+    )
+    panel["target_conditional_severe_loss"] = np.where(
+        round_trip_fill,
+        panel["conditional_net_return_pct"]
+        .le(config.model.severe_loss_threshold_pct)
+        .astype("int8"),
+        np.nan,
+    )
+    # A failed entry leaves cash uninvested; it is an execution miss, not a
+    # fabricated trading loss. A failed T+1 exit leaves an open position and
+    # therefore receives the explicit conservative contract penalty.
+    panel["gross_return_pct"] = np.where(
+        round_trip_fill,
+        panel["conditional_gross_return_pct"],
+        np.where(observable & ~panel["entry_fillable"], 0.0, np.nan),
+    )
+    panel["net_return_pct"] = np.where(
+        round_trip_fill,
+        panel["conditional_net_return_pct"],
+        np.where(
+            observable & ~panel["entry_fillable"],
+            0.0,
+            np.where(
+                observable
+                & panel["entry_fillable"]
+                & ~panel["exit_fillable"],
+                config.execution.non_fill_penalty_pct,
+                np.nan,
+            ),
         ),
-        config.execution.non_fill_penalty_pct,
     )
     panel["target_net_positive"] = np.where(
         observable,
-        (executable & panel["net_return_pct"].gt(0)).astype("int8"),
+        (
+            round_trip_fill
+            & panel["conditional_net_return_pct"].gt(0)
+        ).astype("int8"),
         np.nan,
     )
     panel["target_severe_loss"] = np.where(
         observable,
         (
-            ~executable
-            | panel["net_return_pct"].le(
-                config.model.severe_loss_threshold_pct
+            (
+                panel["entry_fillable"]
+                & ~panel["exit_fillable"]
+            )
+            | (
+                round_trip_fill
+                & panel["conditional_net_return_pct"].le(
+                    config.model.severe_loss_threshold_pct
+                )
             )
         ).astype("int8"),
         np.nan,
     )
 
     group_keys = [panel["trade_date"], panel["signal_slot"]]
-    eligible_return = panel["net_return_pct"].where(
-        observable & panel["execution_eligible"]
+    eligible_return = panel["conditional_net_return_pct"].where(
+        round_trip_fill
     )
     return_rank = eligible_return.groupby(group_keys, sort=False).rank(
         method="average",
@@ -141,16 +194,8 @@ def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFram
     )
     panel["_target_net_return_rank"] = return_rank
     panel["target_cross_section_top"] = np.where(
-        observable & panel["execution_eligible"],
+        round_trip_fill,
         return_rank.ge(1.0 - config.model.cross_section_top_fraction).astype("int8"),
-        np.nan,
-    )
-    market_median = eligible_return.groupby(group_keys, sort=False).transform(
-        "median"
-    )
-    panel["target_market_positive"] = np.where(
-        observable,
-        market_median.gt(0).astype("int8"),
         np.nan,
     )
     return panel

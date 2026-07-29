@@ -177,7 +177,7 @@ def capture_entry_settlement_input(
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Build exact WP V6 live causal features.")
+    parser = argparse.ArgumentParser(description="Build exact WP V7 live causal features.")
     parser.add_argument("--signal-slot", choices=DEFAULT_SIGNAL_SLOTS)
     parser.add_argument("--settlement-slot")
     args = parser.parse_args()

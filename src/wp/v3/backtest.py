@@ -105,7 +105,7 @@ def walk_forward_backtest(
         training = ordered.loc[row_dates.isin(model_train_dates)]
         testing = ordered.loc[row_dates.isin(test_dates)]
         print(
-            f"[wp-v6] walk-forward fold {fold_number}/{total_folds} "
+            f"[wp-v7] walk-forward fold {fold_number}/{total_folds} "
             f"train={model_train_dates[0]}..{model_train_dates[-1]} "
             f"test={test_dates[0]}..{test_dates[-1]}",
             flush=True,
@@ -114,7 +114,7 @@ def walk_forward_backtest(
             training,
             config,
             allow_below_minimum=False,
-            model_version=f"wpv6-wf-{test_dates[0]}",
+            model_version=f"wpv7-wf-{test_dates[0]}",
         )
         prediction = predict_bundle(bundle, testing)
         prediction["fold"] = fold_number
@@ -122,7 +122,7 @@ def walk_forward_backtest(
         prediction["test_end"] = str(test_dates[-1])
         fold_rows.append(prediction)
         print(
-            f"[wp-v6] completed fold {fold_number}/{total_folds} "
+            f"[wp-v7] completed fold {fold_number}/{total_folds} "
             f"prediction_rows={len(prediction):,}",
             flush=True,
         )
@@ -334,7 +334,11 @@ def evaluate_predictions(
         extra_cost_pct = (
             cost_bps - config.execution.baseline_all_in_cost_bps
         ) / 100.0
-        stressed = candidate_returns - extra_cost_pct
+        entered = entry_fillable.reindex(
+            candidate_returns.index,
+            fill_value=False,
+        ).astype(float)
+        stressed = candidate_returns - extra_cost_pct * entered
         stress[f"{int(cost_bps)}bps"] = {
             "mean_net_return_pct": _finite_or_none(stressed.mean()),
             "win_rate": _finite_or_none(stressed.gt(0).mean()),
@@ -493,10 +497,17 @@ def _policy_score(frame: pd.DataFrame, threshold: float, config: V3Config) -> fl
     candidate = frame.copy()
     candidate["variant_pass"] = (
         pd.to_numeric(candidate["p_net_positive"], errors="coerce").ge(threshold)
-        & pd.to_numeric(candidate["p_market_positive"], errors="coerce").ge(0.45)
-        & pd.to_numeric(candidate["p_cross_section_top"], errors="coerce").ge(0.45)
+        & pd.to_numeric(candidate["p_entry_fill"], errors="coerce").ge(0.97)
+        & pd.to_numeric(
+            candidate["p_exit_fill_given_entry"],
+            errors="coerce",
+        ).ge(0.985)
+        & pd.to_numeric(
+            candidate["p_conditional_net_positive"],
+            errors="coerce",
+        ).ge(0.48)
         & pd.to_numeric(candidate["p_severe_loss"], errors="coerce").le(0.45)
-        & pd.to_numeric(candidate["expected_net_return_pct"], errors="coerce").ge(
+        & pd.to_numeric(candidate["expected_utility_pct"], errors="coerce").ge(
             -0.25
         )
         & pd.to_numeric(candidate["selection_rank_pct"], errors="coerce").ge(
@@ -533,7 +544,7 @@ def _benchmark_metrics(
         )
     ].copy()
     return {
-        "all_executable_at_1450": _return_summary(eligible),
+        "all_signal_time_eligible_at_1450": _return_summary(eligible),
         "retired_8_to_12_pct_rule_at_1450": _return_summary(legacy),
     }
 

@@ -13,9 +13,14 @@ from .statistics import day_clustered_intervals, wilson_interval
 
 IDENTITY = ("trade_date", "signal_slot", "ts_code")
 SCORE_COLUMNS = (
+    "p_entry_fill",
+    "p_exit_fill_given_entry",
+    "p_round_trip_fill",
     "p_net_positive",
     "p_net_positive_lower",
-    "expected_net_return_pct",
+    "p_conditional_net_positive",
+    "expected_utility_pct",
+    "conditional_expected_net_return_pct",
     "downside_q10_pct",
     "ranking_score",
     "selection_score",
@@ -26,7 +31,8 @@ SCORE_COLUMNS = (
 class PolicyThresholds:
     probability: float
     probability_lower: float
-    expected_return_pct: float
+    conditional_probability: float
+    expected_utility_pct: float
     downside_q10_pct: float
     selection_rank_pct: float
 
@@ -34,7 +40,8 @@ class PolicyThresholds:
         return {
             "probability": self.probability,
             "probability_lower": self.probability_lower,
-            "expected_return_pct": self.expected_return_pct,
+            "conditional_probability": self.conditional_probability,
+            "expected_utility_pct": self.expected_utility_pct,
             "downside_q10_pct": self.downside_q10_pct,
             "selection_rank_pct": self.selection_rank_pct,
         }
@@ -170,6 +177,7 @@ def _policy_grid(frame: pd.DataFrame) -> list[dict[str, Any]]:
     grid = product(
         (0.50, 0.55, 0.60, 0.65),
         (0.45, 0.50),
+        (0.48, 0.52),
         (-0.25, 0.20, 0.75),
         (-5.00, -3.50, -2.00),
         (0.980, 0.995, 0.997),
@@ -192,12 +200,17 @@ def _policy_candidates(
     thresholds: PolicyThresholds,
 ) -> pd.DataFrame:
     mask = (
-        _number(frame, "p_net_positive").ge(thresholds.probability)
+        _number(frame, "p_entry_fill").ge(0.97)
+        & _number(frame, "p_exit_fill_given_entry").ge(0.985)
+        & _number(frame, "p_net_positive").ge(thresholds.probability)
         & _number(frame, "p_net_positive_lower").ge(
             thresholds.probability_lower
         )
-        & _number(frame, "expected_net_return_pct").ge(
-            thresholds.expected_return_pct
+        & _number(frame, "p_conditional_net_positive").ge(
+            thresholds.conditional_probability
+        )
+        & _number(frame, "expected_utility_pct").ge(
+            thresholds.expected_utility_pct
         )
         & _number(frame, "downside_q10_pct").ge(thresholds.downside_q10_pct)
         & _number(frame, "selection_rank_pct").ge(
@@ -365,7 +378,8 @@ def _threshold_constructor_args(values: dict[str, float]) -> dict[str, float]:
     return {
         "probability": float(values["probability"]),
         "probability_lower": float(values["probability_lower"]),
-        "expected_return_pct": float(values["expected_return_pct"]),
+        "conditional_probability": float(values["conditional_probability"]),
+        "expected_utility_pct": float(values["expected_utility_pct"]),
         "downside_q10_pct": float(values["downside_q10_pct"]),
         "selection_rank_pct": float(values["selection_rank_pct"]),
     }

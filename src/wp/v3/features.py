@@ -177,16 +177,6 @@ def feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
     return values.replace([np.inf, -np.inf], np.nan)
 
 
-def market_feature_matrix(frame: pd.DataFrame) -> pd.DataFrame:
-    values = frame.reindex(columns=MARKET_FEATURE_COLUMNS).copy()
-    for column in MARKET_FEATURE_COLUMNS:
-        values[column] = pd.to_numeric(
-            values[column],
-            errors="coerce",
-        ).astype("float32")
-    return values.replace([np.inf, -np.inf], np.nan)
-
-
 def slot_to_minute(slot: pd.Series) -> pd.Series:
     parsed = slot.astype(str).str.extract(r"(?P<hour>\d{1,2}):(?P<minute>\d{2})")
     absolute = (

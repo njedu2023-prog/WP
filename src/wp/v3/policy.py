@@ -18,13 +18,15 @@ class CandidatePolicy:
     policy_id: str
     authorized: bool
     reason: str
+    entry_fill_probability_min: float = 1.0
+    exit_fill_probability_min: float = 1.0
+    round_trip_fill_probability_min: float = 1.0
     probability_min: float = 1.0
     probability_lower_min: float = 1.0
-    market_probability_min: float = 1.0
-    cross_section_probability_min: float = 1.0
+    conditional_probability_min: float = 1.0
     severe_loss_probability_max: float = 0.0
     selection_rank_min: float = 1.0
-    expected_return_min_pct: float = 999.0
+    expected_utility_min_pct: float = 999.0
     downside_min_pct: float = 999.0
 
 
@@ -97,26 +99,35 @@ def apply_candidate_policy(
     mask = (
         execution
         & freshness
+        & _numeric(frame, "p_entry_fill").ge(
+            policy.entry_fill_probability_min
+        )
+        & _numeric(frame, "p_exit_fill_given_entry").ge(
+            policy.exit_fill_probability_min
+        )
+        & _numeric(frame, "p_round_trip_fill_lower").ge(
+            policy.round_trip_fill_probability_min
+        )
         & _numeric(frame, "p_net_positive").ge(policy.probability_min)
         & _numeric(frame, "p_net_positive_lower").ge(
             policy.probability_lower_min
         )
-        & _numeric(frame, "p_market_positive").ge(
-            policy.market_probability_min
-        )
-        & _numeric(frame, "p_cross_section_top").ge(
-            policy.cross_section_probability_min
+        & _numeric(frame, "p_conditional_net_positive").ge(
+            policy.conditional_probability_min
         )
         & _numeric(frame, "p_severe_loss").le(
             policy.severe_loss_probability_max
         )
         & _numeric(frame, "selection_rank_pct").ge(policy.selection_rank_min)
-        & _numeric(frame, "expected_net_return_pct").ge(
-            policy.expected_return_min_pct
+        & _numeric(frame, "expected_utility_pct").ge(
+            policy.expected_utility_min_pct
         )
         & _numeric(frame, "downside_q10_pct").ge(policy.downside_min_pct)
         & _numeric(frame, "probability_model_spread").le(
             config.model.max_probability_model_spread
+        )
+        & _numeric(frame, "fill_probability_model_spread").le(
+            config.model.max_fill_probability_model_spread
         )
         & _numeric(frame, "selection_rank_spread").le(
             config.model.max_selection_rank_spread
@@ -136,15 +147,21 @@ def candidate_policy_diagnostics(
         result["rejection_reasons"] = pd.Series("", index=frame.index, dtype=str)
         return result
 
+    entry_fill_probability = _numeric(frame, "p_entry_fill")
+    exit_fill_probability = _numeric(frame, "p_exit_fill_given_entry")
+    round_trip_fill_lower = _numeric(frame, "p_round_trip_fill_lower")
     probability = _numeric(frame, "p_net_positive")
     probability_lower = _numeric(frame, "p_net_positive_lower")
-    market_probability = _numeric(frame, "p_market_positive")
-    cross_probability = _numeric(frame, "p_cross_section_top")
+    conditional_probability = _numeric(frame, "p_conditional_net_positive")
     severe_probability = _numeric(frame, "p_severe_loss")
     selection_rank = _numeric(frame, "selection_rank_pct")
-    expected_return = _numeric(frame, "expected_net_return_pct")
+    expected_utility = _numeric(frame, "expected_utility_pct")
     downside = _numeric(frame, "downside_q10_pct")
     probability_spread = _numeric(frame, "probability_model_spread")
+    fill_probability_spread = _numeric(
+        frame,
+        "fill_probability_model_spread",
+    )
     rank_spread = _numeric(frame, "selection_rank_spread")
     execution = _boolean(
         frame.get("execution_eligible", pd.Series(True, index=frame.index))
@@ -154,44 +171,52 @@ def candidate_policy_diagnostics(
     )
     result["passes_execution"] = execution
     result["passes_freshness"] = freshness
+    result["passes_entry_fill_probability"] = entry_fill_probability.ge(
+        policy.entry_fill_probability_min
+    )
+    result["passes_exit_fill_probability"] = exit_fill_probability.ge(
+        policy.exit_fill_probability_min
+    )
+    result["passes_round_trip_fill_probability"] = round_trip_fill_lower.ge(
+        policy.round_trip_fill_probability_min
+    )
     result["passes_probability"] = probability.ge(policy.probability_min)
     result["passes_probability_lower"] = probability_lower.ge(
         policy.probability_lower_min
     )
-    result["passes_market_probability"] = market_probability.ge(
-        policy.market_probability_min
-    )
-    result["passes_cross_section_probability"] = cross_probability.ge(
-        policy.cross_section_probability_min
+    result["passes_conditional_probability"] = conditional_probability.ge(
+        policy.conditional_probability_min
     )
     result["passes_severe_loss"] = severe_probability.le(
         policy.severe_loss_probability_max
     )
     result["passes_selection_rank"] = selection_rank.ge(policy.selection_rank_min)
-    result["passes_expected_return"] = expected_return.ge(
-        policy.expected_return_min_pct
+    result["passes_expected_utility"] = expected_utility.ge(
+        policy.expected_utility_min_pct
     )
     result["passes_downside"] = downside.ge(policy.downside_min_pct)
     result["passes_stability"] = probability_spread.le(
         config.model.max_probability_model_spread
+    ) & fill_probability_spread.le(
+        config.model.max_fill_probability_model_spread
     ) & rank_spread.le(config.model.max_selection_rank_spread)
-    result["passes_sample"] = bool(policy.authorized)
-    result["passes_empirical_lower"] = bool(policy.authorized)
+    result["passes_prior_oos_evidence"] = bool(policy.authorized)
 
     gate_columns = [
         "passes_execution",
         "passes_freshness",
+        "passes_entry_fill_probability",
+        "passes_exit_fill_probability",
+        "passes_round_trip_fill_probability",
         "passes_probability",
         "passes_probability_lower",
-        "passes_market_probability",
-        "passes_cross_section_probability",
+        "passes_conditional_probability",
         "passes_severe_loss",
         "passes_selection_rank",
-        "passes_expected_return",
+        "passes_expected_utility",
         "passes_downside",
         "passes_stability",
-        "passes_sample",
-        "passes_empirical_lower",
+        "passes_prior_oos_evidence",
     ]
     for column in gate_columns:
         result[column] = result[column].fillna(False).astype(bool)
@@ -199,17 +224,18 @@ def candidate_policy_diagnostics(
     reason_names = {
         "passes_execution": "execution",
         "passes_freshness": "freshness",
+        "passes_entry_fill_probability": "entry_fill_probability",
+        "passes_exit_fill_probability": "exit_fill_probability",
+        "passes_round_trip_fill_probability": "round_trip_fill_probability",
         "passes_probability": "probability",
         "passes_probability_lower": "probability_lower",
-        "passes_market_probability": "market_regime",
-        "passes_cross_section_probability": "cross_section",
+        "passes_conditional_probability": "conditional_probability",
         "passes_severe_loss": "severe_loss",
         "passes_selection_rank": "selection_rank",
-        "passes_expected_return": "expected_return",
+        "passes_expected_utility": "expected_utility",
         "passes_downside": "downside",
         "passes_stability": "model_stability",
-        "passes_sample": "policy_sample",
-        "passes_empirical_lower": "empirical_lower_bound",
+        "passes_prior_oos_evidence": "prior_oos_evidence",
     }
     result["rejection_reasons"] = [
         "|".join(
@@ -476,34 +502,40 @@ def apply_nested_oos_policies(
 def _policy_grid(config: V3Config):
     model = config.model
     for (
+        entry_fill_probability,
+        exit_fill_probability,
         probability,
-        market_probability,
-        cross_probability,
+        conditional_probability,
         severe_probability,
         selection_rank,
-        expected_return,
+        expected_utility,
         downside,
     ) in product(
+        model.entry_fill_probability_grid,
+        model.exit_fill_probability_grid,
         model.probability_grid,
-        model.market_probability_grid,
-        model.cross_section_probability_grid,
+        model.conditional_probability_grid,
         model.severe_loss_probability_grid,
         model.selection_rank_grid,
-        model.expected_return_grid_pct,
+        model.expected_utility_grid_pct,
         model.downside_grid_pct,
     ):
         payload = {
+            "entry_fill_probability_min": float(entry_fill_probability),
+            "exit_fill_probability_min": float(exit_fill_probability),
+            "round_trip_fill_probability_min": float(
+                entry_fill_probability * exit_fill_probability
+            ),
             "probability_min": float(probability),
-            "probability_lower_min": float(max(0.40, probability - 0.08)),
-            "market_probability_min": float(market_probability),
-            "cross_section_probability_min": float(cross_probability),
+            "probability_lower_min": float(max(0.30, probability - 0.06)),
+            "conditional_probability_min": float(conditional_probability),
             "severe_loss_probability_max": float(severe_probability),
             "selection_rank_min": float(selection_rank),
-            "expected_return_min_pct": float(expected_return),
+            "expected_utility_min_pct": float(expected_utility),
             "downside_min_pct": float(downside),
         }
         yield CandidatePolicy(
-            policy_id="wpv6-" + _digest(payload),
+            policy_id="wpv7-" + _digest(payload),
             authorized=True,
             reason="under_evaluation",
             **payload,
@@ -521,13 +553,14 @@ def _candidate_metrics(
         ["trade_date", "ts_code"],
         keep="first",
     )
-    returns = pd.to_numeric(
-        selected.get("net_return_pct"),
-        errors="coerce",
-    ).dropna()
-    selected = selected.loc[returns.index]
+    returns = _numeric(selected, "net_return_pct")
+    target = _numeric(selected, "target_net_positive")
+    valid = returns.notna() & target.notna()
+    selected = selected.loc[valid].copy()
+    returns = returns.loc[valid]
+    target = target.loc[valid]
     total = int(len(returns))
-    wins = int(returns.gt(0).sum())
+    wins = int(target.eq(1).sum())
     lower, upper = wilson_interval(wins, total)
     profits = float(returns[returns > 0].sum())
     losses = float(-returns[returns < 0].sum())
@@ -535,6 +568,27 @@ def _candidate_metrics(
         profits / losses
         if losses > 0
         else (float("inf") if profits > 0 else 0.0)
+    )
+    entry_fill = _numeric(selected, "target_entry_fillable")
+    exit_fill = _numeric(selected, "target_exit_fillable")
+    entry_known = entry_fill.notna()
+    exit_known = exit_fill.notna()
+    entry_fill_rate = (
+        float(entry_fill.loc[entry_known].mean()) if entry_known.any() else 0.0
+    )
+    exit_fill_rate = (
+        float(exit_fill.loc[exit_known].mean()) if exit_known.any() else 0.0
+    )
+    round_trip_fill_rate = (
+        float(
+            (
+                entry_fill.eq(1)
+                & exit_fill.eq(1)
+            ).sum()
+            / total
+        )
+        if total
+        else 0.0
     )
     payload: dict[str, Any] = {
         "period_start": (
@@ -551,6 +605,9 @@ def _candidate_metrics(
         "win_rate": wins / total if total else 0.0,
         "win_rate_wilson_lower": lower,
         "win_rate_wilson_upper": upper,
+        "entry_fill_rate": entry_fill_rate,
+        "exit_fill_rate_given_entry": exit_fill_rate,
+        "round_trip_fill_rate": round_trip_fill_rate,
         "mean_net_return_pct": _finite(returns.mean()) if total else None,
         "median_net_return_pct": _finite(returns.median()) if total else None,
         "profit_factor": (
@@ -595,6 +652,10 @@ def _passes_quick_design(metrics: dict[str, Any], config: V3Config) -> bool:
         and float(metrics.get("win_rate", 0.0)) >= model.policy_min_win_rate
         and float(metrics.get("win_rate_wilson_lower", 0.0))
         >= model.policy_min_wilson_lower
+        and float(metrics.get("entry_fill_rate", 0.0))
+        >= config.promotion.minimum_entry_fill_rate
+        and float(metrics.get("exit_fill_rate_given_entry", 0.0))
+        >= config.promotion.minimum_exit_fill_rate
         and float(metrics.get("mean_net_return_pct") or -999.0)
         >= model.policy_min_mean_net_return_pct
         and float(metrics.get("profit_factor") or 0.0)
@@ -627,6 +688,10 @@ def _passes_full(
         >= model.policy_min_wilson_lower
         and float(metrics.get("win_rate_day_clustered_lower") or 0.0)
         >= model.policy_min_clustered_lower
+        and float(metrics.get("entry_fill_rate", 0.0))
+        >= config.promotion.minimum_entry_fill_rate
+        and float(metrics.get("exit_fill_rate_given_entry", 0.0))
+        >= config.promotion.minimum_exit_fill_rate
         and float(metrics.get("mean_net_return_pct") or -999.0)
         >= model.policy_min_mean_net_return_pct
         and float(metrics.get("profit_factor") or 0.0)
@@ -680,6 +745,9 @@ def _empty_metrics() -> dict[str, Any]:
         "win_rate": 0.0,
         "win_rate_wilson_lower": 0.0,
         "win_rate_day_clustered_lower": 0.0,
+        "entry_fill_rate": 0.0,
+        "exit_fill_rate_given_entry": 0.0,
+        "round_trip_fill_rate": 0.0,
         "mean_net_return_pct": None,
         "mean_net_return_day_clustered_lower_pct": None,
         "median_net_return_pct": None,

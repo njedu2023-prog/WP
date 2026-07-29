@@ -27,7 +27,6 @@ from .features import (
     MARKET_FEATURE_COLUMNS,
     enrich_feature_frame,
     feature_matrix,
-    market_feature_matrix,
 )
 from .policy import (
     CandidatePolicy,
@@ -39,7 +38,7 @@ from .statistics import clustered_binary_lower
 
 
 TARGET_RANK_COLUMN = "_target_net_return_rank"
-MODEL_SCHEMA_VERSION = "wp_v6_multitask_bundle_1"
+MODEL_SCHEMA_VERSION = "wp_v7_fill_conditional_bundle_1"
 
 
 @dataclass
@@ -55,6 +54,8 @@ class BetaCalibrator:
     ) -> "BetaCalibrator":
         probability = np.asarray(probability, dtype=float)
         target = np.asarray(target, dtype=int)
+        if len(target) == 0:
+            raise ValueError("calibration target is empty")
         if len(np.unique(target)) < 2:
             self.constant = float(np.average(target, weights=sample_weight))
             self.model = None
@@ -87,10 +88,11 @@ class ModelMember:
     window_days: int
     train_start: str
     train_end: str
-    positive_classifier: Any
+    entry_fill_classifier: Any
+    exit_fill_classifier: Any
+    conditional_positive_classifier: Any
     cross_section_classifier: Any
-    severe_loss_classifier: Any
-    market_classifier: Any
+    conditional_severe_loss_classifier: Any
     ranker: Any
     mean_regressor: Any
     downside_regressor: Any
@@ -130,15 +132,18 @@ class ModelBundle:
     feature_columns: tuple[str, ...]
     market_feature_columns: tuple[str, ...]
     members: list[ModelMember]
+    entry_fill_calibrator: BetaCalibrator
+    exit_fill_calibrator: BetaCalibrator
+    conditional_positive_calibrator: BetaCalibrator
     positive_calibrator: BetaCalibrator
     cross_section_calibrator: BetaCalibrator
     severe_loss_calibrator: BetaCalibrator
-    market_calibrator: BetaCalibrator
     calibration_table: list[dict[str, float | int]]
     candidate_policy: CandidatePolicy
     policy_selection: dict[str, Any]
     selection_evidence: dict[str, Any]
     max_market_data_age_seconds: int
+    exit_non_fill_penalty_pct: float
     fingerprint: str
 
 
@@ -167,7 +172,7 @@ def train_bundle(
     eligible_rows = int(len(eligible))
     if not allow_below_minimum and len(eligible) < config.model.min_train_rows:
         raise ValueError(
-            f"V6 training requires {config.model.min_train_rows:,} eligible "
+            f"V7 training requires {config.model.min_train_rows:,} eligible "
             f"labelled rows; received {len(eligible):,}"
         )
 
@@ -179,19 +184,19 @@ def train_bundle(
     )
     if not allow_below_minimum and len(unique_dates) < minimum_dates:
         raise ValueError(
-            f"V6 temporal training requires at least {minimum_dates} dates; "
+            f"V7 temporal training requires at least {minimum_dates} dates; "
             f"received {len(unique_dates)}"
         )
     if allow_below_minimum and len(unique_dates) < (
         config.model.calibration_days + config.model.purge_days + 20
     ):
-        raise ValueError("insufficient temporal depth for V6 calibration")
+        raise ValueError("insufficient temporal depth for V7 calibration")
 
     calibration_dates = unique_dates[-config.model.calibration_days :]
     fit_end = len(unique_dates) - config.model.calibration_days - config.model.purge_days
     fit_dates = unique_dates[:fit_end]
     if len(fit_dates) < 20:
-        raise ValueError("V6 fit period is too short")
+        raise ValueError("V7 fit period is too short")
     development_dates = fit_dates[-min(max(config.model.ensemble_windows_days), len(fit_dates)) :]
     sampled_development = _deterministic_training_sample(
         eligible,
@@ -209,7 +214,7 @@ def train_bundle(
     sampled_development = enrich_feature_frame(sampled_development, copy=False)
     calibration = enrich_feature_frame(calibration, copy=False)
     print(
-        f"[wp-v6] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
+        f"[wp-v7] calibration fit={fit_dates[0]}..{fit_dates[-1]} "
         f"rows={len(sampled_development):,} "
         f"calibration={calibration_dates[0]}..{calibration_dates[-1]} "
         f"rows={len(calibration):,}/{eligible_calibration_rows:,}",
@@ -228,39 +233,79 @@ def train_bundle(
         calibration,
         half_life_days=config.model.temporal_half_life_days,
     )
+    entry_mask = pd.to_numeric(
+        calibration["target_entry_fillable"],
+        errors="coerce",
+    ).notna()
+    exit_mask = pd.to_numeric(
+        calibration["target_exit_fillable"],
+        errors="coerce",
+    ).notna()
+    conditional_mask = pd.to_numeric(
+        calibration["target_conditional_net_positive"],
+        errors="coerce",
+    ).notna()
+    entry_fill_calibrator = BetaCalibrator().fit(
+        calibration_raw.loc[entry_mask, "p_entry_fill_raw"].to_numpy(),
+        calibration.loc[entry_mask, "target_entry_fillable"].astype(int).to_numpy(),
+        calibration_weight[entry_mask.to_numpy()],
+    )
+    exit_fill_calibrator = BetaCalibrator().fit(
+        calibration_raw.loc[exit_mask, "p_exit_fill_raw"].to_numpy(),
+        calibration.loc[exit_mask, "target_exit_fillable"].astype(int).to_numpy(),
+        calibration_weight[exit_mask.to_numpy()],
+    )
+    conditional_positive_calibrator = BetaCalibrator().fit(
+        calibration_raw.loc[
+            conditional_mask,
+            "p_conditional_net_positive_raw",
+        ].to_numpy(),
+        calibration.loc[
+            conditional_mask,
+            "target_conditional_net_positive",
+        ].astype(int).to_numpy(),
+        calibration_weight[conditional_mask.to_numpy()],
+    )
+    calibrated_component_product = (
+        entry_fill_calibrator.predict(
+            calibration_raw["p_entry_fill_raw"].to_numpy()
+        )
+        * exit_fill_calibrator.predict(
+            calibration_raw["p_exit_fill_raw"].to_numpy()
+        )
+        * conditional_positive_calibrator.predict(
+            calibration_raw["p_conditional_net_positive_raw"].to_numpy()
+        )
+    )
     positive_calibrator = BetaCalibrator().fit(
-        calibration_raw["p_net_positive_raw"].to_numpy(),
+        calibrated_component_product,
         calibration["target_net_positive"].astype(int).to_numpy(),
         calibration_weight,
     )
     cross_calibrator = BetaCalibrator().fit(
-        calibration_raw["p_cross_section_top_raw"].to_numpy(),
-        calibration["target_cross_section_top"].astype(int).to_numpy(),
-        calibration_weight,
+        calibration_raw.loc[
+            conditional_mask,
+            "p_cross_section_top_raw",
+        ].to_numpy(),
+        calibration.loc[
+            conditional_mask,
+            "target_cross_section_top",
+        ].astype(int).to_numpy(),
+        calibration_weight[conditional_mask.to_numpy()],
     )
     severe_calibrator = BetaCalibrator().fit(
-        calibration_raw["p_severe_loss_raw"].to_numpy(),
-        calibration["target_severe_loss"].astype(int).to_numpy(),
-        calibration_weight,
-    )
-    market_calibration = _market_rows(calibration)
-    market_raw = _raw_market_probability(
-        development_members,
-        market_calibration,
-    )
-    market_weight = _temporal_weights(
-        market_calibration,
-        half_life_days=config.model.temporal_half_life_days,
-    )
-    market_calibrator = BetaCalibrator().fit(
-        market_raw,
-        market_calibration["target_market_positive"].astype(int).to_numpy(),
-        market_weight,
+        calibration_raw.loc[
+            conditional_mask,
+            "p_conditional_severe_loss_raw",
+        ].to_numpy(),
+        calibration.loc[
+            conditional_mask,
+            "target_conditional_severe_loss",
+        ].astype(int).to_numpy(),
+        calibration_weight[conditional_mask.to_numpy()],
     )
     calibration_table = _build_calibration_table(
-        positive_calibrator.predict(
-            calibration_raw["p_net_positive_raw"].to_numpy()
-        ),
+        positive_calibrator.predict(calibrated_component_product),
         calibration["target_net_positive"].astype(int).to_numpy(),
         calibration["trade_date"].astype(str).to_numpy(),
         seed=config.model.random_seed,
@@ -273,9 +318,6 @@ def train_bundle(
     del calibration_raw
     del calibration_weight
     del development_members
-    del market_calibration
-    del market_raw
-    del market_weight
     del sampled_development
     gc.collect()
 
@@ -317,7 +359,7 @@ def train_bundle(
         contract,
         candidate_policy,
     )
-    version = model_version or f"wpv6-{unique_dates[-1]}-{eligible_rows}"
+    version = model_version or f"wpv7-{unique_dates[-1]}-{eligible_rows}"
     evidence = (
         dict(policy_selection.confirmation)
         if policy_selection is not None
@@ -346,7 +388,7 @@ def train_bundle(
         "training_data_digest": training_digest,
         "members": [member.name for member in execution_members],
         "features": FEATURE_COLUMNS,
-        "market_features": MARKET_FEATURE_COLUMNS,
+        "market_features_in_main_model": MARKET_FEATURE_COLUMNS,
         "candidate_policy": asdict(candidate_policy),
         "policy_selection": selection_payload,
     }
@@ -377,15 +419,18 @@ def train_bundle(
         feature_columns=FEATURE_COLUMNS,
         market_feature_columns=MARKET_FEATURE_COLUMNS,
         members=execution_members,
+        entry_fill_calibrator=entry_fill_calibrator,
+        exit_fill_calibrator=exit_fill_calibrator,
+        conditional_positive_calibrator=conditional_positive_calibrator,
         positive_calibrator=positive_calibrator,
         cross_section_calibrator=cross_calibrator,
         severe_loss_calibrator=severe_calibrator,
-        market_calibrator=market_calibrator,
         calibration_table=calibration_table,
         candidate_policy=candidate_policy,
         policy_selection=selection_payload,
         selection_evidence=evidence,
         max_market_data_age_seconds=config.execution.max_market_data_age_seconds,
+        exit_non_fill_penalty_pct=config.execution.non_fill_penalty_pct,
         fingerprint=fingerprint,
     )
 
@@ -445,8 +490,7 @@ def predict_bundle(
     )
     if config is None:
         result["passes_policy"] = False
-        result["passes_sample"] = False
-        result["passes_empirical_lower"] = False
+        result["passes_prior_oos_evidence"] = False
         result["rejection_reasons"] = "runtime_contract_missing"
     else:
         diagnostics = candidate_policy_diagnostics(
@@ -481,7 +525,7 @@ def save_bundle(bundle: ModelBundle, path: str | Path) -> None:
 def load_bundle(path: str | Path) -> ModelBundle:
     bundle = joblib.load(Path(path))
     if not isinstance(bundle, ModelBundle):
-        raise TypeError("model artifact is not a WP V6 ModelBundle")
+        raise TypeError("model artifact is not a WP V7 ModelBundle")
     if bundle.schema_version != MODEL_SCHEMA_VERSION:
         raise ValueError("unsupported WP model bundle schema")
     return bundle
@@ -491,10 +535,12 @@ def bundle_metadata(bundle: ModelBundle) -> dict[str, Any]:
     data = asdict(bundle)
     for key in (
         "members",
+        "entry_fill_calibrator",
+        "exit_fill_calibrator",
+        "conditional_positive_calibrator",
         "positive_calibrator",
         "cross_section_calibrator",
         "severe_loss_calibrator",
-        "market_calibrator",
     ):
         data.pop(key, None)
     data["ensemble_members"] = [
@@ -533,81 +579,118 @@ def _fit_members(
             ["trade_date", "signal_slot", "ts_code"],
             kind="stable",
         )
+        exit_frame = member_frame.loc[
+            pd.to_numeric(
+                member_frame["target_exit_fillable"],
+                errors="coerce",
+            ).notna()
+        ].copy()
+        conditional_frame = member_frame.loc[
+            pd.to_numeric(
+                member_frame["target_conditional_net_positive"],
+                errors="coerce",
+            ).notna()
+            & pd.to_numeric(
+                member_frame[TARGET_RANK_COLUMN],
+                errors="coerce",
+            ).notna()
+        ].copy()
+        if len(exit_frame) < 100 or len(conditional_frame) < 100:
+            continue
         features = feature_matrix(member_frame)
+        exit_features = feature_matrix(exit_frame)
+        conditional_features = feature_matrix(conditional_frame)
         weights = _group_temporal_weights(
             member_frame,
             half_life_days=config.model.temporal_half_life_days,
         )
-        rank_percentile, rank_groups = _ranking_target_and_groups(member_frame)
+        exit_weights = _group_temporal_weights(
+            exit_frame,
+            half_life_days=config.model.temporal_half_life_days,
+        )
+        conditional_weights = _group_temporal_weights(
+            conditional_frame,
+            half_life_days=config.model.temporal_half_life_days,
+        )
+        rank_percentile, rank_groups = _ranking_target_and_groups(
+            conditional_frame
+        )
         rank_relevance = np.clip(
             np.floor(rank_percentile * 5.0),
             0,
             4,
         ).astype(int)
-        market = _market_rows(member_frame)
-        market_weights = _temporal_weights(
-            market,
-            half_life_days=config.model.temporal_half_life_days,
-        )
         seed = config.model.random_seed + seed_offset + int(window)
         print(
-            f"[wp-v6] fit member window={len(member_dates)}d "
-            f"rows={len(member_frame):,}",
+            f"[wp-v7] fit member window={len(member_dates)}d "
+            f"rows={len(member_frame):,} exit={len(exit_frame):,} "
+            f"round_trip={len(conditional_frame):,}",
             flush=True,
         )
         members.append(
             ModelMember(
-                name=f"multitask_{len(member_dates)}d",
+                name=f"fill_conditional_{len(member_dates)}d",
                 window_days=int(len(member_dates)),
                 train_start=str(member_dates[0]),
                 train_end=str(member_dates[-1]),
-                positive_classifier=_fit_classifier(
+                entry_fill_classifier=_fit_classifier(
                     features,
-                    member_frame["target_net_positive"].astype(int).to_numpy(),
+                    member_frame["target_entry_fillable"].astype(int).to_numpy(),
                     weights,
                     seed,
                 ),
-                cross_section_classifier=_fit_classifier(
-                    features,
-                    member_frame["target_cross_section_top"].astype(int).to_numpy(),
-                    weights,
+                exit_fill_classifier=_fit_classifier(
+                    exit_features,
+                    exit_frame["target_exit_fillable"].astype(int).to_numpy(),
+                    exit_weights,
                     seed + 1_000,
                 ),
-                severe_loss_classifier=_fit_classifier(
-                    features,
-                    member_frame["target_severe_loss"].astype(int).to_numpy(),
-                    weights,
+                conditional_positive_classifier=_fit_classifier(
+                    conditional_features,
+                    conditional_frame[
+                        "target_conditional_net_positive"
+                    ].astype(int).to_numpy(),
+                    conditional_weights,
                     seed + 2_000,
                 ),
-                market_classifier=_fit_classifier(
-                    market_feature_matrix(market),
-                    market["target_market_positive"].astype(int).to_numpy(),
-                    market_weights,
+                cross_section_classifier=_fit_classifier(
+                    conditional_features,
+                    conditional_frame[
+                        "target_cross_section_top"
+                    ].astype(int).to_numpy(),
+                    conditional_weights,
                     seed + 3_000,
-                    compact=True,
+                ),
+                conditional_severe_loss_classifier=_fit_classifier(
+                    conditional_features,
+                    conditional_frame[
+                        "target_conditional_severe_loss"
+                    ].astype(int).to_numpy(),
+                    conditional_weights,
+                    seed + 4_000,
                 ),
                 ranker=(
                     None
                     if calibration_only
                     else _fit_ranker(
-                        features,
+                        conditional_features,
                         rank_relevance,
                         rank_groups,
-                        weights,
-                        seed + 4_000,
+                        conditional_weights,
+                        seed + 5_000,
                     )
                 ),
                 mean_regressor=(
                     None
                     if calibration_only
                     else _fit_regressor(
-                        features,
+                        conditional_features,
                         pd.to_numeric(
-                            member_frame["net_return_pct"],
+                            conditional_frame["conditional_net_return_pct"],
                             errors="coerce",
-                        ).fillna(-10.0).clip(-15.0, 15.0).to_numpy(),
-                        weights,
-                        seed + 5_000,
+                        ).clip(-15.0, 15.0).to_numpy(),
+                        conditional_weights,
+                        seed + 6_000,
                         objective="regression_l1",
                     )
                 ),
@@ -615,13 +698,13 @@ def _fit_members(
                     None
                     if calibration_only
                     else _fit_regressor(
-                        features,
+                        conditional_features,
                         pd.to_numeric(
-                            member_frame["net_return_pct"],
+                            conditional_frame["conditional_net_return_pct"],
                             errors="coerce",
-                        ).fillna(-10.0).clip(-15.0, 15.0).to_numpy(),
-                        weights,
-                        seed + 6_000,
+                        ).clip(-15.0, 15.0).to_numpy(),
+                        conditional_weights,
+                        seed + 7_000,
                         objective="quantile",
                         alpha=0.10,
                     )
@@ -629,9 +712,13 @@ def _fit_members(
             )
         )
         del features
-        del market
-        del market_weights
+        del exit_features
+        del conditional_features
+        del exit_frame
+        del conditional_frame
         del member_frame
+        del exit_weights
+        del conditional_weights
         del rank_groups
         del rank_percentile
         del rank_relevance
@@ -641,7 +728,7 @@ def _fit_members(
     required = 1 if allow_single else 2
     if len(members) < required:
         raise ValueError(
-            f"V6 temporal ensemble requires at least {required} trained members"
+            f"V7 temporal ensemble requires at least {required} trained members"
         )
     return members
 
@@ -651,9 +738,24 @@ def _raw_score_frame(
     members: list[ModelMember],
 ) -> pd.DataFrame:
     features = feature_matrix(frame)
-    positive_members = np.column_stack(
+    entry_members = np.column_stack(
         [
-            _predict_probability(member.positive_classifier, features)
+            _predict_probability(member.entry_fill_classifier, features)
+            for member in members
+        ]
+    )
+    exit_members = np.column_stack(
+        [
+            _predict_probability(member.exit_fill_classifier, features)
+            for member in members
+        ]
+    )
+    conditional_positive_members = np.column_stack(
+        [
+            _predict_probability(
+                member.conditional_positive_classifier,
+                features,
+            )
             for member in members
         ]
     )
@@ -665,15 +767,26 @@ def _raw_score_frame(
     )
     severe_members = np.column_stack(
         [
-            _predict_probability(member.severe_loss_classifier, features)
+            _predict_probability(
+                member.conditional_severe_loss_classifier,
+                features,
+            )
             for member in members
         ]
     )
+    positive_members = (
+        entry_members * exit_members * conditional_positive_members
+    )
     return pd.DataFrame(
         {
+            "p_entry_fill_raw": entry_members.mean(axis=1),
+            "p_exit_fill_raw": exit_members.mean(axis=1),
+            "p_conditional_net_positive_raw": (
+                conditional_positive_members.mean(axis=1)
+            ),
             "p_net_positive_raw": positive_members.mean(axis=1),
             "p_cross_section_top_raw": cross_members.mean(axis=1),
-            "p_severe_loss_raw": severe_members.mean(axis=1),
+            "p_conditional_severe_loss_raw": severe_members.mean(axis=1),
         },
         index=frame.index,
     )
@@ -683,9 +796,24 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     frame = enrich_feature_frame(frame)
     features = feature_matrix(frame)
     members = bundle.members
-    positive_members_raw = np.column_stack(
+    entry_members_raw = np.column_stack(
         [
-            _predict_probability(member.positive_classifier, features)
+            _predict_probability(member.entry_fill_classifier, features)
+            for member in members
+        ]
+    )
+    exit_members_raw = np.column_stack(
+        [
+            _predict_probability(member.exit_fill_classifier, features)
+            for member in members
+        ]
+    )
+    conditional_positive_members_raw = np.column_stack(
+        [
+            _predict_probability(
+                member.conditional_positive_classifier,
+                features,
+            )
             for member in members
         ]
     )
@@ -697,14 +825,45 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     )
     severe_members_raw = np.column_stack(
         [
-            _predict_probability(member.severe_loss_classifier, features)
+            _predict_probability(
+                member.conditional_severe_loss_classifier,
+                features,
+            )
             for member in members
         ]
     )
+    positive_members_raw = (
+        entry_members_raw * exit_members_raw * conditional_positive_members_raw
+    )
+    entry_members = np.column_stack(
+        [
+            bundle.entry_fill_calibrator.predict(entry_members_raw[:, index])
+            for index in range(entry_members_raw.shape[1])
+        ]
+    )
+    exit_members = np.column_stack(
+        [
+            bundle.exit_fill_calibrator.predict(exit_members_raw[:, index])
+            for index in range(exit_members_raw.shape[1])
+        ]
+    )
+    conditional_positive_members = np.column_stack(
+        [
+            bundle.conditional_positive_calibrator.predict(
+                conditional_positive_members_raw[:, index]
+            )
+            for index in range(conditional_positive_members_raw.shape[1])
+        ]
+    )
+    calibrated_component_members = (
+        entry_members * exit_members * conditional_positive_members
+    )
     positive_members = np.column_stack(
         [
-            bundle.positive_calibrator.predict(positive_members_raw[:, index])
-            for index in range(positive_members_raw.shape[1])
+            bundle.positive_calibrator.predict(
+                calibrated_component_members[:, index]
+            )
+            for index in range(calibrated_component_members.shape[1])
         ]
     )
     cross_members = np.column_stack(
@@ -719,20 +878,6 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
             for index in range(severe_members_raw.shape[1])
         ]
     )
-    market_rows = _market_rows(frame)
-    market_probability = _raw_market_probability(members, market_rows)
-    market_probability = bundle.market_calibrator.predict(market_probability)
-    market_map = pd.Series(
-        market_probability,
-        index=pd.MultiIndex.from_frame(
-            market_rows[["trade_date", "signal_slot"]].astype(str)
-        ),
-    )
-    row_market_index = pd.MultiIndex.from_frame(
-        frame[["trade_date", "signal_slot"]].astype(str)
-    )
-    market_for_rows = market_map.reindex(row_market_index).to_numpy(dtype=float)
-
     expected_members = np.column_stack(
         [
             np.asarray(member.mean_regressor.predict(features), dtype=float)
@@ -758,28 +903,71 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
         ]
     )
 
-    probability = positive_members.mean(axis=1)
-    cross_probability = cross_members.mean(axis=1)
-    severe_probability = severe_members.mean(axis=1)
-    expected = expected_members.mean(axis=1)
-    downside = downside_members.mean(axis=1)
+    entry_probability = bundle.entry_fill_calibrator.predict(
+        entry_members_raw.mean(axis=1)
+    )
+    exit_probability = bundle.exit_fill_calibrator.predict(
+        exit_members_raw.mean(axis=1)
+    )
+    conditional_probability = bundle.conditional_positive_calibrator.predict(
+        conditional_positive_members_raw.mean(axis=1)
+    )
+    calibrated_component_probability = (
+        entry_probability * exit_probability * conditional_probability
+    )
+    probability = bundle.positive_calibrator.predict(
+        calibrated_component_probability
+    )
+    round_trip_members = entry_members * exit_members
+    round_trip_probability = entry_probability * exit_probability
+    cross_probability = bundle.cross_section_calibrator.predict(
+        cross_members_raw.mean(axis=1)
+    )
+    severe_probability = bundle.severe_loss_calibrator.predict(
+        severe_members_raw.mean(axis=1)
+    )
+    conditional_expected = expected_members.mean(axis=1)
+    conditional_downside = downside_members.mean(axis=1)
+    expected_utility = entry_probability * (
+        exit_probability * conditional_expected
+        + (1.0 - exit_probability) * bundle.exit_non_fill_penalty_pct
+    )
     rank_score = rank_members.mean(axis=1)
     positive_rank = _group_percentile_rank(probability, frame)
+    fill_rank = _group_percentile_rank(round_trip_probability, frame)
     cross_rank = _group_percentile_rank(cross_probability, frame)
     severe_safe_rank = _group_percentile_rank(1.0 - severe_probability, frame)
-    expected_rank = _group_percentile_rank(expected, frame)
-    downside_rank = _group_percentile_rank(downside, frame)
+    expected_rank = _group_percentile_rank(expected_utility, frame)
+    conditional_expected_rank = _group_percentile_rank(
+        conditional_expected,
+        frame,
+    )
+    downside_rank = _group_percentile_rank(conditional_downside, frame)
     selection_score = (
-        0.25 * positive_rank
-        + 0.20 * cross_rank
-        + 0.20 * rank_score
-        + 0.15 * expected_rank
-        + 0.10 * downside_rank
-        + 0.10 * severe_safe_rank
+        0.30 * positive_rank
+        + 0.20 * expected_rank
+        + 0.15 * rank_score
+        + 0.10 * conditional_expected_rank
+        + 0.10 * fill_rank
+        + 0.05 * cross_rank
+        + 0.05 * downside_rank
+        + 0.05 * severe_safe_rank
     )
 
     result = frame.copy()
     result["p_net_positive_raw"] = positive_members_raw.mean(axis=1)
+    result["p_net_positive_component_product"] = (
+        calibrated_component_probability
+    )
+    result["p_entry_fill"] = entry_probability
+    result["p_exit_fill_given_entry"] = exit_probability
+    result["p_round_trip_fill"] = round_trip_probability
+    result["p_round_trip_fill_lower"] = np.quantile(
+        round_trip_members,
+        0.10,
+        axis=1,
+    )
+    result["p_conditional_net_positive"] = conditional_probability
     result["p_net_positive"] = probability
     result["p_net_positive_lower"] = np.quantile(
         positive_members,
@@ -788,10 +976,11 @@ def _score_frame(bundle: ModelBundle, frame: pd.DataFrame) -> pd.DataFrame:
     )
     result["p_cross_section_top"] = cross_probability
     result["p_severe_loss"] = severe_probability
-    result["p_market_positive"] = market_for_rows
     result["probability_model_spread"] = positive_members.std(axis=1)
-    result["expected_net_return_pct"] = expected
-    result["downside_q10_pct"] = downside
+    result["fill_probability_model_spread"] = round_trip_members.std(axis=1)
+    result["conditional_expected_net_return_pct"] = conditional_expected
+    result["expected_utility_pct"] = expected_utility
+    result["downside_q10_pct"] = conditional_downside
     result["ranking_score"] = rank_score
     result["selection_score"] = selection_score
     result["selection_rank_pct"] = _group_percentile_rank(
@@ -1008,7 +1197,10 @@ def _ranking_target_and_groups(
         percentile = pd.to_numeric(frame[TARGET_RANK_COLUMN], errors="coerce")
     else:
         percentile = (
-            pd.to_numeric(frame["net_return_pct"], errors="coerce")
+            pd.to_numeric(
+                frame["conditional_net_return_pct"],
+                errors="coerce",
+            )
             .groupby([frame[column] for column in keys], sort=False)
             .rank(method="average", pct=True)
         )
@@ -1030,7 +1222,10 @@ def _attach_full_universe_rank_target(
     result = frame.copy() if copy else frame
     if TARGET_RANK_COLUMN not in result:
         result[TARGET_RANK_COLUMN] = (
-            pd.to_numeric(result["net_return_pct"], errors="coerce")
+            pd.to_numeric(
+                result["conditional_net_return_pct"],
+                errors="coerce",
+            )
             .groupby(
                 [result["trade_date"], result["signal_slot"]],
                 sort=False,
@@ -1047,11 +1242,40 @@ def _ensure_multitask_targets(
     copy: bool = True,
 ) -> pd.DataFrame:
     result = frame.copy() if copy else frame
-    returns = pd.to_numeric(result["net_return_pct"], errors="coerce")
+    conditional_returns = pd.to_numeric(
+        result["conditional_net_return_pct"],
+        errors="coerce",
+    )
+    round_trip = (
+        pd.to_numeric(
+            result.get("target_entry_fillable"),
+            errors="coerce",
+        ).eq(1)
+        & pd.to_numeric(
+            result.get("target_exit_fillable"),
+            errors="coerce",
+        ).eq(1)
+    )
+    if "target_conditional_net_positive" not in result:
+        result["target_conditional_net_positive"] = np.where(
+            round_trip,
+            conditional_returns.gt(0).astype("int8"),
+            np.nan,
+        )
+    if "target_conditional_severe_loss" not in result:
+        result["target_conditional_severe_loss"] = np.where(
+            round_trip,
+            conditional_returns.le(
+                config.model.severe_loss_threshold_pct
+            ).astype("int8"),
+            np.nan,
+        )
     if "target_severe_loss" not in result:
-        result["target_severe_loss"] = returns.le(
-            config.model.severe_loss_threshold_pct
-        ).astype("int8")
+        result["target_severe_loss"] = (
+            pd.to_numeric(result["net_return_pct"], errors="coerce")
+            .le(config.model.severe_loss_threshold_pct)
+            .astype("int8")
+        )
     if "target_cross_section_top" not in result:
         rank = pd.to_numeric(
             result[TARGET_RANK_COLUMN],
@@ -1059,13 +1283,7 @@ def _ensure_multitask_targets(
         )
         result["target_cross_section_top"] = rank.ge(
             1.0 - config.model.cross_section_top_fraction
-        ).astype("int8")
-    if "target_market_positive" not in result:
-        median = returns.groupby(
-            [result["trade_date"], result["signal_slot"]],
-            sort=False,
-        ).transform("median")
-        result["target_market_positive"] = median.gt(0).astype("int8")
+        ).where(round_trip).astype("Int8")
     return result
 
 
@@ -1135,27 +1353,6 @@ def _temporal_weights(
     return weights / max(float(np.mean(weights)), 1e-12)
 
 
-def _market_rows(frame: pd.DataFrame) -> pd.DataFrame:
-    return frame.drop_duplicates(
-        ["trade_date", "signal_slot"],
-        keep="first",
-    ).reset_index(drop=True)
-
-
-def _raw_market_probability(
-    members: list[ModelMember],
-    market: pd.DataFrame,
-) -> np.ndarray:
-    features = market_feature_matrix(market)
-    matrix = np.column_stack(
-        [
-            _predict_probability(member.market_classifier, features)
-            for member in members
-        ]
-    )
-    return matrix.mean(axis=1)
-
-
 def _predict_probability(model: Any, features: pd.DataFrame) -> np.ndarray:
     return np.asarray(model.predict_proba(features)[:, 1], dtype=float)
 
@@ -1222,10 +1419,14 @@ def _training_data_digest(frame: pd.DataFrame) -> str:
         "signal_slot",
         "ts_code",
         "signal_price",
+        "target_entry_fillable",
+        "target_exit_fillable",
         "target_net_positive",
+        "target_conditional_net_positive",
         "target_cross_section_top",
         "target_severe_loss",
-        "target_market_positive",
+        "target_conditional_severe_loss",
+        "conditional_net_return_pct",
         "net_return_pct",
     ]
     digest = hashlib.sha256()

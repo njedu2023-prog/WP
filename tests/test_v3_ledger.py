@@ -22,9 +22,14 @@ def _prediction(price: float, fingerprint: str = "abc") -> pd.DataFrame:
                 "target_trade_date": "20260724",
                 "signal_price": price,
                 "passes_policy": True,
+                "p_entry_fill": 0.99,
+                "p_exit_fill_given_entry": 0.995,
+                "p_round_trip_fill": 0.985,
+                "p_conditional_net_positive": 0.68,
                 "p_net_positive": 0.67,
                 "p_net_positive_lower": 0.58,
-                "expected_net_return_pct": 0.8,
+                "expected_utility_pct": 0.8,
+                "conditional_expected_net_return_pct": 1.0,
                 "downside_q10_pct": -2.0,
                 "model_version": "v3",
                 "model_fingerprint": fingerprint,
@@ -114,7 +119,7 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
         )
 
 
-def test_freeze_fails_integrity_when_a_v6_entry_is_still_pending():
+def test_freeze_fails_integrity_when_a_v7_entry_is_still_pending():
     ledger = empty_shadow_ledger()
     config = V3Config()
     for slot in config.strategy.signal_slots:

@@ -18,10 +18,14 @@ GATE_ORDER = (
 )
 
 SCORE_COLUMNS = {
-    "probability": "p_net_positive",
-    "expected_return": "expected_net_return_pct",
+    "executable_positive_probability": "p_net_positive",
     "conservative_probability": "p_net_positive_lower",
-    "market_probability": "p_market_positive",
+    "entry_fill_probability": "p_entry_fill",
+    "exit_fill_probability": "p_exit_fill_given_entry",
+    "round_trip_fill_probability": "p_round_trip_fill",
+    "conditional_positive_probability": "p_conditional_net_positive",
+    "expected_utility": "expected_utility_pct",
+    "conditional_expected_return": "conditional_expected_net_return_pct",
     "cross_section_probability": "p_cross_section_top",
     "severe_loss_safety": "_severe_loss_safety",
     "learned_rank": "ranking_score",
@@ -36,7 +40,7 @@ def build_prediction_diagnostics(
     """Describe OOS discrimination without changing the frozen trading policy."""
     if predictions.empty:
         return {
-            "schema_version": "wp_v6_prediction_diagnostics_1",
+            "schema_version": "wp_v7_prediction_diagnostics_1",
             "rows": 0,
             "policy_funnel": [],
             "score_quality": {},
@@ -59,7 +63,12 @@ def build_prediction_diagnostics(
     for column in {
         *SCORE_COLUMNS.values(),
         "downside_q10_pct",
-        "p_market_positive",
+        "p_entry_fill",
+        "p_exit_fill_given_entry",
+        "p_round_trip_fill",
+        "p_conditional_net_positive",
+        "expected_utility_pct",
+        "conditional_expected_net_return_pct",
         "p_cross_section_top",
         "p_severe_loss",
         "ranking_score",
@@ -113,7 +122,7 @@ def build_prediction_diagnostics(
         slot_quality.append(row)
 
     return {
-        "schema_version": "wp_v6_prediction_diagnostics_1",
+        "schema_version": "wp_v7_prediction_diagnostics_1",
         "rows": int(len(frame)),
         "trade_days": int(frame["trade_date"].nunique()),
         "base": _return_summary(frame),
@@ -193,7 +202,7 @@ def _composite_rank(frame: pd.DataFrame) -> pd.Series:
         method="average",
         pct=True,
     )
-    expected_rank = frame["expected_net_return_pct"].groupby(
+    expected_rank = frame["expected_utility_pct"].groupby(
         groups,
         sort=False,
     ).rank(method="average", pct=True)

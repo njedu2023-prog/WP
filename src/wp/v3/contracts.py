@@ -25,8 +25,8 @@ DEFAULT_SIGNAL_SLOTS = (
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v6"
-    model_family: str = "causal_multitask_executable_v6"
+    strategy_id: str = "wp_t1_net_profit_v7"
+    model_family: str = "causal_fill_conditional_return_v7"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
     candidate_freeze_time: str = "14:55"
@@ -64,8 +64,8 @@ class ExecutionContract:
 
 @dataclass(frozen=True)
 class ModelContract:
-    policy_implementation_version: str = "wp_v6_nested_oos_policy_1"
-    feature_version: str = "wp_v6_causal_features_1"
+    policy_implementation_version: str = "wp_v7_nested_oos_policy_1"
+    feature_version: str = "wp_v7_causal_features_1"
     minimum_train_days: int = 252
     calibration_days: int = 42
     policy_design_days: int = 84
@@ -76,13 +76,14 @@ class ModelContract:
     temporal_half_life_days: int = 252
     cross_section_top_fraction: float = 0.20
     severe_loss_threshold_pct: float = -2.00
-    probability_grid: tuple[float, ...] = (0.48, 0.52, 0.56)
-    market_probability_grid: tuple[float, ...] = (0.45, 0.50)
-    cross_section_probability_grid: tuple[float, ...] = (0.45, 0.50)
-    severe_loss_probability_grid: tuple[float, ...] = (0.35, 0.45)
-    selection_rank_grid: tuple[float, ...] = (0.98, 0.99, 0.995)
-    expected_return_grid_pct: tuple[float, ...] = (-0.25, 0.00)
-    downside_grid_pct: tuple[float, ...] = (-5.00, -3.50)
+    entry_fill_probability_grid: tuple[float, ...] = (0.97, 0.985)
+    exit_fill_probability_grid: tuple[float, ...] = (0.985, 0.995)
+    probability_grid: tuple[float, ...] = (0.38, 0.42, 0.46)
+    conditional_probability_grid: tuple[float, ...] = (0.48, 0.52)
+    severe_loss_probability_grid: tuple[float, ...] = (0.25, 0.35)
+    selection_rank_grid: tuple[float, ...] = (0.995, 0.998)
+    expected_utility_grid_pct: tuple[float, ...] = (-0.10, 0.00, 0.10)
+    downside_grid_pct: tuple[float, ...] = (-3.00, -2.00)
     policy_min_design_events: int = 150
     policy_min_design_days: int = 30
     policy_min_confirmation_events: int = 60
@@ -93,6 +94,7 @@ class ModelContract:
     policy_min_mean_net_return_pct: float = 0.15
     policy_min_profit_factor: float = 1.10
     max_probability_model_spread: float = 0.15
+    max_fill_probability_model_spread: float = 0.10
     max_selection_rank_spread: float = 0.25
     min_train_rows: int = 20_000
     max_training_rows_per_slot: int = 240
@@ -150,12 +152,13 @@ def _coerce(cls: type[Any], raw: dict[str, Any]) -> Any:
             "signal_slots",
             "stress_cost_bps",
             "ensemble_windows_days",
+            "entry_fill_probability_grid",
+            "exit_fill_probability_grid",
             "probability_grid",
-            "market_probability_grid",
-            "cross_section_probability_grid",
+            "conditional_probability_grid",
             "severe_loss_probability_grid",
             "selection_rank_grid",
-            "expected_return_grid_pct",
+            "expected_utility_grid_pct",
             "downside_grid_pct",
         }:
             data[key] = tuple(value)
@@ -210,14 +213,21 @@ def validate_contract(config: V3Config) -> None:
     if not 0.05 <= config.model.cross_section_top_fraction <= 0.50:
         raise ValueError("cross_section_top_fraction must be in [0.05, 0.50]")
     if any(
-        not 0.40 <= value < 1.0
+        not 0.30 <= value < 1.0
         for value in (
             *config.model.probability_grid,
-            *config.model.market_probability_grid,
-            *config.model.cross_section_probability_grid,
+            *config.model.conditional_probability_grid,
         )
     ):
-        raise ValueError("probability policy grids must remain inside [0.40, 1.0)")
+        raise ValueError("profit probability grids must remain inside [0.30, 1.0)")
+    if any(
+        not 0.90 <= value < 1.0
+        for value in (
+            *config.model.entry_fill_probability_grid,
+            *config.model.exit_fill_probability_grid,
+        )
+    ):
+        raise ValueError("fill probability grids must remain inside [0.90, 1.0)")
     if any(
         not 0.90 <= value < 1.0
         for value in config.model.selection_rank_grid

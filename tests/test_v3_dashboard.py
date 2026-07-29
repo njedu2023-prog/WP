@@ -18,9 +18,11 @@ def test_closed_dashboard_has_no_live_buy_list(tmp_path):
                 "signal_slot": "14:50",
                 "signal_price": 10.0,
                 "passes_policy": True,
+                "p_entry_fill": 0.99,
+                "p_exit_fill_given_entry": 0.995,
                 "p_net_positive": 0.70,
                 "p_net_positive_lower": 0.60,
-                "expected_net_return_pct": 0.8,
+                "expected_utility_pct": 0.8,
                 "downside_q10_pct": -2.0,
             }
         ]
@@ -57,9 +59,11 @@ def test_live_dashboard_shows_current_and_locked_signal_semantics(tmp_path):
                 "signal_price": 10.3,
                 "passes_policy": True,
                 "candidate_state": "SHADOW_QUALIFIED",
+                "p_entry_fill": 0.99,
+                "p_exit_fill_given_entry": 0.995,
                 "p_net_positive": 0.70,
                 "p_net_positive_lower": 0.60,
-                "expected_net_return_pct": 0.8,
+                "expected_utility_pct": 0.8,
                 "downside_q10_pct": -2.0,
             }
         ]
@@ -80,9 +84,11 @@ def test_live_dashboard_shows_current_and_locked_signal_semantics(tmp_path):
                     "first_signal_price": 10.0,
                     "last_signal_time": "14:30",
                     "appearance_count": 3,
+                    "p_entry_fill": 0.99,
+                    "p_exit_fill_given_entry": 0.995,
                     "p_net_positive": 0.66,
                     "p_net_positive_lower": 0.55,
-                    "expected_net_return_pct": 0.6,
+                    "expected_utility_pct": 0.6,
                     "downside_q10_pct": -2.5,
                 }
             ],
@@ -141,7 +147,7 @@ def test_production_dashboard_makes_no_trade_decision_explicit(tmp_path):
     assert "当前没有候选" in text
 
 
-def test_dashboard_discloses_legacy_backfill_without_counting_it_as_v6_truth(
+def test_dashboard_discloses_legacy_backfill_without_counting_it_as_v7_truth(
     tmp_path,
 ):
     path = tmp_path / "latest.html"
@@ -180,4 +186,4 @@ def test_dashboard_discloses_legacy_backfill_without_counting_it_as_v6_truth(
     assert "2026-07-23" in text
     assert "有盘中证据，无合格票" in text
     assert "无合法盘中名单" in text
-    assert "不计入 V6 收益" in text
+    assert "不计入 V7 收益" in text

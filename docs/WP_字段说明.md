@@ -1,4 +1,4 @@
-# WP V6 字段合同
+# WP V7 字段合同
 
 字段按用途分层。`v3` 仅是既有文件路径和 JSON schema 的兼容名称，不代表仍在运行旧模型。
 
@@ -30,26 +30,36 @@
 
 ## 模型输出
 
-- `p_net_positive`：固定 T+1 收盘退出且扣成本后净收益大于零的校准概率。
-- `p_net_positive_lower`：按交易日聚类证据得到的保守概率下界。
-- `p_market_positive`：当前市场横截面在相同退出合同下为正的概率。
-- `p_cross_section_top`：该票进入同槽收益横截面前 20% 的概率。
-- `p_severe_loss`：净收益不高于 -2% 或无法执行的概率。
-- `expected_net_return_pct`：成本后净收益条件均值估计。
-- `downside_q10_pct`：成本后净收益第 10 分位估计。
+- `p_entry_fill`：信号后下一根 5 分钟线按容量与涨停约束可成交买入的概率。
+- `p_exit_fill_given_entry`：已买入后，T+1 收盘合同可执行卖出的条件概率。
+- `p_round_trip_fill` / `p_round_trip_fill_lower`：买卖完整成交概率及集成保守值。
+- `p_conditional_net_positive`：买卖均成交时，扣成本后净收益大于零的条件概率。
+- `p_net_positive`：买入成交、T+1 可卖且扣成本后净收益大于零的校准联合概率。
+- `p_net_positive_lower`：联合概率的集成保守值。
+- `p_cross_section_top`：完整成交条件下，该票进入同槽收益前 20% 的概率。
+- `p_severe_loss`：完整成交后净收益不高于 -2% 的条件概率。
+- `conditional_expected_net_return_pct`：完整成交条件下的净收益均值估计。
+- `expected_utility_pct`：把入场未成交记 0、退出失败记固定惩罚后的综合净效用。
+- `downside_q10_pct`：完整成交条件下净收益第 10 分位估计。
 - `selection_score` / `selection_rank_pct`：LambdaRank 横截面排序分和同槽百分位。
-- `probability_model_spread` / `selection_rank_spread`：长短训练窗成员间不稳定度。
+- `probability_model_spread` / `fill_probability_model_spread` /
+  `selection_rank_spread`：长短训练窗成员间不稳定度。
 - `model_version` / `model_fingerprint` / `policy_fingerprint`：模型、完整模型指纹和候选政策指纹。
 
 ## 固定门槛证据
 
+- `passes_entry_fill_probability`：买入成交概率通过。
+- `passes_exit_fill_probability`：T+1 可卖概率通过。
+- `passes_round_trip_fill_probability`：完整成交保守概率通过。
 - `passes_probability`：主概率通过。
 - `passes_probability_lower`：保守概率下界通过。
-- `passes_expected_return`：期望净收益通过。
+- `passes_conditional_probability`：完整成交后的盈利概率通过。
+- `passes_severe_loss`：严重损失概率通过。
+- `passes_expected_utility`：综合净效用通过。
 - `passes_downside`：下行分位通过。
 - `passes_selection_rank`：横截面排名通过。
-- `passes_sample`：候选分箱样本数和独立交易日通过。
-- `passes_empirical_lower`：历史聚类胜率下界通过。
+- `passes_prior_oos_evidence`：当前冻结政策已经在此前设计期和一次性确认期
+  通过样本数、独立交易日、胜率下界、平均净收益和 Profit Factor 门禁。
 - `passes_stability`：长短训练窗分歧通过。
 - `passes_freshness`：实时行情新鲜度通过。
 - `passes_policy`：全部固定门槛同时通过。

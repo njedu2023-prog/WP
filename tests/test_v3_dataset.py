@@ -65,6 +65,8 @@ def test_non_executable_exit_is_always_a_failure():
     panel = build_supervised_panel(raw, V3Config())
     assert panel.loc[0, "target_net_positive"] == 0
     assert panel.loc[0, "net_return_pct"] == pytest.approx(-10.0)
+    assert panel.loc[0, "target_entry_fillable"] == 1
+    assert panel.loc[0, "target_exit_fillable"] == 0
 
 
 def test_missing_t1_close_on_suspension_is_an_observed_failure():
@@ -95,6 +97,8 @@ def test_missing_t1_close_on_suspension_is_an_observed_failure():
     assert bool(panel.loc[0, "label_available"]) is True
     assert panel.loc[0, "target_net_positive"] == 0
     assert panel.loc[0, "net_return_pct"] == pytest.approx(-10.0)
+    assert panel.loc[0, "target_entry_fillable"] == 1
+    assert panel.loc[0, "target_exit_fillable"] == 0
 
 
 def test_missing_next_bar_is_an_observed_entry_failure():
@@ -126,7 +130,9 @@ def test_missing_next_bar_is_an_observed_entry_failure():
 
     assert bool(panel.loc[0, "label_available"]) is True
     assert panel.loc[0, "target_net_positive"] == 0
-    assert panel.loc[0, "net_return_pct"] == pytest.approx(-10.0)
+    assert panel.loc[0, "net_return_pct"] == pytest.approx(0.0)
+    assert panel.loc[0, "target_entry_fillable"] == 0
+    assert pd.isna(panel.loc[0, "target_exit_fillable"])
 
 
 def test_unadjusted_t1_truth_is_rejected_instead_of_used_as_fallback():

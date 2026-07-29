@@ -52,7 +52,7 @@ INDUSTRY_FIELDS = (
 T = TypeVar("T")
 R = TypeVar("R")
 TUSHARE_CACHE_SCHEMA_VERSION = "wp_tushare_query_cache_2"
-PANEL_SCHEMA_VERSION = "wp_point_in_time_panel_3"
+PANEL_SCHEMA_VERSION = "wp_point_in_time_panel_4"
 MINUTE_SCHEMA_VERSION = "wp_historical_minutes_3"
 
 
@@ -198,7 +198,7 @@ def build_three_year_panel(
     )
     if existing_manifest is not None:
         print(
-            "reusing verified WP V6 causal panel "
+            "reusing verified WP V7 causal panel "
             f"{config.history.start_date}-{config.history.end_date}",
             flush=True,
         )
@@ -399,7 +399,7 @@ def load_panel_partitions(
 ) -> pd.DataFrame:
     files = sorted(Path(path).glob("wp_v3_panel_*.parquet"))
     if not files:
-        raise FileNotFoundError(f"no WP V6 panel partitions under {path}")
+        raise FileNotFoundError(f"no WP V7 panel partitions under {path}")
     start = str(start_date or "")
     end = str(end_date or "")
     if start:
@@ -988,7 +988,6 @@ def _build_historical_minute_partitions(
         and existing.get("observation_slots")
         == list(_observation_slots(config.strategy.signal_slots))
         and existing.get("normalizer_fingerprint") == normalizer_fingerprint
-        and existing.get("feature_version") == config.model.feature_version
     ):
         paths = {
             month: output_dir / f"wp_v3_minutes_{month}.parquet"

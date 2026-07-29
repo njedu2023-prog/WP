@@ -1,8 +1,8 @@
-# WP V6 运行手册
+# WP V7 运行手册
 
 ## 工作流边界
 
-### Run WP V6 Tail Session
+### Run WP V7 Tail Session
 
 - 北京时间 13:40 启动，为 GitHub 定时任务可能的排队延迟预留余量；
 - 14:00、14:05、14:10、14:15 只采集暖机 5 分钟 K 线，不运行候选判定；
@@ -23,12 +23,12 @@
 - 日线、涨跌停和复权真值均超过 1,000 行才接受；
 - 真值未到时保留 pending，不伪造、不提前完成。
 
-### Research WP V6 Full Three-Year OOS Model
+### Research WP V7 Full Three-Year OOS Model
 
 - 手动或每月非交易时段运行；
 - 构建约五年因果面板，最后连续三年才计入正式样本外成绩；
 - 历史接口响应和因果面板使用 Actions cache，扩展区间时只补取缺失前缀；
-- 每次研究先生成绑定本次日期区间的 `wp_v6_resolved_config.yml`，分片和汇总
+- 每次研究先生成绑定本次日期区间的 `wp_v7_resolved_config.yml`，分片和汇总
   必须使用同一份配置；
 - 模型文件按模型指纹保存并绑定训练数据摘要，不能覆盖；
 - 任何月度重训得到的新模型均先进入 `RESEARCH`，不得替换正在积累证据的

@@ -23,9 +23,9 @@ from .io import atomic_write_json, atomic_write_parquet
 from .policy import apply_nested_oos_policies
 
 
-SHARD_SCHEMA_VERSION = "wp_v6_walk_forward_shard_1"
-SHARD_MANIFEST_NAME = "wp_v6_fold_shard_manifest.json"
-SHARD_PREDICTIONS_NAME = "wp_v6_fold_predictions.parquet"
+SHARD_SCHEMA_VERSION = "wp_v7_walk_forward_shard_1"
+SHARD_MANIFEST_NAME = "wp_v7_fold_shard_manifest.json"
+SHARD_PREDICTIONS_NAME = "wp_v7_fold_predictions.parquet"
 
 # Fold workers need the full feature panel, but aggregation only needs immutable
 # identity, execution truth, model outputs, and audit metadata. Keeping this
@@ -48,18 +48,30 @@ AGGREGATE_PREDICTION_COLUMNS = (
     "execution_success",
     "label_available",
     "target_net_positive",
+    "target_entry_fillable",
+    "target_exit_fillable",
+    "target_conditional_net_positive",
     "target_cross_section_top",
     "target_severe_loss",
-    "target_market_positive",
+    "target_conditional_severe_loss",
+    "conditional_gross_return_pct",
+    "conditional_net_return_pct",
     "data_age_seconds",
     "p_net_positive_raw",
+    "p_net_positive_component_product",
+    "p_entry_fill",
+    "p_exit_fill_given_entry",
+    "p_round_trip_fill",
+    "p_round_trip_fill_lower",
+    "p_conditional_net_positive",
     "p_net_positive",
     "p_net_positive_lower",
     "p_cross_section_top",
     "p_severe_loss",
-    "p_market_positive",
     "probability_model_spread",
-    "expected_net_return_pct",
+    "fill_probability_model_spread",
+    "conditional_expected_net_return_pct",
+    "expected_utility_pct",
     "downside_q10_pct",
     "ranking_score",
     "selection_score",

@@ -136,7 +136,7 @@ def run_once(
             settlement_manifest["trade_date"]
         )
         print(
-            "WP V6 entry settlement ready: "
+            "WP V7 entry settlement ready: "
             f"slot={settlement_slot} "
             f"observed={settlement_manifest['observed_symbols']}/"
             f"{settlement_manifest['requested_symbols']}"
@@ -154,14 +154,14 @@ def run_once(
         env["WP_EXPECTED_TRADE_DATE"] = str(source_manifest["trade_date"])
         env["WP_V3_SIGNAL_SLOT"] = str(source_manifest["signal_slot"])
         print(
-            "WP V6 causal source ready: "
+            "WP V7 causal source ready: "
             f"{source_path} slot={source_manifest['signal_slot']}"
         )
     elif current.time() > time(14, 50) and live_path.exists():
         env["WP_V3_SOURCE_CSV"] = live_path.as_posix()
-        print("WP V6 uses the frozen 14:50 feature snapshot for close-state rendering.")
+        print("WP V7 uses the frozen 14:50 feature snapshot for close-state rendering.")
     else:
-        print("::warning::WP V6 live source is absent before the signal window.")
+        print("::warning::WP V7 live source is absent before the signal window.")
     manifest_path = Path("outputs/json/wp_manifest.json")
     manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
@@ -256,7 +256,7 @@ def run_session() -> None:
                     env=os.environ,
                 )
                 print(
-                    "WP V6 warmup snapshot ready: "
+                    "WP V7 warmup snapshot ready: "
                     f"slot={slot} rows={manifest['row_count']} "
                     f"coverage={manifest['tail_universe_coverage']:.2%}"
                 )

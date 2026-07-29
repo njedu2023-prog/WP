@@ -73,10 +73,14 @@ def test_temporal_ensemble_trains_and_returns_calibrated_policy_outputs():
     prediction = predict_bundle(bundle, panel.tail(32))
     assert prediction["p_net_positive"].between(0, 1).all()
     assert prediction["p_net_positive_lower"].between(0, 1).all()
-    assert prediction["p_market_positive"].between(0, 1).all()
+    assert prediction["p_entry_fill"].between(0, 1).all()
+    assert prediction["p_exit_fill_given_entry"].between(0, 1).all()
+    assert prediction["p_round_trip_fill"].between(0, 1).all()
+    assert prediction["p_conditional_net_positive"].between(0, 1).all()
     assert prediction["p_cross_section_top"].between(0, 1).all()
     assert prediction["p_severe_loss"].between(0, 1).all()
-    assert prediction["expected_net_return_pct"].notna().all()
+    assert prediction["expected_utility_pct"].notna().all()
+    assert prediction["conditional_expected_net_return_pct"].notna().all()
     assert prediction["selection_rank_pct"].between(0, 1).all()
     assert bundle.calibration_fit_end < bundle.calibration_start
     assert bundle.calibration_start <= bundle.calibration_end
@@ -139,7 +143,7 @@ def test_rank_target_is_computed_on_full_slot_before_training_sample():
             "trade_date": ["20260105"] * 20,
             "signal_slot": ["14:20"] * 20,
             "ts_code": [f"600{index:03d}.SH" for index in range(20)],
-            "net_return_pct": np.arange(20, dtype=float),
+            "conditional_net_return_pct": np.arange(20, dtype=float),
         }
     )
     ranked = _attach_full_universe_rank_target(frame)

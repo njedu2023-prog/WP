@@ -6,6 +6,7 @@ import pandas as pd
 
 from wp.v3.contracts import V3Config
 from wp.v3.policy import (
+    CandidatePolicy,
     apply_candidate_policy,
     apply_nested_oos_policies,
     candidate_policy_diagnostics,
@@ -29,17 +30,24 @@ def _profitable_predictions(days: int, *, start: str = "2025-01-02") -> pd.DataF
                         "ts_code": f"600{stock:03d}.SH",
                         "execution_eligible": True,
                         "data_age_seconds": 30,
+                        "p_entry_fill": 0.995,
+                        "p_exit_fill_given_entry": 0.998,
+                        "p_round_trip_fill_lower": 0.993,
                         "p_net_positive": 0.66,
                         "p_net_positive_lower": 0.61,
-                        "p_market_positive": 0.62,
+                        "p_conditional_net_positive": 0.67,
                         "p_cross_section_top": 0.60,
                         "p_severe_loss": 0.12,
                         "selection_rank_pct": 0.999,
-                        "expected_net_return_pct": 0.55,
+                        "expected_utility_pct": 0.55,
                         "downside_q10_pct": -1.0,
                         "probability_model_spread": 0.02,
+                        "fill_probability_model_spread": 0.01,
                         "selection_rank_spread": 0.03,
                         "net_return_pct": 0.45 + 0.01 * ((day_index + stock) % 3),
+                        "target_net_positive": 1,
+                        "target_entry_fillable": 1,
+                        "target_exit_fillable": 1,
                     }
                 )
     return pd.DataFrame(rows)
@@ -120,3 +128,41 @@ def test_fast_policy_mask_matches_full_diagnostics():
     )["passes_policy"]
 
     pd.testing.assert_series_equal(fast, detailed)
+
+
+def test_policy_rejects_each_execution_probability_below_its_gate():
+    frame = _profitable_predictions(1).iloc[:3].copy()
+    policy = CandidatePolicy(
+        policy_id="execution-gate-test",
+        authorized=True,
+        reason="test",
+        entry_fill_probability_min=0.985,
+        exit_fill_probability_min=0.995,
+        round_trip_fill_probability_min=0.980,
+        probability_min=0.46,
+        probability_lower_min=0.40,
+        conditional_probability_min=0.52,
+        severe_loss_probability_max=0.25,
+        selection_rank_min=0.998,
+        expected_utility_min_pct=0.10,
+        downside_min_pct=-2.0,
+    )
+    frame.loc[frame.index[0], "p_entry_fill"] = 0.984
+    frame.loc[frame.index[1], "p_exit_fill_given_entry"] = 0.994
+    frame.loc[frame.index[2], "p_round_trip_fill_lower"] = 0.979
+
+    diagnostics = candidate_policy_diagnostics(frame, policy, _test_config())
+
+    assert not diagnostics["passes_policy"].any()
+    assert (
+        diagnostics.loc[frame.index[0], "passes_entry_fill_probability"]
+        == False
+    )
+    assert (
+        diagnostics.loc[frame.index[1], "passes_exit_fill_probability"]
+        == False
+    )
+    assert (
+        diagnostics.loc[frame.index[2], "passes_round_trip_fill_probability"]
+        == False
+    )
