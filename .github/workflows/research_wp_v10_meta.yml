@@ -1,0 +1,90 @@
+name: Research WP V10 Market-State Meta Alpha
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: "Immutable WP V9 research run ID"
+        required: true
+        default: "30466227350"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v10_meta.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v10-meta-research-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install dependencies
+        run: pip install -r requirements.lock
+      - name: Resolve immutable source run
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          source_run_id="$REQUESTED_SOURCE_RUN_ID"
+          if [[ -z "$source_run_id" && "$EVENT_NAME" == "push" ]]; then
+            source_run_id="$(
+              sed -n 's/^source_run_id=//p' \
+                scripts/trigger_wp_v10_meta.txt \
+                | tail -n 1 \
+                | tr -cd '0-9'
+            )"
+          fi
+          test -n "$source_run_id"
+          echo "source_run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+      - name: Restore exact V9 research contract
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v9-panel-auto-auto-auto-auto-r15-${{ steps.route.outputs.source_run_id }}
+          fail-on-cache-miss: true
+      - name: Download immutable V9 OOS prediction shards
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v9-fold-*
+          path: artifacts/wp_v3_shards
+          merge-multiple: false
+      - name: Run nested market-state meta-alpha research
+        run: >-
+          python -u scripts/research_wp_v10_meta.py
+          --config artifacts/wp_v3_history/wp_v9_resolved_config.yml
+          --shard-dir artifacts/wp_v3_shards
+          --output-dir artifacts/wp_v10_meta
+          --top-per-score 12
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Upload immutable V10 research evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v10-meta-${{ github.run_id }}
+          path: artifacts/wp_v10_meta
+          retention-days: 90
+          if-no-files-found: warn
