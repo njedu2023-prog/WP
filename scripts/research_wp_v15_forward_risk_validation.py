@@ -353,6 +353,31 @@ def main() -> int:
         "source": source,
         "forward_validation_folds": list(FORWARD_VALIDATION_FOLDS),
         "folds_scored": validation["folds_scored"],
+        "folds": [
+            {
+                "fold": row["fold"],
+                "scored": row["scored"],
+                "reason": row["reason"],
+                "candidate_comparison": row.get(
+                    "candidate_comparison"
+                ),
+                "baseline_metrics": compact_metrics(
+                    row.get("baseline_metrics")
+                ),
+                "challenger_metrics": compact_metrics(
+                    row.get("challenger_metrics")
+                ),
+            }
+            for row in fold_rows
+        ],
+        "yearly": [
+            {
+                "year": row["year"],
+                "baseline": compact_metrics(row["baseline"]),
+                "challenger": compact_metrics(row["challenger"]),
+            }
+            for row in yearly_rows
+        ],
         "aggregate_candidate_comparison": aggregate_comparison,
         "baseline_metrics": baseline_metrics,
         "challenger_metrics": challenger_metrics,
@@ -889,6 +914,28 @@ def evaluate_forward_evidence(
         "gates": gates,
         "all_gates_passed": all_passed,
         "production_authorized": False,
+    }
+
+
+def compact_metrics(metrics: dict[str, Any] | None) -> dict[str, Any] | None:
+    if not metrics:
+        return None
+    return {
+        key: metrics.get(key)
+        for key in (
+            "events",
+            "trade_days",
+            "win_rate",
+            "win_rate_day_clustered_lower",
+            "mean_net_return_pct",
+            "mean_net_return_day_clustered_lower_pct",
+            "profit_factor",
+            "exit_fill_rate_given_entry",
+            "day_equal_weight_mean_net_return_pct",
+            "day_equal_weight_cumulative_return_pct",
+            "maximum_day_equal_weight_drawdown_pct",
+            "stress",
+        )
     }
 
 
