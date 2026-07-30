@@ -1,0 +1,5 @@
+requested_at=2026-07-30T17:41:06Z
+source_v11_run_id=30545808015
+source_v15_run_id=30552732652
+base_model_fingerprint=16695b7fab38a5428f70
+purpose=Run low-dimensional frequency-constrained V17 selector research without changing frozen V15.
