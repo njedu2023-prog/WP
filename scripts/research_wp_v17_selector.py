@@ -277,11 +277,13 @@ def main() -> int:
         seed=config.model.random_seed + 170_000,
         bootstrap_samples=args.bootstrap_samples,
     )
+    diagnostics = frontier_diagnostics(frontier_table)
     final_selection = select_final_policy(
         scored_all,
         config=config,
         bootstrap_samples=args.bootstrap_samples,
     )
+    final_selection_summary = compact_selection(final_selection)
     final_bundle, final_period = fit_final_selector(
         frontier,
         config=config,
@@ -385,9 +387,10 @@ def main() -> int:
         "v15_frozen_reference": v15["reference"],
         "nested_oos_metrics": nested_metrics,
         "yearly": yearly,
+        "descriptive_frontier_diagnostics": diagnostics,
         "historical_readiness": readiness,
         "final_shadow_candidate": {
-            "selection": compact_selection(final_selection),
+            "selection": final_selection_summary,
             "model_period": final_period,
             "status": (
                 "READY_FOR_150_DAY_FUTURE_SHADOW"
@@ -426,6 +429,8 @@ def main() -> int:
                         if final_selection and final_selection.policy
                         else None
                     ),
+                    "descriptive_frontier_diagnostics": diagnostics,
+                    "final_policy_selection": final_selection_summary,
                     "v15_reference": v15["reference"],
                 }
             ),
@@ -513,6 +518,79 @@ def descriptive_frontier(
         ascending=[False, False, False],
         kind="stable",
     ).reset_index(drop=True)
+
+
+def frontier_diagnostics(frontier: pd.DataFrame) -> dict[str, Any]:
+    columns = [
+        "policy_id",
+        "probability_lower_min",
+        "expected_return_min_pct",
+        "score_rank_min",
+        "max_candidates_per_day",
+        "events",
+        "candidate_days",
+        "candidate_day_rate",
+        "win_rate",
+        "win_rate_wilson_lower",
+        "mean_net_return_pct",
+        "clustered_mean_lower_pct",
+        "profit_factor",
+        "stress_50bps_mean_net_return_pct",
+        "return_p10_pct",
+        "mean_return_q_value",
+    ]
+    available = [column for column in columns if column in frontier.columns]
+    if frontier.empty:
+        return {
+            "policies_evaluated": 0,
+            "positive_mean_policy_count": 0,
+            "positive_clustered_lower_policy_count": 0,
+            "bh_q_le_0_10_policy_count": 0,
+            "practical_frequency_policy_count": 0,
+            "best_clustered_lower": [],
+            "best_mean_return": [],
+            "best_practical_frequency": [],
+        }
+
+    mean_return = pd.to_numeric(
+        frontier["mean_net_return_pct"], errors="coerce"
+    )
+    clustered_lower = pd.to_numeric(
+        frontier["clustered_mean_lower_pct"], errors="coerce"
+    )
+    q_value = pd.to_numeric(
+        frontier["mean_return_q_value"], errors="coerce"
+    )
+    frequency = pd.to_numeric(
+        frontier["candidate_day_rate"], errors="coerce"
+    )
+    practical = frontier.loc[frequency.between(0.12, 0.60)].copy()
+    by_mean = frontier.assign(_metric=mean_return).sort_values(
+        ["_metric", "candidate_day_rate"],
+        ascending=[False, False],
+        kind="stable",
+    )
+    practical_by_mean = practical.sort_values(
+        ["mean_net_return_pct", "clustered_mean_lower_pct"],
+        ascending=[False, False],
+        kind="stable",
+    )
+
+    def records(frame: pd.DataFrame) -> list[dict[str, Any]]:
+        return frame.loc[:, available].head(3).to_dict(orient="records")
+
+    return {
+        "policies_evaluated": int(len(frontier)),
+        "positive_mean_policy_count": int(mean_return.gt(0.0).sum()),
+        "positive_clustered_lower_policy_count": int(
+            clustered_lower.gt(0.0).sum()
+        ),
+        "bh_q_le_0_10_policy_count": int(q_value.le(0.10).sum()),
+        "practical_frequency_policy_count": int(len(practical)),
+        "best_clustered_lower": records(frontier),
+        "best_mean_return": records(by_mean),
+        "best_practical_frequency": records(practical_by_mean),
+    }
 
 
 def select_final_policy(
