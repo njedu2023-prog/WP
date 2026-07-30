@@ -1,0 +1,113 @@
+name: Research WP V12 Exit-Specific Alpha
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_v9_run_id:
+        description: "Immutable WP V9 research run ID"
+        required: true
+        default: "30466227350"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v12_exit_alpha.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v12-exit-alpha-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 5
+      matrix:
+        contract:
+          - t1_open_auction
+          - tp25_close_fallback
+          - tp50_close_fallback
+          - tp100_close_fallback
+          - tp200_close_fallback
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install dependencies
+        run: pip install -r requirements.lock
+      - name: Resolve immutable V9 source run
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_RUN_ID: ${{ inputs.source_v9_run_id }}
+        run: |
+          set -euo pipefail
+          source_run_id="$REQUESTED_RUN_ID"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            source_run_id="$(
+              sed -n 's/^source_v9_run_id=//p' \
+                scripts/trigger_wp_v12_exit_alpha.txt \
+                | tail -n 1 \
+                | tr -cd '0-9'
+            )"
+          fi
+          test -n "$source_run_id"
+          echo "source_run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+      - name: Restore exact V9 causal panel
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v9-panel-auto-auto-auto-auto-r15-${{ steps.route.outputs.source_run_id }}
+          fail-on-cache-miss: true
+      - name: Download immutable V9 OOS prediction shards
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.source_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v9-fold-*
+          path: artifacts/wp_v3_shards
+          merge-multiple: false
+      - name: Verify V12 exit-alpha contracts
+        run: >-
+          python -m pytest
+          tests/test_v10_meta_alpha.py
+          tests/test_v11_exit_research.py
+          tests/test_v12_exit_alpha.py
+          -q
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "2"
+      - name: Run nested exit-specific alpha
+        run: >-
+          python -u scripts/research_wp_v12_exit_alpha.py
+          --config artifacts/wp_v3_history/wp_v9_resolved_config.yml
+          --panel-dir artifacts/wp_v3_history/panel
+          --shard-dir artifacts/wp_v3_shards
+          --output-dir artifacts/wp_v12_${{ matrix.contract }}
+          --contract-id ${{ matrix.contract }}
+          --top-per-score 30
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          LOKY_MAX_CPU_COUNT: "2"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Upload immutable V12 exit-alpha evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v12-${{ matrix.contract }}-${{ github.run_id }}
+          path: artifacts/wp_v12_${{ matrix.contract }}
+          retention-days: 90
+          if-no-files-found: warn
