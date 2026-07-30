@@ -35,11 +35,17 @@ TAIL_PANEL_COLUMNS = (
     *IDENTITY_COLUMNS,
     "target_trade_date",
     "adj_factor",
-    "entry_benchmark_price",
-    "entry_benchmark_amount",
-    "entry_benchmark_volume",
-    "entry_benchmark_bar_lag_minutes",
-    "down_limit",
+    "t1_adj_factor",
+    "t1_down_limit",
+)
+
+TAIL_MINUTE_COLUMNS = (
+    "ts_code",
+    "trade_date",
+    "trade_time",
+    "close",
+    "vol",
+    "amount",
 )
 
 
@@ -57,6 +63,7 @@ def tail_exit_contract_by_id(contract_id: str) -> TailExitContract:
 def attach_t1_tail_exit_truth(
     predictions: pd.DataFrame,
     panel: pd.DataFrame,
+    target_minutes: pd.DataFrame,
     config: V3Config,
     *,
     exit_slippage_bps: float | None = None,
@@ -67,27 +74,49 @@ def attach_t1_tail_exit_truth(
         "entry_fillable",
     }
     panel_required = set(TAIL_PANEL_COLUMNS)
+    minute_required = set(TAIL_MINUTE_COLUMNS)
     missing_prediction = sorted(prediction_required - set(predictions.columns))
     missing_panel = sorted(panel_required - set(panel.columns))
+    missing_minutes = sorted(minute_required - set(target_minutes.columns))
     if missing_prediction:
         raise ValueError(
             f"predictions missing T+1 tail-exit columns: {missing_prediction}"
         )
     if missing_panel:
         raise ValueError(f"panel missing T+1 tail-exit columns: {missing_panel}")
+    if missing_minutes:
+        raise ValueError(
+            f"target minutes missing T+1 tail-exit columns: {missing_minutes}"
+        )
 
     result = predictions.copy()
     source = panel.loc[:, TAIL_PANEL_COLUMNS].copy()
-    for frame in (result, source):
+    minutes = target_minutes.loc[:, TAIL_MINUTE_COLUMNS].copy()
+    for frame in (result, source, minutes):
+        if "signal_slot" not in frame:
+            frame["signal_slot"] = ""
         for column in IDENTITY_COLUMNS:
-            frame[column] = frame[column].astype(str)
+            if column in frame:
+                frame[column] = frame[column].astype(str)
     if source.duplicated(list(IDENTITY_COLUMNS), keep=False).any():
         raise ValueError("panel contains duplicate T+1 tail-exit identities")
 
     mapping = source.loc[
         :,
-        [*IDENTITY_COLUMNS, "target_trade_date", "adj_factor"],
-    ].rename(columns={"adj_factor": "entry_day_adj_factor"})
+        [
+            *IDENTITY_COLUMNS,
+            "target_trade_date",
+            "adj_factor",
+            "t1_adj_factor",
+            "t1_down_limit",
+        ],
+    ].rename(
+        columns={
+            "adj_factor": "entry_day_adj_factor",
+            "t1_adj_factor": "exit_day_adj_factor",
+            "t1_down_limit": "exit_day_down_limit",
+        }
+    )
     result = result.merge(
         mapping,
         on=list(IDENTITY_COLUMNS),
@@ -101,6 +130,14 @@ def attach_t1_tail_exit_truth(
         result["entry_day_adj_factor"],
         errors="coerce",
     )
+    result["exit_day_adj_factor"] = pd.to_numeric(
+        result["exit_day_adj_factor"],
+        errors="coerce",
+    )
+    result["exit_day_down_limit"] = pd.to_numeric(
+        result["exit_day_down_limit"],
+        errors="coerce",
+    )
     result["entry_price"] = pd.to_numeric(
         result["entry_price"],
         errors="coerce",
@@ -110,6 +147,14 @@ def attach_t1_tail_exit_truth(
     result["_tail_target_date_covered"] = (
         result["target_trade_date"].astype(str).isin(covered_dates)
     )
+    minutes["trade_time"] = pd.to_datetime(
+        minutes["trade_time"],
+        errors="coerce",
+    )
+    minutes = minutes.dropna(subset=["trade_time", "ts_code"])
+    minutes["benchmark_slot"] = minutes["trade_time"].dt.strftime("%H:%M")
+    for column in ("close", "vol", "amount"):
+        minutes[column] = pd.to_numeric(minutes[column], errors="coerce")
 
     slippage_bps = (
         config.execution.entry_slippage_bps
@@ -117,36 +162,28 @@ def attach_t1_tail_exit_truth(
         else float(exit_slippage_bps)
     )
     for contract in TAIL_EXIT_CONTRACTS:
-        snapshot = source.loc[
-            source["signal_slot"].eq(contract.decision_slot),
+        snapshot = minutes.loc[
+            minutes["benchmark_slot"].eq(contract.benchmark_slot),
             [
                 "trade_date",
                 "ts_code",
-                "adj_factor",
-                "entry_benchmark_price",
-                "entry_benchmark_amount",
-                "entry_benchmark_volume",
-                "entry_benchmark_bar_lag_minutes",
-                "down_limit",
+                "close",
+                "amount",
+                "vol",
             ],
         ].copy()
         snapshot = snapshot.rename(
             columns={
                 "trade_date": "target_trade_date",
-                "adj_factor": f"exit_adj_factor_{contract.contract_id}",
-                "entry_benchmark_price": (
+                "close": (
                     f"exit_benchmark_price_{contract.contract_id}"
                 ),
-                "entry_benchmark_amount": (
+                "amount": (
                     f"exit_benchmark_amount_{contract.contract_id}"
                 ),
-                "entry_benchmark_volume": (
+                "vol": (
                     f"exit_benchmark_volume_{contract.contract_id}"
                 ),
-                "entry_benchmark_bar_lag_minutes": (
-                    f"exit_benchmark_lag_{contract.contract_id}"
-                ),
-                "down_limit": f"exit_down_limit_{contract.contract_id}",
             }
         )
         if snapshot.duplicated(
@@ -224,9 +261,8 @@ def _materialize_tail_columns(
     price = _numeric(frame, f"exit_benchmark_price_{contract_id}")
     amount = _numeric(frame, f"exit_benchmark_amount_{contract_id}")
     volume = _numeric(frame, f"exit_benchmark_volume_{contract_id}")
-    lag = _numeric(frame, f"exit_benchmark_lag_{contract_id}")
-    down_limit = _numeric(frame, f"exit_down_limit_{contract_id}")
-    exit_adj_factor = _numeric(frame, f"exit_adj_factor_{contract_id}")
+    down_limit = _numeric(frame, "exit_day_down_limit")
+    exit_adj_factor = _numeric(frame, "exit_day_adj_factor")
     entry_adj_factor = _numeric(frame, "entry_day_adj_factor")
     target_date_covered = _boolean(frame["_tail_target_date_covered"])
 
@@ -243,7 +279,6 @@ def _materialize_tail_columns(
             config.execution.reference_order_notional
         )
         & volume.gt(0)
-        & lag.between(0, 0, inclusive="both")
         & (down_limit.isna() | price.gt(down_limit * 1.0001))
     )
     adjusted_price = price * exit_adj_factor / entry_adj_factor
