@@ -1,0 +1,78 @@
+name: Diagnose WP V16 Evidence
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_v16_run_id:
+        description: "Completed V16 run owning immutable expert OOS scores"
+        required: true
+        default: "30562453161"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v16_diagnosis.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v16-evidence-diagnosis-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Resolve immutable evidence run
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_RUN_ID: ${{ inputs.source_v16_run_id }}
+        run: |
+          set -euo pipefail
+          run_id="$REQUESTED_RUN_ID"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            run_id="$(
+              sed -n 's/^source_v16_run_id=//p' \
+                scripts/trigger_wp_v16_diagnosis.txt \
+                | tail -n 1 | tr -cd '0-9'
+            )"
+          fi
+          test -n "$run_id"
+          echo "run_id=$run_id" >> "$GITHUB_OUTPUT"
+      - name: Download frozen V16 evidence
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v16-model-evidence-*
+          path: artifacts/wp_v16_source
+          merge-multiple: true
+      - name: Diagnose zero-signal result
+        run: >-
+          python -u scripts/diagnose_wp_v16_evidence.py
+          --source-dir artifacts/wp_v16_source
+          --output-dir artifacts/wp_v16_diagnosis
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+      - name: Upload diagnosis
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v16-evidence-diagnosis-${{ github.run_id }}
+          path: artifacts/wp_v16_diagnosis
+          retention-days: 90
+          if-no-files-found: error

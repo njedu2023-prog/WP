@@ -1,0 +1,3 @@
+requested_at=2026-07-30T17:29:00Z
+source_v16_run_id=30562453161
+purpose=Diagnose immutable V16 nested OOS policy attrition before any redesign.
