@@ -221,6 +221,7 @@ def fit_selector(
     random_seed: int,
     minimum_train_rows: int = 2_000,
     minimum_calibration_rows: int = 500,
+    feature_candidates: Iterable[str] | None = None,
 ) -> SelectorBundle:
     prepared_train = _labeled_rows(prepare_selector_frame(train))
     prepared_calibration = _labeled_rows(
@@ -239,6 +240,7 @@ def fit_selector(
     features = active_feature_columns(
         prepared_train,
         prepared_calibration,
+        candidates=feature_candidates,
     )
     x_train = feature_matrix(prepared_train, features)
     x_calibration = feature_matrix(prepared_calibration, features)
@@ -550,9 +552,11 @@ def selector_confirmation_gate(metrics: dict[str, Any]) -> bool:
 def active_feature_columns(
     train: pd.DataFrame,
     calibration: pd.DataFrame,
+    *,
+    candidates: Iterable[str] | None = None,
 ) -> tuple[str, ...]:
     active = []
-    for column in SELECTOR_FEATURES:
+    for column in tuple(candidates or SELECTOR_FEATURES):
         if column not in train or column not in calibration:
             continue
         train_values = _numeric(train, column)

@@ -1,0 +1,150 @@
+name: Research WP V18 Causal Frequency Selector
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_v11_run_id:
+        description: "Immutable V11 causal frontier and T+1 truth"
+        required: true
+        default: "30545808015"
+        type: string
+      source_v15_run_id:
+        description: "Frozen V15 evidence used only as a benchmark"
+        required: true
+        default: "30552732652"
+        type: string
+      base_model_fingerprint:
+        description: "Exact frozen V9 model fingerprint"
+        required: true
+        default: "16695b7fab38a5428f70"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v18_ranked.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v18-causal-frequency-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      EVENT_NAME: ${{ github.event_name }}
+      REQUESTED_V11_RUN_ID: >-
+        ${{ github.event.inputs.source_v11_run_id }}
+      REQUESTED_V15_RUN_ID: >-
+        ${{ github.event.inputs.source_v15_run_id }}
+      REQUESTED_BASE_MODEL_FINGERPRINT: >-
+        ${{ github.event.inputs.base_model_fingerprint }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Resolve immutable sources
+        id: route
+        shell: bash
+        run: |
+          set -euo pipefail
+          v11_run_id="$REQUESTED_V11_RUN_ID"
+          v15_run_id="$REQUESTED_V15_RUN_ID"
+          base_model_fingerprint="$REQUESTED_BASE_MODEL_FINGERPRINT"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            v11_run_id="$(
+              sed -n 's/^source_v11_run_id=//p' \
+                scripts/trigger_wp_v18_ranked.txt \
+                | tail -n 1 | tr -cd '0-9'
+            )"
+            v15_run_id="$(
+              sed -n 's/^source_v15_run_id=//p' \
+                scripts/trigger_wp_v18_ranked.txt \
+                | tail -n 1 | tr -cd '0-9'
+            )"
+            base_model_fingerprint="$(
+              sed -n 's/^base_model_fingerprint=//p' \
+                scripts/trigger_wp_v18_ranked.txt \
+                | tail -n 1 | tr -cd '[:alnum:]'
+            )"
+          fi
+          test -n "$v11_run_id"
+          test -n "$v15_run_id"
+          test -n "$base_model_fingerprint"
+          echo "v11_run_id=$v11_run_id" >> "$GITHUB_OUTPUT"
+          echo "v15_run_id=$v15_run_id" >> "$GITHUB_OUTPUT"
+          echo "base_model_fingerprint=$base_model_fingerprint" \
+            >> "$GITHUB_OUTPUT"
+      - name: Download immutable V11 frontier
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.v11_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v11-exit-*
+          path: artifacts/wp_v11_source
+          merge-multiple: true
+      - name: Download frozen V15 evidence
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.v15_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v15-forward-risk-validation-*
+          path: artifacts/wp_v15_source
+          merge-multiple: true
+      - name: Verify V18 and frozen contracts
+        run: >-
+          python -m pytest
+          tests/test_v18_ranked.py
+          tests/test_v17_selector.py
+          tests/test_v16_provenance.py
+          tests/test_v16_research.py
+          tests/test_v15_frozen_candidate.py
+          tests/test_v3_contracts.py
+          -q
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "4"
+      - name: Run nested V18 research
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/research_wp_v18_ranked.py \
+            --config config/wp_v3.yml \
+            --v11-source-dir artifacts/wp_v11_source \
+            --v15-source-dir artifacts/wp_v15_source \
+            --output-dir artifacts/wp_v18_research \
+            --base-model-registry outputs/json/wp_model_registry_v3.json \
+            --expected-base-model-fingerprint \
+              "${{ steps.route.outputs.base_model_fingerprint }}" \
+            --repository-root . \
+            --bootstrap-samples 1000 &
+          research_pid=$!
+          while kill -0 "$research_pid" 2>/dev/null; do
+            echo "[wp-v18] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$research_pid"
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          LOKY_MAX_CPU_COUNT: "4"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Upload immutable V18 evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v18-evidence-ranked-${{ github.run_id }}
+          path: artifacts/wp_v18_research
+          retention-days: 90
+          if-no-files-found: warn
