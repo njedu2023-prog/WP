@@ -2,5 +2,5 @@ source_v9_run_id=30466227350
 source_v10_run_id=30516136872
 source_v11_run_id=30545808015
 source_v14_run_id=30551040352
-requested_at_utc=2026-07-30T14:29:36Z
-reason=strict_forward_validation_of_frozen_v14_safe_half_exit_risk_gate
+requested_at_utc=2026-07-30T14:37:50Z
+reason=repeat_same_frozen_v15_contract_with_fold_and_year_log_audit
