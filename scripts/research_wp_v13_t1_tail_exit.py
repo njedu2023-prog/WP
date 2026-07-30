@@ -16,6 +16,7 @@ from wp.v3.io import atomic_write_csv, atomic_write_json
 from wp.v3.meta_alpha import IDENTITY_COLUMNS
 from wp.v3.overlay import performance_summary
 from wp.v3.tail_exit import (
+    TAIL_MINUTE_COLUMNS,
     TAIL_PANEL_COLUMNS,
     attach_t1_tail_exit_truth,
     materialize_tail_exit_contract,
@@ -32,6 +33,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", required=True)
     parser.add_argument("--panel-dir", required=True)
+    parser.add_argument("--minute-dir", required=True)
     parser.add_argument("--v11-source-dir", required=True)
     parser.add_argument("--v10-source-dir", required=True)
     parser.add_argument("--output-dir", required=True)
@@ -53,7 +55,17 @@ def main() -> int:
         start_date=config.history.evaluation_start_date,
         end_date=config.history.evaluation_end_date,
     )
-    enriched = attach_t1_tail_exit_truth(frontier, panel, config)
+    target_minutes = load_target_minutes(
+        args.minute_dir,
+        frontier,
+        panel,
+    )
+    enriched = attach_t1_tail_exit_truth(
+        frontier,
+        panel,
+        target_minutes,
+        config,
+    )
     exact_enriched = match_identities(enriched, identities)
 
     diagnostic_rows: list[dict[str, Any]] = []
@@ -162,6 +174,7 @@ def main() -> int:
             "return without changing the immutable T-day entry decision"
         ),
         "source": source_audit,
+        "target_minute_rows": int(len(target_minutes)),
         "evaluation_start": config.history.evaluation_start_date,
         "evaluation_end": config.history.evaluation_end_date,
         "protocol": {
@@ -297,6 +310,82 @@ def load_v10_identities(path: str | Path) -> pd.DataFrame:
     if len(identities) != len(frame):
         raise RuntimeError("V10 selected-candidate identities are not unique")
     return identities.reset_index(drop=True)
+
+
+def load_target_minutes(
+    minute_dir: str | Path,
+    frontier: pd.DataFrame,
+    panel: pd.DataFrame,
+) -> pd.DataFrame:
+    mapping = panel.loc[
+        :,
+        [*IDENTITY_COLUMNS, "target_trade_date"],
+    ].copy()
+    for frame in (mapping, frontier):
+        for column in IDENTITY_COLUMNS:
+            frame[column] = frame[column].astype(str)
+    if mapping.duplicated(list(IDENTITY_COLUMNS), keep=False).any():
+        raise ValueError("panel contains duplicate target-date identities")
+    pairs = frontier.loc[:, IDENTITY_COLUMNS].merge(
+        mapping,
+        on=list(IDENTITY_COLUMNS),
+        how="left",
+        validate="one_to_one",
+    )
+    pairs = (
+        pairs.loc[:, ["target_trade_date", "ts_code"]]
+        .dropna()
+        .astype(str)
+        .drop_duplicates()
+    )
+    pairs["month"] = pairs["target_trade_date"].str[:6]
+    benchmark_slots = {
+        contract.benchmark_slot for contract in tail_exit_contracts()
+    }
+    root = Path(minute_dir)
+    paths = {
+        path.stem.rsplit("_", 1)[-1]: path
+        for path in root.glob("wp_v3_minutes_*.parquet")
+    }
+    frames: list[pd.DataFrame] = []
+    for month, month_pairs in pairs.groupby("month", sort=True):
+        path = paths.get(str(month))
+        if path is None:
+            continue
+        bars = pd.read_parquet(path, columns=list(TAIL_MINUTE_COLUMNS))
+        bars["trade_date"] = bars["trade_date"].astype(str)
+        bars["ts_code"] = bars["ts_code"].astype(str)
+        bars["trade_time"] = pd.to_datetime(
+            bars["trade_time"],
+            errors="coerce",
+        )
+        bars = bars.loc[
+            bars["trade_time"].dt.strftime("%H:%M").isin(benchmark_slots)
+        ]
+        bars = bars.merge(
+            month_pairs.loc[:, ["target_trade_date", "ts_code"]].rename(
+                columns={"target_trade_date": "trade_date"}
+            ),
+            on=["trade_date", "ts_code"],
+            how="inner",
+            validate="many_to_one",
+        )
+        frames.append(bars.loc[:, TAIL_MINUTE_COLUMNS])
+    if not frames:
+        return pd.DataFrame(columns=TAIL_MINUTE_COLUMNS)
+    result = pd.concat(frames, ignore_index=True)
+    duplicate = result.duplicated(
+        ["trade_date", "ts_code", "trade_time"],
+        keep=False,
+    )
+    if duplicate.any():
+        raise ValueError(
+            f"target minute source contains {int(duplicate.sum())} duplicates"
+        )
+    return result.sort_values(
+        ["trade_date", "ts_code", "trade_time"],
+        kind="stable",
+    ).reset_index(drop=True)
 
 
 def match_identities(
