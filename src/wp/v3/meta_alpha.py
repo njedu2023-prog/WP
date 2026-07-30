@@ -397,8 +397,9 @@ def fit_meta_alpha(
 ) -> MetaAlphaBundle:
     if len(train) < 1_000 or len(calibration) < 200:
         raise ValueError("insufficient rows for meta-alpha fit")
-    x_train = meta_feature_matrix(train)
-    x_calibration = meta_feature_matrix(calibration)
+    feature_columns = _active_feature_columns(train)
+    x_train = meta_feature_matrix(train, feature_columns)
+    x_calibration = meta_feature_matrix(calibration, feature_columns)
     y_train = _numeric(train, "target_net_positive").fillna(0).astype(int)
     y_calibration = (
         _numeric(calibration, "target_net_positive").fillna(0).astype(int)
@@ -499,7 +500,7 @@ def fit_meta_alpha(
         probability_calibrator=probability_calibrator,
         severe_calibrator=severe_calibrator,
         return_calibrator=return_calibrator,
-        feature_columns=META_FEATURE_COLUMNS,
+        feature_columns=feature_columns,
     )
 
 
@@ -694,6 +695,18 @@ def meta_feature_matrix(
     for column in columns:
         values[column] = pd.to_numeric(values[column], errors="coerce")
     return values.replace([np.inf, -np.inf], np.nan).astype("float32")
+
+
+def _active_feature_columns(frame: pd.DataFrame) -> tuple[str, ...]:
+    values = meta_feature_matrix(frame)
+    active = tuple(
+        column
+        for column in META_FEATURE_COLUMNS
+        if values[column].dropna().nunique() >= 2
+    )
+    if not active:
+        raise ValueError("meta-alpha training window has no varying features")
+    return active
 
 
 def _passes_design(metrics: dict[str, Any]) -> bool:

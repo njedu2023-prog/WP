@@ -121,8 +121,13 @@ def test_meta_model_produces_finite_oos_scores() -> None:
     train = _model_frame(rng, 1_400, "2025")
     calibration = _model_frame(rng, 500, "2026")
     test = _model_frame(rng, 120, "2027")
+    for frame in (train, calibration, test):
+        frame["data_age_seconds"] = np.nan
+        frame["p_entry_fill"] = 0.95
     bundle = fit_meta_alpha(train, calibration, random_seed=7)
     scored = bundle.predict(test)
+    assert "data_age_seconds" not in bundle.feature_columns
+    assert "p_entry_fill" not in bundle.feature_columns
     assert scored["meta_p_positive"].between(0.001, 0.999).all()
     assert scored["meta_p_severe_loss"].between(0.001, 0.999).all()
     assert np.isfinite(scored["meta_expected_net_return_pct"]).all()
