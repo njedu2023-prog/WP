@@ -34,7 +34,7 @@ permissions:
 
 concurrency:
   group: wp-v16-quant-upgrade-${{ github.ref }}
-  cancel-in-progress: false
+  cancel-in-progress: true
 
 jobs:
   model-research:
