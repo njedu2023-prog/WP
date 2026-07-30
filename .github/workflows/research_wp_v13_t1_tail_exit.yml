@@ -118,6 +118,7 @@ jobs:
           python -u scripts/research_wp_v13_t1_tail_exit.py
           --config artifacts/wp_v3_history/wp_v9_resolved_config.yml
           --panel-dir artifacts/wp_v3_history/panel
+          --minute-dir artifacts/wp_v3_history/minute
           --v11-source-dir artifacts/wp_v11_source
           --v10-source-dir artifacts/wp_v10_source
           --output-dir artifacts/wp_v13_t1_tail_exit
