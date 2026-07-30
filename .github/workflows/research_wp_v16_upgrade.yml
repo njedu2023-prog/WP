@@ -1,0 +1,284 @@
+name: Research WP V16 Quant Upgrade
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_v9_run_id:
+        description: "Immutable V9 run that owns the causal panel and raw cache"
+        required: true
+        default: "30466227350"
+        type: string
+      source_v11_run_id:
+        description: "Immutable V11 causal candidate-frontier run"
+        required: true
+        default: "30545808015"
+        type: string
+      source_v15_run_id:
+        description: "Frozen V15 evidence run used only for funnel diagnostics"
+        required: true
+        default: "30552732652"
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v16_upgrade.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v16-quant-upgrade-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  model-research:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Resolve immutable sources
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_V9_RUN_ID: ${{ inputs.source_v9_run_id }}
+          REQUESTED_V11_RUN_ID: ${{ inputs.source_v11_run_id }}
+          REQUESTED_V15_RUN_ID: ${{ inputs.source_v15_run_id }}
+        run: |
+          set -euo pipefail
+          v9_run_id="$REQUESTED_V9_RUN_ID"
+          v11_run_id="$REQUESTED_V11_RUN_ID"
+          v15_run_id="$REQUESTED_V15_RUN_ID"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            v9_run_id="$(
+              sed -n 's/^source_v9_run_id=//p' \
+                scripts/trigger_wp_v16_upgrade.txt | tail -n 1 | tr -cd '0-9'
+            )"
+            v11_run_id="$(
+              sed -n 's/^source_v11_run_id=//p' \
+                scripts/trigger_wp_v16_upgrade.txt | tail -n 1 | tr -cd '0-9'
+            )"
+            v15_run_id="$(
+              sed -n 's/^source_v15_run_id=//p' \
+                scripts/trigger_wp_v16_upgrade.txt | tail -n 1 | tr -cd '0-9'
+            )"
+          fi
+          test -n "$v9_run_id"
+          test -n "$v11_run_id"
+          test -n "$v15_run_id"
+          echo "v9_run_id=$v9_run_id" >> "$GITHUB_OUTPUT"
+          echo "v11_run_id=$v11_run_id" >> "$GITHUB_OUTPUT"
+          echo "v15_run_id=$v15_run_id" >> "$GITHUB_OUTPUT"
+      - name: Restore exact V9 causal panel
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v9-panel-auto-auto-auto-auto-r15-${{ steps.route.outputs.v9_run_id }}
+          fail-on-cache-miss: true
+      - name: Download immutable V11 frontier
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.v11_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v11-exit-*
+          path: artifacts/wp_v11_source
+          merge-multiple: true
+      - name: Download frozen V15 evidence
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.v15_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v15-forward-risk-validation-*
+          path: artifacts/wp_v15_source
+          merge-multiple: true
+      - name: Verify V16 contracts and unchanged V3 baseline
+        run: >-
+          python -m pytest
+          tests/test_v16_data.py
+          tests/test_v16_funnel.py
+          tests/test_v16_policy.py
+          tests/test_v16_research.py
+          tests/test_v16_specialists.py
+          tests/test_v3_dataset.py
+          tests/test_v3_model.py
+          -q
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "4"
+      - name: Build frozen V15 rejection funnel
+        run: >-
+          python -u scripts/analyze_wp_v16_candidate_funnel.py
+          --v15-source-dir artifacts/wp_v15_source
+          --output-dir artifacts/wp_v16_funnel
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+      - name: Run nested V16 specialist research
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/research_wp_v16_specialists.py \
+            --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
+            --panel-dir artifacts/wp_v3_history/panel \
+            --v11-source-dir artifacts/wp_v11_source \
+            --output-dir artifacts/wp_v16_research \
+            --bootstrap-samples 1000 &
+          research_pid=$!
+          while kill -0 "$research_pid" 2>/dev/null; do
+            echo "[wp-v16] specialist research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$research_pid"
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          LOKY_MAX_CPU_COUNT: "4"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Render human-readable evidence
+        run: >-
+          python scripts/render_wp_v16_research_report.py
+          --summary artifacts/wp_v16_research/wp_v16_research_summary.json
+          --frontier artifacts/wp_v16_research/wp_v16_frequency_profit_frontier.csv
+          --output artifacts/wp_v16_research/wp_v16_research_report.html
+        env:
+          PYTHONPATH: src
+      - name: Verify loadable shadow bundle
+        run: >-
+          python scripts/verify_wp_v16_shadow_bundle.py
+          --bundle artifacts/wp_v16_research/wp_v16_shadow_model.joblib
+          --summary artifacts/wp_v16_research/wp_v16_research_summary.json
+        env:
+          PYTHONPATH: src
+      - name: Upload V16 model evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v16-model-evidence-${{ github.run_id }}
+          path: |
+            artifacts/wp_v16_funnel
+            artifacts/wp_v16_research
+          retention-days: 90
+          if-no-files-found: warn
+
+  exit-path-data:
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Resolve immutable sources
+        id: route
+        shell: bash
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REQUESTED_V9_RUN_ID: ${{ inputs.source_v9_run_id }}
+          REQUESTED_V11_RUN_ID: ${{ inputs.source_v11_run_id }}
+        run: |
+          set -euo pipefail
+          v9_run_id="$REQUESTED_V9_RUN_ID"
+          v11_run_id="$REQUESTED_V11_RUN_ID"
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            v9_run_id="$(
+              sed -n 's/^source_v9_run_id=//p' \
+                scripts/trigger_wp_v16_upgrade.txt | tail -n 1 | tr -cd '0-9'
+            )"
+            v11_run_id="$(
+              sed -n 's/^source_v11_run_id=//p' \
+                scripts/trigger_wp_v16_upgrade.txt | tail -n 1 | tr -cd '0-9'
+            )"
+          fi
+          test -n "$v9_run_id"
+          test -n "$v11_run_id"
+          echo "v9_run_id=$v9_run_id" >> "$GITHUB_OUTPUT"
+          echo "v11_run_id=$v11_run_id" >> "$GITHUB_OUTPUT"
+      - name: Restore exact V9 causal panel
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v9-panel-auto-auto-auto-auto-r15-${{ steps.route.outputs.v9_run_id }}
+          fail-on-cache-miss: true
+      - name: Restore incremental Tushare response cache
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/wp_v3_tushare
+          key: wp-v16-raw-${{ steps.route.outputs.v9_run_id }}-${{ github.run_id }}
+          restore-keys: |
+            wp-v16-raw-${{ steps.route.outputs.v9_run_id }}-
+            wp-v9-raw-
+      - name: Download immutable V11 frontier
+        uses: actions/download-artifact@v5
+        with:
+          run-id: ${{ steps.route.outputs.v11_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          pattern: wp-v11-exit-*
+          path: artifacts/wp_v11_source
+          merge-multiple: true
+      - name: Build complete T+1 five-minute paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/build_wp_v16_exit_paths.py \
+            --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
+            --panel-dir artifacts/wp_v3_history/panel \
+            --v11-source-dir artifacts/wp_v11_source \
+            --cache-dir .cache/wp_v3_tushare \
+            --output-dir artifacts/wp_v16_exit_paths \
+            --minimum-pair-coverage 0.98 \
+            --minimum-bars 44 &
+          builder_pid=$!
+          while kill -0 "$builder_pid" 2>/dev/null; do
+            echo "[wp-v16] exit-path heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$builder_pid"
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+      - name: Save incremental Tushare response cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: .cache/wp_v3_tushare
+          key: wp-v16-raw-${{ steps.route.outputs.v9_run_id }}-${{ github.run_id }}
+      - name: Save versioned V16 exit-path cache
+        if: success()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/wp_v16_exit_paths
+          key: wp-v16-exit-paths-${{ steps.route.outputs.v11_run_id }}-${{ github.run_id }}
+      - name: Upload V16 exit-path manifest
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v16-exit-path-manifest-${{ github.run_id }}
+          path: |
+            artifacts/wp_v16_exit_paths/wp_v16_exit_path_manifest.json
+            artifacts/wp_v16_exit_paths/wp_v16_exit_path_quality.parquet
+          retention-days: 90
+          if-no-files-found: warn
+      - name: Upload V16 exit-path partitions
+        if: success()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v16-exit-path-data-${{ github.run_id }}
+          path: artifacts/wp_v16_exit_paths/minute
+          compression-level: 0
+          retention-days: 90
+          if-no-files-found: error

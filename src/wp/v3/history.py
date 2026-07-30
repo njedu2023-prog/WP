@@ -1226,6 +1226,22 @@ def _query_historical_minutes_incremental(
     return frame
 
 
+def load_historical_minutes(
+    client: TushareHistoryClient,
+    *,
+    ts_code: str,
+    start_date: str,
+    end_date: str,
+) -> pd.DataFrame:
+    """Load the complete five-minute path without applying tail-slot pruning."""
+    return _query_historical_minutes_incremental(
+        client,
+        ts_code=ts_code,
+        start_date=start_date,
+        end_date=end_date,
+    )
+
+
 def _merge_date_intervals(
     intervals: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:

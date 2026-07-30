@@ -210,16 +210,18 @@ def enrich_feature_frame(
             raw = pd.to_numeric(result[source], errors="coerce").clip(lower=0)
             result[output] = np.log1p(raw)
 
+    def source_numeric(column: str) -> pd.Series:
+        if column not in result:
+            return pd.Series(np.nan, index=result.index, dtype=float)
+        return pd.to_numeric(result[column], errors="coerce")
+
     if "slot_amount_ratio_20d" not in result:
-        numerator = pd.to_numeric(result.get("slot_amount"), errors="coerce")
-        denominator = pd.to_numeric(result.get("prev_20d_amount"), errors="coerce")
+        numerator = source_numeric("slot_amount")
+        denominator = source_numeric("prev_20d_amount")
         result["slot_amount_ratio_20d"] = numerator / denominator.replace(0, np.nan)
     if "tail_cumulative_amount_ratio_20d" not in result:
-        numerator = pd.to_numeric(
-            result.get("tail_cumulative_amount"),
-            errors="coerce",
-        )
-        denominator = pd.to_numeric(result.get("prev_20d_amount"), errors="coerce")
+        numerator = source_numeric("tail_cumulative_amount")
+        denominator = source_numeric("prev_20d_amount")
         result["tail_cumulative_amount_ratio_20d"] = numerator / denominator.replace(
             0,
             np.nan,
