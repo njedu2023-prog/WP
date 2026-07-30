@@ -119,24 +119,7 @@ def apply_expert_policy(
     frame: pd.DataFrame,
     policy: ExpertPolicy,
 ) -> pd.DataFrame:
-    required = {
-        *IDENTITY_COLUMNS,
-        "expert_count",
-        "expert_p_positive_lower",
-        "expert_expected_return_lower_pct",
-        "expert_p_severe",
-        "expert_probability_spread",
-        "expert_score",
-        "p_round_trip_fill_lower",
-    }
-    missing = sorted(required - set(frame.columns))
-    if missing:
-        raise ValueError(f"expert policy frame missing columns: {missing}")
-    candidates = frame.copy()
-    candidates["expert_score_rank_pct"] = candidates.groupby(
-        ["trade_date", "signal_slot"],
-        sort=False,
-    )["expert_score"].rank(method="average", pct=True)
+    candidates = prepare_expert_policy_frame(frame)
     slot_mask = _slot_group_mask(candidates["signal_slot"], policy.slot_group)
     mask = (
         slot_mask
@@ -170,22 +153,43 @@ def apply_expert_policy(
         kind="stable",
         inplace=True,
     )
-    selected: list[int] = []
-    for _, day in qualified.groupby("trade_date", sort=False):
-        seen: set[str] = set()
-        for index, row in day.iterrows():
-            code = str(row["ts_code"])
-            if code in seen:
-                continue
-            selected.append(index)
-            seen.add(code)
-            if len(seen) >= policy.max_candidates_per_day:
-                break
-    result = qualified.loc[selected].drop(
-        columns=["_slot_minute", "_score"],
+    qualified = qualified.drop_duplicates(
+        ["trade_date", "ts_code"],
+        keep="first",
     )
+    within_day = qualified.groupby(
+        "trade_date",
+        sort=False,
+    ).cumcount()
+    result = qualified.loc[
+        within_day.lt(policy.max_candidates_per_day)
+    ].drop(columns=["_slot_minute", "_score"])
     result["expert_policy_id"] = policy.policy_id
     return result.reset_index(drop=True)
+
+
+def prepare_expert_policy_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    required = {
+        *IDENTITY_COLUMNS,
+        "expert_count",
+        "expert_p_positive_lower",
+        "expert_expected_return_lower_pct",
+        "expert_p_severe",
+        "expert_probability_spread",
+        "expert_score",
+        "p_round_trip_fill_lower",
+    }
+    missing = sorted(required - set(frame.columns))
+    if missing:
+        raise ValueError(f"expert policy frame missing columns: {missing}")
+    if "expert_score_rank_pct" in frame:
+        return frame
+    prepared = frame.copy()
+    prepared["expert_score_rank_pct"] = prepared.groupby(
+        ["trade_date", "signal_slot"],
+        sort=False,
+    )["expert_score"].rank(method="average", pct=True)
+    return prepared
 
 
 def select_nested_policy(
@@ -199,9 +203,11 @@ def select_nested_policy(
     bootstrap_samples: int = 800,
 ) -> PolicySelection:
     grid = tuple(policies or expert_policy_grid())
+    prepared_design = prepare_expert_policy_frame(design)
+    prepared_confirmation = prepare_expert_policy_frame(confirmation)
     design_rows: list[dict[str, Any]] = []
     for offset, policy in enumerate(grid):
-        selected = apply_expert_policy(design, policy)
+        selected = apply_expert_policy(prepared_design, policy)
         metrics = policy_metrics(
             selected,
             total_days=design_total_days,
@@ -240,7 +246,10 @@ def select_nested_policy(
     champion = next(
         policy for policy in grid if policy.policy_id == champion_row["policy_id"]
     )
-    confirmation_selected = apply_expert_policy(confirmation, champion)
+    confirmation_selected = apply_expert_policy(
+        prepared_confirmation,
+        champion,
+    )
     confirmation_metrics = policy_metrics(
         confirmation_selected,
         total_days=confirmation_total_days,

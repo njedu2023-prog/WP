@@ -16,6 +16,7 @@ from .v16_policy import (
     benjamini_hochberg,
     expert_policy_grid,
     policy_metrics,
+    prepare_expert_policy_frame,
 )
 
 
@@ -256,8 +257,9 @@ def descriptive_policy_frontier(
 ) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     grid = tuple(policies or expert_policy_grid())
+    prepared = prepare_expert_policy_frame(scored)
     for offset, policy in enumerate(grid):
-        selected = apply_expert_policy(scored, policy)
+        selected = apply_expert_policy(prepared, policy)
         metrics = policy_metrics(
             selected,
             total_days=total_days,

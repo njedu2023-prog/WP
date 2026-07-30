@@ -45,6 +45,7 @@ def render(summary: dict[str, Any], frontier: pd.DataFrame) -> str:
     readiness = summary.get("historical_readiness") or {}
     evaluation = summary.get("evaluation") or {}
     shadow = summary.get("final_shadow_candidate") or {}
+    base_v9 = (summary.get("source") or {}).get("base_v9") or {}
     status = str(shadow.get("status") or "NOT_READY_FOR_SHADOW")
     ready = status == "READY_FOR_150_DAY_FUTURE_SHADOW"
     status_cn = (
@@ -205,6 +206,7 @@ th {{ color:var(--muted); font-weight:600; background:var(--soft); }}
       <tr><td>覆盖交易日</td><td>{integer(evaluation.get("frontier_days"))}</td></tr>
       <tr><td>样本外折数</td><td>{integer(evaluation.get("folds_scored"))} / {integer(evaluation.get("folds_total"))}</td></tr>
       <tr><td>固定卖出合同</td><td>T+1 收盘</td></tr>
+      <tr><td>冻结底模</td><td>{escape(str(base_v9.get("model_fingerprint") or "未绑定"))}</td></tr>
       <tr><td>未来影子验证</td><td>至少 150 个交易日</td></tr>
     </tbody></table>
     <p class="note">历史门槛即使全部通过，也不能直接上线；影子期内参数、特征和阈值均不得回看改写。</p>

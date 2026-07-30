@@ -18,6 +18,11 @@ on:
         required: true
         default: "30552732652"
         type: string
+      base_model_fingerprint:
+        description: "Exact frozen V9 model embedded into the V16 shadow bundle"
+        required: true
+        default: "16695b7fab38a5428f70"
+        type: string
   push:
     branches: [main]
     paths:
@@ -52,11 +57,13 @@ jobs:
           REQUESTED_V9_RUN_ID: ${{ inputs.source_v9_run_id }}
           REQUESTED_V11_RUN_ID: ${{ inputs.source_v11_run_id }}
           REQUESTED_V15_RUN_ID: ${{ inputs.source_v15_run_id }}
+          REQUESTED_BASE_MODEL_FINGERPRINT: ${{ inputs.base_model_fingerprint }}
         run: |
           set -euo pipefail
           v9_run_id="$REQUESTED_V9_RUN_ID"
           v11_run_id="$REQUESTED_V11_RUN_ID"
           v15_run_id="$REQUESTED_V15_RUN_ID"
+          base_model_fingerprint="$REQUESTED_BASE_MODEL_FINGERPRINT"
           if [[ "$EVENT_NAME" == "push" ]]; then
             v9_run_id="$(
               sed -n 's/^source_v9_run_id=//p' \
@@ -70,13 +77,20 @@ jobs:
               sed -n 's/^source_v15_run_id=//p' \
                 scripts/trigger_wp_v16_upgrade.txt | tail -n 1 | tr -cd '0-9'
             )"
+            base_model_fingerprint="$(
+              sed -n 's/^base_model_fingerprint=//p' \
+                scripts/trigger_wp_v16_upgrade.txt | tail -n 1 \
+                | tr -cd '[:alnum:]'
+            )"
           fi
           test -n "$v9_run_id"
           test -n "$v11_run_id"
           test -n "$v15_run_id"
+          test -n "$base_model_fingerprint"
           echo "v9_run_id=$v9_run_id" >> "$GITHUB_OUTPUT"
           echo "v11_run_id=$v11_run_id" >> "$GITHUB_OUTPUT"
           echo "v15_run_id=$v15_run_id" >> "$GITHUB_OUTPUT"
+          echo "base_model_fingerprint=$base_model_fingerprint" >> "$GITHUB_OUTPUT"
       - name: Restore exact V9 causal panel
         uses: actions/cache/restore@v4
         with:
@@ -105,6 +119,7 @@ jobs:
           tests/test_v16_data.py
           tests/test_v16_funnel.py
           tests/test_v16_policy.py
+          tests/test_v16_provenance.py
           tests/test_v16_research.py
           tests/test_v16_specialists.py
           tests/test_v3_dataset.py
@@ -130,6 +145,10 @@ jobs:
             --panel-dir artifacts/wp_v3_history/panel \
             --v11-source-dir artifacts/wp_v11_source \
             --output-dir artifacts/wp_v16_research \
+            --base-model-registry outputs/json/wp_model_registry_v3.json \
+            --expected-base-model-fingerprint \
+              "${{ steps.route.outputs.base_model_fingerprint }}" \
+            --repository-root . \
             --bootstrap-samples 1000 &
           research_pid=$!
           while kill -0 "$research_pid" 2>/dev/null; do

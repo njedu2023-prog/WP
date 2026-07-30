@@ -23,6 +23,11 @@ failed-exit penalty. A day with no qualified candidate is a valid
 
 - Source universe: immutable V11 frontier derived from V9 walk-forward,
   out-of-sample predictions.
+- Historical V16 scoring uses only immutable V9 fold-level out-of-sample
+  predictions. The final future-shadow package separately embeds the exact
+  frozen V9 live model artifact, registry digest, model fingerprint, policy
+  fingerprint, and artifact digest. A base-model change invalidates the
+  shadow clock.
 - Feature set: T-day information observable no later than each signal slot.
 - Signal slots: 14:20, 14:25, 14:30, 14:35, 14:40, 14:45, and 14:50.
 - A symbol is recorded at its first qualifying signal. Later appearances
@@ -112,6 +117,7 @@ protocol.
 - Nested out-of-sample candidates.
 - Frequency-profit Pareto frontier.
 - Loadable shadow model bundle and digest.
+- Embedded exact V9 base-model artifact and provenance contract.
 - Human-readable research evidence report.
 
 No artifact may claim profitability or production authorization unless the

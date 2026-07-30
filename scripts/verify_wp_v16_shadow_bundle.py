@@ -8,6 +8,7 @@ from typing import Any
 import joblib
 
 from wp.v3.io import file_sha256
+from wp.v3.v16_provenance import verify_embedded_base_model
 from wp.v3.v16_research import EXIT_CONTRACT_ID, SCHEMA_VERSION
 
 
@@ -34,6 +35,12 @@ def main() -> int:
     assert summary["research_only"] is True
     assert summary["production_authorized"] is False
     assert payload["exit_contract_id"] == EXIT_CONTRACT_ID
+    base_model, base_contract = verify_embedded_base_model(payload)
+    assert (
+        summary["source"]["base_v9"]["model_fingerprint"]
+        == base_model.fingerprint
+    )
+    assert summary["source"]["base_v9"] == base_contract
     assert len(payload["specialists"]) >= 4
     assert all(
         bundle.feature_columns and bundle.fit_rows > 0
@@ -50,6 +57,7 @@ def main() -> int:
                 "verified": True,
                 "schema_version": SCHEMA_VERSION,
                 "sha256": actual,
+                "base_model_fingerprint": base_model.fingerprint,
                 "specialists": len(payload["specialists"]),
                 "policy_id": (
                     payload["candidate_policy"].policy_id

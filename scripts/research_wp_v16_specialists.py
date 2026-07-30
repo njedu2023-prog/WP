@@ -22,6 +22,7 @@ from wp.v3.v16_policy import (
     policy_metrics,
     select_nested_policy,
 )
+from wp.v3.v16_provenance import bind_base_model
 from wp.v3.v16_research import (
     EXIT_CONTRACT_ID,
     MODEL_CALIBRATION_DAYS,
@@ -45,6 +46,8 @@ from wp.v3.v16_specialists import (
     fit_specialists,
 )
 
+ROOT = Path(__file__).resolve().parents[1]
+
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
@@ -57,6 +60,18 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--panel-dir", required=True)
     parser.add_argument("--v11-source-dir", required=True)
     parser.add_argument("--output-dir", required=True)
+    parser.add_argument(
+        "--base-model-registry",
+        default=str(ROOT / "outputs/json/wp_model_registry_v3.json"),
+    )
+    parser.add_argument(
+        "--expected-base-model-fingerprint",
+        required=True,
+    )
+    parser.add_argument(
+        "--repository-root",
+        default=str(ROOT),
+    )
     parser.add_argument("--bootstrap-samples", type=int, default=1_000)
     return parser.parse_args()
 
@@ -67,7 +82,13 @@ def main() -> int:
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
+    base_artifact, _, base_contract = bind_base_model(
+        args.base_model_registry,
+        expected_fingerprint=args.expected_base_model_fingerprint,
+        repository_root=args.repository_root,
+    )
     frontier, source_audit = load_v11_frontier(args.v11_source_dir)
+    source_audit = {**source_audit, "base_v9": base_contract}
     frontier = attach_original_features(
         frontier,
         args.panel_dir,
@@ -286,6 +307,8 @@ def main() -> int:
             if final_selection is not None
             else None
         ),
+        "base_model_contract": base_contract,
+        "base_model_artifact": base_artifact,
         "specialists": final_bundles,
         "model_period": final_model_period,
         "source": source_audit,
