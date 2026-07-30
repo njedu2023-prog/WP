@@ -70,3 +70,29 @@ V10 never modifies the production registry or live dashboard.
 Even if every historical OOS gate passes, production remains unauthorized
 until the exact frozen model completes at least 150 trading days of shadow
 operation and passes the separately frozen shadow gates.
+
+## Executed Three-Year Result
+
+The frozen protocol was executed by workflow run `30516136872` from immutable
+V9 source run `30466227350`. Evidence artifact `8749112795` has digest
+`sha256:2df1f8a41973d1a8d96d57fcbbb1d8bfdec659594830bb74f9df4d433a93baa1`.
+
+- Pruned causal candidate frontier: 207,666 rows.
+- Outer folds with sufficient history: 12.
+- Folds authorized by both design and confirmation: 1.
+- Untouched test candidates: 28 across 13 trading days.
+- Positive-net-return rate: 57.14%; Wilson lower bound: 39.07%.
+- Mean / median net return at 35 bps: -0.0677% / +0.1936%.
+- Profit factor: 0.9586.
+- Entry fill / T+1 close exit fill: 100.00% / 92.86%.
+- 50 bps stress mean net return: -0.2177%.
+- Net-return 10% quantile: -8.0967%.
+- Maximum day-equal-weight drawdown: -9.0937%.
+
+The minimum sample, clustered win-rate lower bound, positive mean return,
+clustered mean-return lower bound, profit factor, exit-fill, and 50 bps stress
+gates all failed. V10 is rejected for production and must not replace the
+current `NO_SIGNAL` posture. Adding more threshold combinations to the fixed
+T+1 close contract is not a defensible next step. A subsequent study must
+change a predeclared executable economic contract or add genuinely new
+point-in-time information, then restart nested OOS and shadow validation.
