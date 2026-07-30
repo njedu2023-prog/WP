@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 from typing import Any
 
+import numpy as np
 import pandas as pd
 import pyarrow.parquet as pq
 
@@ -351,10 +352,19 @@ def main() -> int:
             ensure_ascii=False,
             separators=(",", ":"),
             allow_nan=False,
+            default=_json_default,
         ),
         flush=True,
     )
     return 0
+
+
+def _json_default(value: Any) -> Any:
+    if isinstance(value, np.generic):
+        return value.item()
+    if isinstance(value, pd.Timestamp):
+        return value.isoformat()
+    raise TypeError(f"Object of type {type(value).__name__} is not JSON serializable")
 
 
 def _load_pruned_predictions(

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 
@@ -9,6 +11,7 @@ from scripts.research_wp_v10_meta import (
     POLICY_CONFIRMATION_DAYS,
     POLICY_DESIGN_DAYS,
     PURGE_DAYS,
+    _json_default,
     _rolling_segments,
 )
 from wp.v3.meta_alpha import (
@@ -132,6 +135,19 @@ def test_meta_model_produces_finite_oos_scores() -> None:
     assert scored["meta_p_severe_loss"].between(0.001, 0.999).all()
     assert np.isfinite(scored["meta_expected_net_return_pct"]).all()
     assert np.isfinite(scored["meta_score"]).all()
+
+
+def test_research_summary_serializes_numpy_scalars() -> None:
+    payload = {
+        "fold": np.int64(11),
+        "mean": np.float64(-0.0677),
+        "authorized": np.bool_(False),
+    }
+    assert json.loads(json.dumps(payload, default=_json_default)) == {
+        "fold": 11,
+        "mean": -0.0677,
+        "authorized": False,
+    }
 
 
 def _scored(
