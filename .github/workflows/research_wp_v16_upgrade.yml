@@ -121,6 +121,7 @@ jobs:
           tests/test_v16_policy.py
           tests/test_v16_provenance.py
           tests/test_v16_research.py
+          tests/test_v16_exit_paths.py
           tests/test_v16_specialists.py
           tests/test_v3_dataset.py
           tests/test_v3_model.py
@@ -248,7 +249,16 @@ jobs:
           pattern: wp-v11-exit-*
           path: artifacts/wp_v11_source
           merge-multiple: true
+      - name: Restore complete V16 exit-path cache
+        id: exit_paths
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v16_exit_paths
+          key: wp-v16-exit-paths-${{ steps.route.outputs.v11_run_id }}-current
+          restore-keys: |
+            wp-v16-exit-paths-${{ steps.route.outputs.v11_run_id }}-
       - name: Build complete T+1 five-minute paths
+        if: steps.exit_paths.outputs.cache-matched-key == ''
         shell: bash
         run: |
           set -euo pipefail
@@ -270,6 +280,13 @@ jobs:
           PYTHONPATH: src
           PYTHONUNBUFFERED: "1"
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+      - name: Verify complete T+1 five-minute paths
+        run: >-
+          python scripts/verify_wp_v16_exit_paths.py
+          --dataset-dir artifacts/wp_v16_exit_paths
+          --minimum-pair-coverage 0.98
+        env:
+          PYTHONPATH: src
       - name: Save incremental Tushare response cache
         if: always()
         uses: actions/cache/save@v4
@@ -277,7 +294,9 @@ jobs:
           path: .cache/wp_v3_tushare
           key: wp-v16-raw-${{ steps.route.outputs.v9_run_id }}-${{ github.run_id }}
       - name: Save versioned V16 exit-path cache
-        if: success()
+        if: >-
+          success() &&
+          steps.exit_paths.outputs.cache-matched-key == ''
         uses: actions/cache/save@v4
         with:
           path: artifacts/wp_v16_exit_paths
@@ -288,8 +307,8 @@ jobs:
         with:
           name: wp-v16-exit-path-manifest-${{ github.run_id }}
           path: |
-            artifacts/wp_v16_exit_paths/wp_v16_exit_path_manifest.json
-            artifacts/wp_v16_exit_paths/wp_v16_exit_path_quality.parquet
+            artifacts/wp_v16_exit_paths/wp_v16_t1_path_manifest.json
+            artifacts/wp_v16_exit_paths/wp_v16_t1_path_quality.parquet
           retention-days: 90
           if-no-files-found: warn
       - name: Upload V16 exit-path partitions

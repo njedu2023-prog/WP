@@ -116,6 +116,9 @@ class SpecialistBundle:
 
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         prepared = prepare_specialist_frame(frame)
+        return self.predict_prepared(prepared)
+
+    def predict_prepared(self, prepared: pd.DataFrame) -> pd.DataFrame:
         eligible = self.spec.predicate(prepared).fillna(False).astype(bool)
         scored = prepared.loc[eligible].copy()
         if scored.empty:
@@ -262,6 +265,25 @@ def fit_specialist(
     prepared_calibration = prepare_specialist_frame(calibration)
     prepared_train = _labeled_rows(prepared_train)
     prepared_calibration = _labeled_rows(prepared_calibration)
+    return _fit_prepared_specialist(
+        prepared_train,
+        prepared_calibration,
+        spec,
+        random_seed=random_seed,
+        minimum_train_rows=minimum_train_rows,
+        minimum_calibration_rows=minimum_calibration_rows,
+    )
+
+
+def _fit_prepared_specialist(
+    prepared_train: pd.DataFrame,
+    prepared_calibration: pd.DataFrame,
+    spec: SpecialistSpec,
+    *,
+    random_seed: int,
+    minimum_train_rows: int,
+    minimum_calibration_rows: int,
+) -> SpecialistBundle:
     train_mask = spec.predicate(prepared_train).fillna(False).astype(bool)
     calibration_mask = (
         spec.predicate(prepared_calibration).fillna(False).astype(bool)
@@ -434,15 +456,21 @@ def fit_specialists(
     specs: tuple[SpecialistSpec, ...] | None = None,
 ) -> tuple[list[SpecialistBundle], list[dict[str, Any]]]:
     definitions = specs or specialist_specs()
+    prepared_train = _labeled_rows(prepare_specialist_frame(train))
+    prepared_calibration = _labeled_rows(
+        prepare_specialist_frame(calibration)
+    )
     bundles: list[SpecialistBundle] = []
     audit: list[dict[str, Any]] = []
     for offset, spec in enumerate(definitions):
         try:
-            bundle = fit_specialist(
-                train,
-                calibration,
+            bundle = _fit_prepared_specialist(
+                prepared_train,
+                prepared_calibration,
                 spec,
                 random_seed=random_seed + offset * 101,
+                minimum_train_rows=1_500,
+                minimum_calibration_rows=300,
             )
         except ValueError as error:
             audit.append(
@@ -471,7 +499,11 @@ def score_specialists(
     source: pd.DataFrame,
     bundles: list[SpecialistBundle],
 ) -> pd.DataFrame:
-    predictions = [bundle.predict(source) for bundle in bundles]
+    prepared = prepare_specialist_frame(source)
+    predictions = [
+        bundle.predict_prepared(prepared)
+        for bundle in bundles
+    ]
     long = (
         pd.concat(predictions, ignore_index=True)
         if predictions

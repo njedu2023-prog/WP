@@ -139,3 +139,12 @@ def test_specialist_rejects_missing_label_contract() -> None:
             minimum_train_rows=1,
             minimum_calibration_rows=1,
         )
+
+
+def test_prepare_specialist_frame_preserves_identity() -> None:
+    frame = pd.DataFrame([base_row("A")])
+    prepared = prepare_specialist_frame(frame)
+
+    assert prepared[["trade_date", "signal_slot", "ts_code"]].equals(
+        frame[["trade_date", "signal_slot", "ts_code"]]
+    )
