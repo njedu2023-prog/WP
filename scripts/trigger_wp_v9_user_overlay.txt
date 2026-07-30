@@ -1,0 +1,5 @@
+WP V9 unchanged-model user overlay analysis trigger.
+requested_at=2026-07-30T12:00:00+08:00
+source_run_id=30466227350
+condition_1=previous trading day did not close at the exact upper price limit
+condition_2=14:20 return from previous close is strictly greater than 7 percent
