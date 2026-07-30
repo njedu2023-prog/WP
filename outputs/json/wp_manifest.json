@@ -1,11 +1,13 @@
 {
   "buy_plan_count": 0,
   "health_status": "research_ready",
-  "latest_update": "2026-07-30 03:08:30",
+  "latest_update": "2026-07-30 17:37:30",
   "manual_execution_only": true,
   "market_data_time": null,
   "order_routing_enabled": false,
-  "report_revision": "2026-07-30 03:08:30",
+  "pending_due_truth_count": 0,
+  "pending_truth_count": 0,
+  "report_revision": "2026-07-30 17:37:30",
   "research_end": "20260724",
   "research_start": "20230727",
   "schema_version": "wp_manifest_v3",
@@ -22,5 +24,7 @@
   "v3_model_version": "wpv9-20260724-1342134",
   "v3_policy_fingerprint": "286ec59d00afd7f8e80d",
   "v3_qualified_count": 0,
-  "v3_state": "SHADOW_OBSERVATION"
+  "v3_state": "SHADOW_OBSERVATION",
+  "validation_updated_at": "2026-07-30 17:37:30",
+  "verified_candidate_count": 0
 }
