@@ -30,6 +30,11 @@ down-limit queue is not credited and receives the predeclared -10% failed-exit
 penalty. A target date outside the stored panel is excluded instead of being
 fabricated as a loss.
 
+Exit prices and liquidity come from the unfiltered historical five-minute
+partitions. They do not come from the decision panel, because that panel is
+intentionally filtered by buy eligibility and is therefore not a valid source
+for determining whether an existing T+1 holding can be sold.
+
 ## Evaluation
 
 V13 reports:
