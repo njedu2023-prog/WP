@@ -1,0 +1,2 @@
+requested_at=2026-07-31T09:00:00Z
+reason=Probe new point-in-time attention and fine-industry data without reading outcomes
