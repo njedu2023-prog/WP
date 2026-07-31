@@ -11,6 +11,7 @@ from wp.v3.v25_ranker import (
     PositioningPolicySpec,
     apply_positioning_policy,
     build_pairwise_examples,
+    fit_positioning_ranker,
     validate_feature_contract,
     within_slot_rank_diagnostics,
 )
@@ -62,6 +63,34 @@ def scored_rows() -> pd.DataFrame:
             "v25_positioning_score": [1.0, 0.2, 0.9, 0.8, 0.7],
         }
     )
+
+
+def training_rows(start_day: int, days: int) -> pd.DataFrame:
+    rows = []
+    returns = (2.0, 1.0, 0.2, -1.0, -3.0)
+    for day_offset in range(days):
+        date = f"202601{start_day + day_offset:02d}"
+        for rank, net_return in enumerate(returns):
+            row = {
+                "trade_date": date,
+                "signal_slot": "14:20",
+                "ts_code": f"600{rank:03d}.SH",
+                "net_return_pct": net_return + 0.01 * day_offset,
+                "target_net_positive": float(
+                    net_return + 0.01 * day_offset > 0.0
+                ),
+                "label_available": True,
+                "v23_point_in_time_complete": True,
+                "v25_positioning_core_complete": True,
+            }
+            for offset, feature in enumerate(MODEL_FEATURES):
+                row[feature] = (
+                    -float(rank)
+                    + 0.01 * day_offset
+                    + 0.001 * offset
+                )
+            rows.append(row)
+    return pd.DataFrame(rows)
 
 
 def test_v25_contract_is_frozen_and_outcome_blind() -> None:
@@ -136,3 +165,29 @@ def test_within_slot_diagnostics_measure_actual_stock_ranking() -> None:
     assert diagnostics["groups"] == 1
     assert diagnostics["mean_within_slot_ic"] == 1.0
     assert diagnostics["mean_top_minus_bottom_return_pct"] == 3.0
+
+
+def test_ranker_fits_calibrates_and_scores_same_slot_candidates() -> None:
+    train = training_rows(1, 12)
+    calibration = training_rows(13, 6)
+    bundle = fit_positioning_ranker(
+        train,
+        calibration,
+        random_seed=25,
+        minimum_train_rows=50,
+        minimum_calibration_rows=25,
+        minimum_train_pair_rows=200,
+        minimum_calibration_pair_rows=100,
+    )
+    scored = bundle.predict(calibration)
+
+    assert scored["v25_p_positive"].between(0.001, 0.999).all()
+    assert scored["v25_p_severe_loss"].between(0.001, 0.999).all()
+    assert scored["v25_within_slot_rank_score"].between(0.0, 1.0).all()
+    first_day = scored.loc[scored["trade_date"].eq("20260113")]
+    best = first_day.loc[first_day["ts_code"].eq("600000.SH")].iloc[0]
+    worst = first_day.loc[first_day["ts_code"].eq("600004.SH")].iloc[0]
+    assert (
+        best["v25_within_slot_rank_score"]
+        > worst["v25_within_slot_rank_score"]
+    )

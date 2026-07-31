@@ -93,6 +93,7 @@ V25_FEATURE_COLUMNS = (
     *MARGIN_FEATURE_COLUMNS,
     *TOP_LIST_FEATURE_COLUMNS,
 )
+SOURCE_IDENTITY_COLUMNS = ("trade_date", "signal_slot", "ts_code")
 
 
 def previous_date_map(open_dates: Iterable[str]) -> dict[str, str]:
@@ -101,6 +102,89 @@ def previous_date_map(open_dates: Iterable[str]) -> dict[str, str]:
         current: previous
         for previous, current in zip(ordered, ordered[1:], strict=False)
     }
+
+
+def attach_candidate_signal_price(
+    source: pd.DataFrame,
+    candidate_index: pd.DataFrame,
+) -> pd.DataFrame:
+    """Restore the immutable V24 signal price without changing identities."""
+    source_required = {*SOURCE_IDENTITY_COLUMNS}
+    candidate_required = {*SOURCE_IDENTITY_COLUMNS, "signal_price"}
+    source_missing = sorted(source_required - set(source.columns))
+    candidate_missing = sorted(candidate_required - set(candidate_index.columns))
+    if source_missing:
+        raise ValueError(
+            f"V25 feature source missing identities: {source_missing}"
+        )
+    if candidate_missing:
+        raise ValueError(
+            f"V25 candidate index missing columns: {candidate_missing}"
+        )
+
+    left = source.copy()
+    right = candidate_index.loc[
+        :,
+        [*SOURCE_IDENTITY_COLUMNS, "signal_price"],
+    ].copy()
+    for column in SOURCE_IDENTITY_COLUMNS:
+        left[column] = left[column].astype(str)
+        right[column] = right[column].astype(str)
+    if left.duplicated(list(SOURCE_IDENTITY_COLUMNS)).any():
+        raise RuntimeError("V25 feature source contains duplicate identities")
+    if right.duplicated(list(SOURCE_IDENTITY_COLUMNS)).any():
+        raise RuntimeError("V25 candidate index contains duplicate identities")
+
+    left_keys = set(
+        left.loc[:, SOURCE_IDENTITY_COLUMNS].itertuples(
+            index=False,
+            name=None,
+        )
+    )
+    right_keys = set(
+        right.loc[:, SOURCE_IDENTITY_COLUMNS].itertuples(
+            index=False,
+            name=None,
+        )
+    )
+    if left_keys != right_keys:
+        raise RuntimeError(
+            "V25 feature source and candidate index identities differ"
+        )
+
+    existing = (
+        pd.to_numeric(left["signal_price"], errors="coerce")
+        if "signal_price" in left
+        else None
+    )
+    left.drop(columns="signal_price", errors="ignore", inplace=True)
+    left["_v25_source_order"] = np.arange(len(left))
+    result = left.merge(
+        right,
+        on=list(SOURCE_IDENTITY_COLUMNS),
+        how="left",
+        validate="one_to_one",
+        sort=False,
+    )
+    result.sort_values("_v25_source_order", kind="stable", inplace=True)
+    result.drop(columns="_v25_source_order", inplace=True)
+    result.reset_index(drop=True, inplace=True)
+    signal_price = pd.to_numeric(result["signal_price"], errors="coerce")
+    if (
+        signal_price.isna().any()
+        or not np.isfinite(signal_price).all()
+        or not signal_price.gt(0.0).all()
+    ):
+        raise RuntimeError("V25 candidate index has invalid signal prices")
+    if existing is not None and not np.allclose(
+        existing.to_numpy(dtype=float),
+        signal_price.to_numpy(dtype=float),
+        equal_nan=False,
+    ):
+        raise RuntimeError(
+            "V25 feature source signal prices differ from candidate index"
+        )
+    return result
 
 
 def attach_positioning_features(

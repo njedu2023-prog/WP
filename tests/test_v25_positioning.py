@@ -5,6 +5,7 @@ import pandas as pd
 
 from wp.v3.v25_positioning import (
     V25_FEATURE_COLUMNS,
+    attach_candidate_signal_price,
     attach_positioning_features,
     positioning_coverage_audit,
 )
@@ -151,3 +152,33 @@ def test_missing_margin_is_measured_not_imputed_as_position() -> None:
 
     assert not missing["v25_margin_available"]
     assert np.isnan(missing["v25_margin_financing_balance_log"])
+
+
+def test_candidate_index_restores_signal_price_without_reordering() -> None:
+    feature_source = source().drop(columns="signal_price").iloc[::-1]
+    candidate_index = source().loc[
+        :,
+        ["trade_date", "signal_slot", "ts_code", "signal_price"],
+    ]
+
+    result = attach_candidate_signal_price(
+        feature_source,
+        candidate_index,
+    )
+
+    assert result["ts_code"].tolist() == feature_source["ts_code"].tolist()
+    assert result["signal_price"].tolist() == [10.0, 11.0]
+
+
+def test_candidate_index_rejects_identity_mismatch() -> None:
+    feature_source = source().drop(columns="signal_price")
+    candidate_index = source().loc[
+        :,
+        ["trade_date", "signal_slot", "ts_code", "signal_price"],
+    ].iloc[:1]
+
+    with np.testing.assert_raises_regex(
+        RuntimeError,
+        "identities differ",
+    ):
+        attach_candidate_signal_price(feature_source, candidate_index)

@@ -25,6 +25,7 @@ from wp.v3.v25_positioning import (
     SCHEMA_VERSION,
     TOP_LIST_RAW_COLUMNS,
     V25_FEATURE_COLUMNS,
+    attach_candidate_signal_price,
     attach_positioning_features,
     positioning_coverage_audit,
     previous_date_map,
@@ -65,11 +66,24 @@ def main() -> int:
         source_root,
         "wp_v24_point_in_time_features.parquet",
     )
+    candidate_path = find_one(
+        source_root,
+        "wp_v24_outcome_blind_candidate_index.parquet",
+    )
     manifest_path = find_one(source_root, "wp_v24_data_manifest.json")
     source_manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     validate_source_manifest(source_manifest)
+    validate_source_artifact(source_manifest, "features", source_path)
+    validate_source_artifact(
+        source_manifest,
+        "candidate_index",
+        candidate_path,
+    )
     source = pd.read_parquet(source_path)
+    candidate_index = pd.read_parquet(candidate_path)
     validate_outcome_blind(source)
+    validate_outcome_blind(candidate_index)
+    source = attach_candidate_signal_price(source, candidate_index)
     open_dates = [
         str(value)
         for value in (source_manifest.get("trade_calendar") or {}).get(
@@ -141,6 +155,7 @@ def main() -> int:
         "source": {
             "v24_manifest_sha256": file_sha256(manifest_path),
             "v24_features_sha256": file_sha256(source_path),
+            "v24_candidate_index_sha256": file_sha256(candidate_path),
             "v24_schema_version": source_manifest.get("schema_version"),
             "candidate_rows": int(len(source)),
             "trade_dates": int(source["trade_date"].astype(str).nunique()),
@@ -315,6 +330,23 @@ def validate_source_manifest(manifest: dict[str, Any]) -> None:
         raise RuntimeError("V25 source permits future information")
 
 
+def validate_source_artifact(
+    manifest: dict[str, Any],
+    artifact_name: str,
+    path: Path,
+) -> None:
+    artifact = (manifest.get("artifacts") or {}).get(artifact_name) or {}
+    expected = str(artifact.get("sha256") or "")
+    if not expected:
+        raise RuntimeError(
+            f"V25 source manifest has no {artifact_name} digest"
+        )
+    if file_sha256(path) != expected:
+        raise RuntimeError(
+            f"V25 source {artifact_name} digest mismatch"
+        )
+
+
 def validate_outcome_blind(frame: pd.DataFrame) -> None:
     forbidden = (
         "target",
@@ -348,4 +380,3 @@ def find_one(root: Path, name: str) -> Path:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
