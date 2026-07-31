@@ -1,0 +1,6 @@
+v24_data_run_id=30635569735
+v28_data_run_id=30656696310
+v30_probe_run_id=30662958173
+protocol=WP_V33_LIMIT_INDUSTRY_ECOLOGY_DATA_FEASIBILITY_PROTOCOL
+reason=Probe outcome-blind candidate-level industry diffusion coverage
+triggered_at_utc=2026-07-31T22:44:39Z
