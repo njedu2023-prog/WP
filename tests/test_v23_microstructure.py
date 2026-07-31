@@ -23,6 +23,7 @@ from wp.v3.v23_microstructure import (
     MicrostructurePolicySpec,
     apply_microstructure_policy,
     calibrate_microstructure_policy,
+    feature_matrix,
     fit_microstructure_gate,
     rolling_microstructure_segments,
 )
@@ -216,6 +217,22 @@ def test_calendar_denominator_includes_no_candidate_days() -> None:
             }
         )
     ) == ("20260721", "20260724")
+
+
+def test_feature_matrix_derives_signal_slot_without_future_data() -> None:
+    frame = pd.DataFrame(
+        {
+            "signal_slot": ["14:20", "14:35", "14:50"],
+            "selection_score": [0.1, 0.2, 0.3],
+        }
+    )
+
+    matrix = feature_matrix(
+        frame,
+        ("slot_minute", "selection_score"),
+    )
+
+    assert matrix["slot_minute"].tolist() == [0.0, 15.0, 30.0]
 
 
 def test_fit_predict_and_fixed_policy_are_deterministic() -> None:

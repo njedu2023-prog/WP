@@ -24,6 +24,7 @@ from .sharding import (
     SHARD_PREDICTIONS_NAME,
     SHARD_SCHEMA_VERSION,
 )
+from .features import slot_to_minute
 from .v17_selector import active_feature_columns, day_temporal_weights
 from .v23_data import (
     OPTIONAL_SOURCE_SELECTION_COLUMNS,
@@ -862,6 +863,8 @@ def feature_matrix(
     columns: tuple[str, ...],
 ) -> pd.DataFrame:
     values = frame.reindex(columns=columns).copy()
+    if "slot_minute" in columns and "signal_slot" in frame:
+        values["slot_minute"] = slot_to_minute(frame["signal_slot"])
     for column in columns:
         values[column] = pd.to_numeric(values[column], errors="coerce").astype(
             "float32"
