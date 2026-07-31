@@ -1,0 +1,3 @@
+source_run_id=30600193544
+requested_at=2026-07-31T13:38:55Z
+reason=Build preregistered V24 top-five point-in-time opportunity set
