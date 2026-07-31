@@ -46,6 +46,7 @@ jobs:
           path: artifacts/wp_v3_history
           key: wp-v9-panel-auto-auto-auto-auto-r15-30466227350
           restore-keys: |
+            wp-v19-panel-20210726-20260724-20230727-20260724-r15-
             wp-v9-panel-auto-auto-auto-auto-r15-
             wp-v8-panel-auto-auto-auto-auto-r14-
       - name: Rebuild the causal panel when the immutable cache expired
