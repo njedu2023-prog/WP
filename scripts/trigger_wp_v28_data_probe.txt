@@ -1,0 +1,2 @@
+requested_at=2026-07-31T18:31:24Z
+reason=Probe causal SW L2/L3 peer confirmation from immutable full-market minutes
