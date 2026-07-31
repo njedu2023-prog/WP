@@ -14,6 +14,9 @@ threshold, or authorize live use.
   `top_per_source=48` and `exploration_per_slot=24`.
 - Source leader: one source-eligible V9 leader per trade date and signal slot,
   ranked by the already-frozen V9 selection score.
+- Leader identity is selected without consulting `label_available` or any
+  outcome. A leader with missing T+1 truth remains the leader and may not be
+  replaced by the next labeled stock.
 - Signal slots: 14:20, 14:25, 14:30, 14:35, 14:40, 14:45, and 14:50.
 - The source projection excludes all profit, target, T+1, truth, and exit
   columns before any V23 data request is constructed.
@@ -75,6 +78,8 @@ The build emits:
 - one point-in-time feature row per source leader;
 - source hashes, partition hashes, query failures, and coverage audit in a
   manifest.
+- the full SSE open-date calendar used by the build, including dates with no
+  source leader.
 
 Only after this manifest passes may a separately preregistered V23 nested
 out-of-sample model protocol be executed.

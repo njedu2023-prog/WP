@@ -196,6 +196,13 @@ def main() -> int:
                 leaders["v23_prev_trade_date"].nunique()
             ),
         },
+        "trade_calendar": {
+            "exchange": "SSE",
+            "open_dates": open_dates,
+            "open_date_count": int(len(open_dates)),
+            "start_date": open_dates[0],
+            "end_date": open_dates[-1],
+        },
         "query_failures": {
             "one_minute": minute_failures,
             "opening_auction": auction_failures,
