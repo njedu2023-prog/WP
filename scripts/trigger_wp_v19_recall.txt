@@ -1,3 +1,4 @@
 protocol=wp_v19_broad_recall_selector_1
 base_source_run_id=30466227350
-requested_at=2026-07-31T02:30:00Z
+requested_at=2026-07-31T02:54:25Z
+reason=self_heal_missing_v9_panel_cache
