@@ -1,0 +1,2 @@
+requested_at=2026-07-31T16:30:00Z
+reason=Probe independent positioning and event data after V24 rejection
