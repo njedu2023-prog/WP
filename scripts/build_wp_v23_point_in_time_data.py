@@ -100,8 +100,8 @@ def main() -> int:
     )
     open_dates = load_trade_calendar(
         client,
-        start_date=str(leaders["trade_date"].min()),
-        end_date=str(leaders["trade_date"].max()),
+        start_date=config.history.start_date,
+        end_date=config.history.evaluation_end_date,
     )
     leaders = attach_previous_trade_dates(leaders, open_dates)
 
