@@ -1,0 +1,3 @@
+source_v24_data_run_id=30635569735
+requested_at=2026-07-31T16:36:00Z
+reason=Build full outcome-blind V25 positioning dataset after feasibility pass
