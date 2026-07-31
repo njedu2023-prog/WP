@@ -68,10 +68,12 @@ jobs:
           run-id: ${{ steps.source.outputs.run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Restore resumable Tushare query cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: artifacts/wp_v23_query_cache
-          key: wp-v23-point-in-time-cache-1-${{ steps.source.outputs.run_id }}
+          key: wp-v23-point-in-time-cache-2-${{ steps.source.outputs.run_id }}-${{ github.run_id }}
+          restore-keys: |
+            wp-v23-point-in-time-cache-2-${{ steps.source.outputs.run_id }}-
       - name: Verify outcome-blind data contracts
         run: >-
           python -m pytest
@@ -111,6 +113,12 @@ jobs:
           OMP_NUM_THREADS: "2"
           OPENBLAS_NUM_THREADS: "2"
           MKL_NUM_THREADS: "2"
+      - name: Save resumable Tushare query cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/wp_v23_query_cache
+          key: wp-v23-point-in-time-cache-2-${{ steps.source.outputs.run_id }}-${{ github.run_id }}
       - name: Upload immutable V23 point-in-time dataset
         if: always()
         uses: actions/upload-artifact@v5

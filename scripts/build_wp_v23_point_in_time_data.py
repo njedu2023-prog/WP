@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 import pandas as pd
+import pyarrow.parquet as pq
 import tushare as ts
 
 from wp.v3.contracts import load_v3_config
@@ -457,7 +458,7 @@ def file_artifact(path: str | Path) -> dict[str, Any]:
         "path": str(resolved.as_posix()),
         "sha256": file_sha256(resolved),
         "bytes": int(resolved.stat().st_size),
-        "rows": int(len(pd.read_parquet(resolved))),
+        "rows": int(pq.ParquetFile(resolved).metadata.num_rows),
     }
 
 

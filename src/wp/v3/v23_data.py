@@ -56,6 +56,13 @@ SOURCE_SELECTION_COLUMNS = (
     "policy_fingerprint",
 )
 
+OPTIONAL_SOURCE_SELECTION_COLUMNS = ("data_age_seconds",)
+REQUIRED_SOURCE_SELECTION_COLUMNS = tuple(
+    column
+    for column in SOURCE_SELECTION_COLUMNS
+    if column not in OPTIONAL_SOURCE_SELECTION_COLUMNS
+)
+
 MINUTE_FEATURE_COLUMNS = (
     "v23_m1_coverage_ratio",
     "v23_m1_zero_amount_share",
@@ -191,15 +198,28 @@ def load_v23_source_leaders(
                 f"V9 prediction digest mismatch: {prediction_path}"
             )
         available = set(pq.read_schema(prediction_path).names)
-        missing = sorted(set(SOURCE_SELECTION_COLUMNS) - available)
-        if missing:
+        missing_required = sorted(
+            set(REQUIRED_SOURCE_SELECTION_COLUMNS) - available
+        )
+        if missing_required:
             raise RuntimeError(
-                f"V9 source projection missing {missing}: {prediction_path}"
+                "V9 source projection missing required columns "
+                f"{missing_required}: {prediction_path}"
             )
+        projected = [
+            column
+            for column in SOURCE_SELECTION_COLUMNS
+            if column in available
+        ]
         frame = pq.read_table(
             prediction_path,
-            columns=list(SOURCE_SELECTION_COLUMNS),
+            columns=projected,
         ).to_pandas()
+        missing_optional = sorted(
+            set(OPTIONAL_SOURCE_SELECTION_COLUMNS) - available
+        )
+        for column in missing_optional:
+            frame[column] = np.nan
         if len(frame) != int(manifest.get("prediction_rows", -1)):
             raise RuntimeError(
                 f"V9 prediction row count mismatch: {prediction_path}"
@@ -235,6 +255,7 @@ def load_v23_source_leaders(
                 "source_rows": int(len(frame)),
                 "frontier_rows": int(len(frontier)),
                 "leader_rows": int(len(leaders)),
+                "missing_optional_columns": missing_optional,
             }
         )
 

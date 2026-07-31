@@ -172,6 +172,70 @@ def test_source_loader_reads_only_outcome_blind_projection(tmp_path) -> None:
     assert source["source_integrity"] is True
 
 
+def test_source_loader_accepts_legacy_missing_data_age(tmp_path) -> None:
+    rows = []
+    for index, code in enumerate(("600000.SH", "000001.SZ")):
+        row = {
+            column: np.nan
+            for column in SOURCE_SELECTION_COLUMNS
+            if column != "data_age_seconds"
+        }
+        row.update(
+            {
+                "trade_date": "20260724",
+                "signal_slot": "14:20",
+                "ts_code": code,
+                "fold": 1,
+                "signal_price": 10.0 + index,
+                "ret_from_prev_close_pct": 2.0 + index,
+                "execution_eligible": True,
+                "p_net_positive": 0.60 - index * 0.01,
+                "p_net_positive_lower": 0.55 - index * 0.01,
+                "p_conditional_net_positive": 0.62,
+                "p_cross_section_top": 0.58,
+                "p_severe_loss": 0.20,
+                "p_round_trip_fill_lower": 0.99,
+                "probability_model_spread": 0.05,
+                "expected_return_model_spread": 0.05,
+                "expected_utility_pct": 0.30,
+                "expected_utility_lower_pct": 0.20,
+                "selection_score": 0.80 - index * 0.10,
+                "model_version": "v9",
+                "model_fingerprint": "model-1",
+                "policy_fingerprint": "policy-1",
+            }
+        )
+        rows.append(row)
+    frame = pd.DataFrame(rows)
+    prediction_path = tmp_path / SHARD_PREDICTIONS_NAME
+    frame.to_parquet(prediction_path, index=False)
+    manifest = {
+        "schema_version": SHARD_SCHEMA_VERSION,
+        "expected_folds": [1],
+        "produced_folds": [1],
+        "prediction_rows": len(frame),
+        "prediction_sha256": file_sha256(prediction_path),
+        "dataset_manifest_sha256": "dataset-1",
+    }
+    (tmp_path / SHARD_MANIFEST_NAME).write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    loaded, source = load_v23_source_leaders(
+        tmp_path,
+        evaluation_end="20260724",
+        top_per_source=2,
+        exploration_per_slot=0,
+    )
+
+    assert len(loaded) == 1
+    assert source["source_integrity"] is True
+    assert source["shards"][0]["missing_optional_columns"] == [
+        "data_age_seconds"
+    ]
+
+
 def test_required_pairs_and_previous_trade_date_are_causal() -> None:
     source = leaders().drop(columns="v23_prev_trade_date")
     requirements = required_stock_months(source)

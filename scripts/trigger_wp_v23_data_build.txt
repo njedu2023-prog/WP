@@ -1,3 +1,3 @@
 source_run_id=30600193544
-requested_at=2026-07-31T11:41:46Z
-reason=Build outcome-blind V23 point-in-time dataset after feasibility pass
+requested_at=2026-07-31T11:56:50Z
+reason=Retry V23 data build after legacy source compatibility fix
