@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from diagnose_wp_v24_evidence import (
+from scripts.diagnose_wp_v24_evidence import (
     benjamini_hochberg,
     binary_auc,
     causal_feature_diagnostics,
