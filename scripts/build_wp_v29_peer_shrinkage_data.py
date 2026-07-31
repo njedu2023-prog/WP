@@ -14,6 +14,7 @@ from wp.v3.v28_industry_peer import V28_PEER_FEATURE_COLUMNS
 from wp.v3.v29_peer_shrinkage import (
     IDENTITY_COLUMNS,
     L3_SHRINKAGE_PSEUDO_PEERS,
+    SCHEMA_VERSION as V29_DATA_SCHEMA_VERSION,
     V29_FEATURE_COLUMNS,
     audit_hierarchical_feature_coverage,
     build_hierarchical_peer_features,
@@ -22,7 +23,6 @@ from wp.v3.v29_peer_shrinkage import (
 
 V28_DATA_SCHEMA_VERSION = "wp_v28_fine_industry_peer_features_1"
 V28_DIAGNOSIS_SCHEMA_VERSION = "wp_v28_feature_coverage_diagnosis_1"
-V29_DATA_SCHEMA_VERSION = "wp_v29_hierarchical_peer_features_1"
 SOURCE_V24_DATA_RUN_ID = 30_635_569_735
 SOURCE_V28_DATA_RUN_ID = 30_656_696_310
 SOURCE_V28_DIAGNOSIS_RUN_ID = 30_659_154_353

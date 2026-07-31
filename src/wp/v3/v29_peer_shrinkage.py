@@ -14,6 +14,7 @@ from wp.v3.v28_industry_peer import (
 
 
 IDENTITY_COLUMNS = ("trade_date", "signal_slot", "ts_code")
+SCHEMA_VERSION = "wp_v29_hierarchical_peer_features_1"
 L3_SHRINKAGE_PSEUDO_PEERS = 6.0
 SHRUNK_METRIC_SUFFIXES = tuple(
     suffix

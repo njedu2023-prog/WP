@@ -1,0 +1,5 @@
+source_run_id=30600193544
+v29_data_run_id=30659547685
+protocol=WP_V29_HIERARCHICAL_PEER_MODEL_PROTOCOL
+reason=Run the single preregistered nested-OOS V29 peer-shrinkage research
+triggered_at_utc=2026-07-31T19:46:35Z
