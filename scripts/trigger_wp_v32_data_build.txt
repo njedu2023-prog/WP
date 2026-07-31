@@ -1,0 +1,3 @@
+target=v32_public_event_full_data_build
+requested_at=2026-08-01T05:05:00+08:00
+reason=v32_probe_passed_all_frozen_coverage_gates

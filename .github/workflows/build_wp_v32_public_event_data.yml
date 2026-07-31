@@ -1,0 +1,98 @@
+name: Build WP V32 Public Event Data
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v32_data_build.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v32-public-event-data-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Download immutable V24 candidate index
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v24-point-in-time-data-30635569735
+          path: artifacts/wp_v32_v24_source
+          merge-multiple: false
+          run-id: 30635569735
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download immutable V32 probe evidence
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v32-a-share-event-data-probe-30664863503
+          path: artifacts/wp_v32_probe_source
+          merge-multiple: false
+          run-id: 30664863503
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore resumable V32 query cache
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v32_query_cache
+          key: wp-v32-public-event-cache-1-30635569735-${{ github.run_id }}
+          restore-keys: |
+            wp-v32-public-event-cache-1-30635569735-
+      - name: Verify outcome-blind V32 full-data contracts
+        run: >-
+          python -m pytest
+          tests/test_v32_event_features.py
+          tests/test_v32_a_share_event_data_probe.py
+          tests/test_v24_data.py
+          -q
+        env:
+          PYTHONPATH: src:scripts
+      - name: Build three-year causal public-event features
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/build_wp_v32_public_event_data.py \
+            --v24-data-dir artifacts/wp_v32_v24_source \
+            --v32-probe-dir artifacts/wp_v32_probe_source \
+            --output-dir artifacts/wp_v32_public_event_data \
+            --cache-dir artifacts/wp_v32_query_cache &
+          build_pid=$!
+          while kill -0 "$build_pid" 2>/dev/null; do
+            echo "[wp-v32-data] heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$build_pid"
+        env:
+          PYTHONPATH: src:scripts
+          PYTHONUNBUFFERED: "1"
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Save resumable V32 query cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/wp_v32_query_cache
+          key: wp-v32-public-event-cache-1-30635569735-${{ github.run_id }}
+      - name: Upload immutable V32 full-data evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v32-public-event-data-${{ github.run_id }}
+          path: artifacts/wp_v32_public_event_data
+          retention-days: 90
+          if-no-files-found: warn
