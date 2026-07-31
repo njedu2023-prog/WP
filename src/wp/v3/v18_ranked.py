@@ -228,6 +228,7 @@ def fit_ranked_selector(
     random_seed: int,
     minimum_train_rows: int = 2_000,
     minimum_calibration_rows: int = 500,
+    feature_candidates: Iterable[str] | None = None,
 ) -> RankedSelectorBundle:
     selector = fit_selector(
         prepare_ranked_frame(train),
@@ -235,7 +236,7 @@ def fit_ranked_selector(
         random_seed=random_seed,
         minimum_train_rows=minimum_train_rows,
         minimum_calibration_rows=minimum_calibration_rows,
-        feature_candidates=V18_FEATURES,
+        feature_candidates=tuple(feature_candidates or V18_FEATURES),
     )
     return RankedSelectorBundle(selector=selector)
 
