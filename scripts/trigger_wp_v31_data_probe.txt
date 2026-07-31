@@ -1,0 +1,3 @@
+target=v31_public_event_data_probe
+requested_at=2026-08-01T04:35:00+08:00
+reason=outcome_blind_lagged_public_event_data_feasibility
