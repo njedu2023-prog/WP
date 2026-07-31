@@ -1,2 +1,2 @@
-requested_at=2026-07-31T09:00:00Z
-reason=Probe new point-in-time attention and fine-industry data without reading outcomes
+requested_at=2026-07-31T18:08:55Z
+reason=Rerun V26 probe with minute-bucketed historical hot-list batches

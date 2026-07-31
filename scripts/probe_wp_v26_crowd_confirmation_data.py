@@ -136,9 +136,26 @@ def main() -> int:
 
 
 def parse_rank_time(value: Any, trade_date: str) -> pd.Timestamp:
+    if isinstance(value, (list, tuple, np.ndarray, pd.Series)):
+        flattened = np.asarray(value, dtype=object).reshape(-1)
+        value = next(
+            (
+                item
+                for item in flattened
+                if item is not None and str(item).strip()
+            ),
+            None,
+        )
+    if value is None:
+        return pd.NaT
     if pd.isna(value):
         return pd.NaT
-    raw = str(value).strip()
+    if isinstance(value, (int, np.integer)):
+        raw = str(int(value))
+    elif isinstance(value, (float, np.floating)) and np.isfinite(value):
+        raw = str(int(value)) if float(value).is_integer() else str(value)
+    else:
+        raw = str(value).strip()
     if not raw:
         return pd.NaT
 
@@ -189,10 +206,16 @@ def hot_snapshot_record(
     data = frame.loc[:, HOT_FIELDS.split(",")].copy()
     data["trade_date"] = data["trade_date"].astype(str)
     data["ts_code"] = data["ts_code"].astype(str)
-    data["rank_timestamp"] = [
-        parse_rank_time(value, trade_date)
-        for value in data["rank_time"]
-    ]
+    parsed_times = pd.to_datetime(
+        [parse_rank_time(value, trade_date) for value in data["rank_time"]],
+        errors="coerce",
+    )
+    data["rank_timestamp"] = pd.Series(
+        parsed_times,
+        index=data.index,
+        dtype="datetime64[ns]",
+    )
+    data["snapshot_minute"] = data["rank_timestamp"].dt.floor("min")
     valid_times = data["rank_timestamp"].notna()
     date_consistent = bool(
         valid_times.any()
@@ -206,7 +229,7 @@ def hot_snapshot_record(
     upper = pd.Timestamp(f"{trade_date} 14:50:00")
     tail = data.loc[
         valid_times
-        & data["rank_timestamp"].between(lower, upper, inclusive="both")
+        & data["snapshot_minute"].between(lower, upper, inclusive="both")
     ]
     if tail.empty:
         return {
@@ -221,8 +244,8 @@ def hot_snapshot_record(
             "coverage_pass": False,
         }
 
-    snapshot_time = tail["rank_timestamp"].max()
-    snapshot = tail.loc[tail["rank_timestamp"].eq(snapshot_time)].copy()
+    snapshot_time = tail["snapshot_minute"].max()
+    snapshot = tail.loc[tail["snapshot_minute"].eq(snapshot_time)].copy()
     a_share = snapshot["ts_code"].str.match(A_SHARE_CODE)
     snapshot = snapshot.loc[a_share]
     rank = pd.to_numeric(snapshot["rank"], errors="coerce")
@@ -249,6 +272,8 @@ def hot_snapshot_record(
         "schema_ok": True,
         "date_consistent": date_consistent,
         "usable_snapshot_time": snapshot_time.isoformat(),
+        "raw_rank_time_min": snapshot["rank_timestamp"].min().isoformat(),
+        "raw_rank_time_max": snapshot["rank_timestamp"].max().isoformat(),
         "usable_snapshot_rows": int(len(snapshot)),
         "unique_a_share_codes": unique_codes,
         "duplicate_codes_in_snapshot": bool(duplicates),

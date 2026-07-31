@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 
 from scripts.probe_wp_v26_crowd_confirmation_data import (
@@ -28,6 +29,10 @@ def test_parse_rank_time_accepts_point_in_time_formats() -> None:
     assert parse_rank_time("2026-07-23 14:30:00", "20260723") == pd.Timestamp(
         "2026-07-23 14:30:00"
     )
+    assert parse_rank_time(
+        np.array(["20260723143009"]),
+        "20260723",
+    ) == pd.Timestamp("2026-07-23 14:30:09")
 
 
 def hot_frame(rank_time: str = "20260723143000") -> pd.DataFrame:
@@ -65,6 +70,23 @@ def test_hot_probe_accepts_tail_snapshot_and_rejects_post_close_only() -> None:
     assert accepted["unique_a_share_codes"] == 100
     assert not rejected["coverage_pass"]
     assert rejected["usable_snapshot_time"] is None
+
+
+def test_hot_probe_groups_one_fetch_batch_by_minute() -> None:
+    frame = hot_frame()
+    frame["rank_time"] = [
+        f"202607231430{index % 60:02d}"
+        for index in range(len(frame))
+    ]
+    record = hot_snapshot_record(
+        frame,
+        api_name="ths_hot",
+        trade_date="20260723",
+    )
+
+    assert record["coverage_pass"]
+    assert record["usable_snapshot_rows"] == 100
+    assert record["usable_snapshot_time"] == "2026-07-23T14:30:00"
 
 
 def test_hot_probe_rejects_duplicate_codes() -> None:
