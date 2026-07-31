@@ -792,6 +792,19 @@ def load_v23_research_source(
         columns=["_v23_data_fold", "_v23_source_fold", "_merge"],
         inplace=True,
     )
+    net = _numeric(leaders, "net_return_pct")
+    target = _numeric(leaders, "target_net_positive")
+    label_available = _boolean(leaders, "label_available")
+    has_outcome = net.notna() & target.notna()
+    inconsistent_availability = label_available.ne(has_outcome)
+    inconsistent_target = (
+        has_outcome
+        & ~target.eq(net.gt(0.0).astype(float))
+    )
+    if inconsistent_availability.any() or inconsistent_target.any():
+        raise RuntimeError(
+            "V23 research source outcome availability contract is inconsistent"
+        )
 
     contract_folds = {
         int(value) for value in source_contract.get("folds", [])
@@ -854,8 +867,52 @@ def fold_test_window(frame: pd.DataFrame) -> tuple[str, str]:
 
 def labeled_complete_rows(frame: pd.DataFrame) -> pd.DataFrame:
     net = _numeric(frame, "net_return_pct")
+    target = _numeric(frame, "target_net_positive")
+    label_available = _boolean(frame, "label_available")
     complete = _boolean(frame, "v23_point_in_time_complete")
-    return frame.loc[net.notna() & complete].copy()
+    consistent = target.eq(net.gt(0.0).astype(float))
+    return frame.loc[
+        label_available
+        & net.notna()
+        & target.notna()
+        & consistent
+        & complete
+    ].copy()
+
+
+def selected_outcome_audit(
+    selected: pd.DataFrame,
+    *,
+    total_days: int,
+) -> dict[str, Any]:
+    if selected.empty:
+        return {
+            "selected_rows": 0,
+            "selected_days": 0,
+            "selected_day_rate": 0.0,
+            "verified_outcome_rows": 0,
+            "missing_outcome_rows": 0,
+            "inconsistent_outcome_rows": 0,
+            "all_selected_outcomes_verified": True,
+        }
+    net = _numeric(selected, "net_return_pct")
+    target = _numeric(selected, "target_net_positive")
+    label_available = _boolean(selected, "label_available")
+    has_outcome = label_available & net.notna() & target.notna()
+    consistent = target.eq(net.gt(0.0).astype(float))
+    inconsistent = has_outcome & ~consistent
+    selected_days = int(selected["trade_date"].astype(str).nunique())
+    return {
+        "selected_rows": int(len(selected)),
+        "selected_days": selected_days,
+        "selected_day_rate": selected_days / max(int(total_days), 1),
+        "verified_outcome_rows": int((has_outcome & consistent).sum()),
+        "missing_outcome_rows": int((~has_outcome).sum()),
+        "inconsistent_outcome_rows": int(inconsistent.sum()),
+        "all_selected_outcomes_verified": bool(
+            has_outcome.all() and consistent.loc[has_outcome].all()
+        ),
+    }
 
 
 def feature_matrix(

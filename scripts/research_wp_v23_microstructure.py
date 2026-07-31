@@ -52,6 +52,7 @@ from wp.v3.v23_microstructure import (
     load_full_trade_calendar,
     load_v23_research_source,
     rolling_microstructure_segments,
+    selected_outcome_audit,
     v23_research_readiness,
 )
 
@@ -291,6 +292,13 @@ def main() -> int:
         seed=config.model.random_seed + 23_000,
         bootstrap_samples=max(4_000, args.bootstrap_samples),
     )
+    outcome_audit = selected_outcome_audit(
+        selected_all,
+        total_days=len(evaluation_dates),
+    )
+    data_integrity &= bool(
+        outcome_audit["all_selected_outcomes_verified"]
+    )
     yearly = yearly_metrics(
         selected_all,
         total_dates=evaluation_dates,
@@ -390,6 +398,7 @@ def main() -> int:
         "joined_rows": int(len(joined)),
         "folds": fold_rows,
         "nested_oos_metrics": nested_metrics,
+        "selected_outcome_audit": outcome_audit,
         "yearly": yearly,
         "temporal_integrity": temporal_integrity,
         "feature_integrity": feature_integrity,
@@ -430,6 +439,7 @@ def main() -> int:
                     "source_leader_rows": int(len(leaders)),
                     "joined_rows": int(len(joined)),
                     "nested_oos_metrics": nested_metrics,
+                    "selected_outcome_audit": outcome_audit,
                     "yearly": yearly,
                     "research_readiness": readiness,
                     "final_policy": final_policy.as_dict(),

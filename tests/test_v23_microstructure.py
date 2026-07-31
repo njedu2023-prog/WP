@@ -10,6 +10,7 @@ from wp.v3.v23_microstructure import (
     fold_test_window,
     load_evaluation_calendar,
     load_v23_research_source,
+    selected_outcome_audit,
 )
 from wp.v3.io import file_sha256
 from wp.v3.sharding import (
@@ -66,6 +67,8 @@ def model_frame(rows: int, *, seed: int) -> pd.DataFrame:
         + 0.2 * frame["p_net_positive_lower"]
     )
     frame["net_return_pct"] = signal + random.normal(0.0, 1.0, rows)
+    frame["label_available"] = True
+    frame["target_net_positive"] = frame["net_return_pct"].gt(0.0).astype(int)
     return frame
 
 
@@ -233,6 +236,26 @@ def test_feature_matrix_derives_signal_slot_without_future_data() -> None:
     )
 
     assert matrix["slot_minute"].tolist() == [0.0, 15.0, 30.0]
+
+
+def test_selected_outcome_audit_rejects_missing_truth() -> None:
+    selected = pd.DataFrame(
+        {
+            "trade_date": ["20260723", "20260724"],
+            "label_available": [True, False],
+            "net_return_pct": [1.0, np.nan],
+            "target_net_positive": [1.0, np.nan],
+        }
+    )
+
+    audit = selected_outcome_audit(selected, total_days=10)
+
+    assert audit["selected_rows"] == 2
+    assert audit["selected_days"] == 2
+    assert audit["verified_outcome_rows"] == 1
+    assert audit["missing_outcome_rows"] == 1
+    assert audit["inconsistent_outcome_rows"] == 0
+    assert audit["all_selected_outcomes_verified"] is False
 
 
 def test_fit_predict_and_fixed_policy_are_deterministic() -> None:
