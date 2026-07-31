@@ -89,6 +89,36 @@ def test_hot_probe_groups_one_fetch_batch_by_minute() -> None:
     assert record["usable_snapshot_time"] == "2026-07-23T14:30:00"
 
 
+def test_hot_probe_accepts_documented_historical_zero_based_rank() -> None:
+    frame = hot_frame()
+    frame["rank"] = range(100)
+    record = hot_snapshot_record(
+        frame,
+        api_name="ths_hot",
+        trade_date="20260723",
+    )
+
+    assert record["coverage_pass"]
+    assert record["rank_min"] == 0.0
+    assert record["rank_max"] == 99.0
+
+
+def test_hot_probe_separates_duplicate_fetches_in_same_minute() -> None:
+    first = hot_frame("20260723143002")
+    second = hot_frame("20260723143006")
+    frame = pd.concat([first, second], ignore_index=True)
+    record = hot_snapshot_record(
+        frame,
+        api_name="dc_hot",
+        trade_date="20260723",
+    )
+
+    assert record["coverage_pass"]
+    assert record["usable_snapshot_rows"] == 100
+    assert record["batch_selection"] == "latest_complete_exact_timestamp"
+    assert record["raw_rank_time_min"] == "2026-07-23T14:30:06"
+
+
 def test_hot_probe_rejects_duplicate_codes() -> None:
     frame = hot_frame()
     frame.loc[1, "ts_code"] = frame.loc[0, "ts_code"]

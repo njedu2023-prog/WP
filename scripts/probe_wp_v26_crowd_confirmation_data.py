@@ -80,13 +80,20 @@ def main() -> int:
         market="A股市场",
         hot_type="人气榜",
     )
-    industry = probe_fine_industry_source(client)
-
     attention_sources = [
         name
         for name, result in (("ths_hot", ths), ("dc_hot", dc))
         if result["passed"]
     ]
+    industry = (
+        {
+            "passed": False,
+            "skipped": True,
+            "skip_reason": "higher_priority_intraday_attention_passed",
+        }
+        if attention_sources
+        else probe_fine_industry_source(client)
+    )
     if attention_sources:
         selected_family: str | None = "intraday_attention"
         selected_sources = attention_sources
@@ -217,7 +224,7 @@ def hot_snapshot_record(
     )
     data["snapshot_minute"] = data["rank_timestamp"].dt.floor("min")
     valid_times = data["rank_timestamp"].notna()
-    date_consistent = bool(
+    response_date_consistent = bool(
         valid_times.any()
         and data.loc[valid_times, "rank_timestamp"]
         .dt.strftime("%Y%m%d")
@@ -238,7 +245,7 @@ def hot_snapshot_record(
             "trade_date": trade_date,
             "rows": int(len(data)),
             "schema_ok": True,
-            "date_consistent": date_consistent,
+            "response_date_consistent": response_date_consistent,
             "usable_snapshot_time": None,
             "usable_snapshot_rows": 0,
             "coverage_pass": False,
@@ -246,18 +253,45 @@ def hot_snapshot_record(
 
     snapshot_time = tail["snapshot_minute"].max()
     snapshot = tail.loc[tail["snapshot_minute"].eq(snapshot_time)].copy()
+    batch_selection = "minute_bucket"
+    if snapshot["ts_code"].duplicated().any():
+        exact_batches = [
+            batch
+            for _, batch in snapshot.groupby("rank_timestamp", sort=True)
+            if batch["ts_code"].nunique() >= 50
+            and not batch["ts_code"].duplicated().any()
+        ]
+        if exact_batches:
+            snapshot = exact_batches[-1].copy()
+            batch_selection = "latest_complete_exact_timestamp"
     a_share = snapshot["ts_code"].str.match(A_SHARE_CODE)
     snapshot = snapshot.loc[a_share]
     rank = pd.to_numeric(snapshot["rank"], errors="coerce")
     duplicates = snapshot["ts_code"].duplicated().any()
     rank_coverage = float(rank.notna().mean()) if len(snapshot) else 0.0
+    rank_min = float(rank.min()) if rank.notna().any() else None
+    rank_max = float(rank.max()) if rank.notna().any() else None
+    rank_unique_ratio = (
+        float(rank.nunique() / len(snapshot)) if len(snapshot) else 0.0
+    )
     rank_range_ok = bool(
         rank.notna().any()
-        and rank.dropna().between(1, 2_000, inclusive="both").all()
+        and rank_min in (0.0, 1.0)
+        and rank_max is not None
+        and rank_max <= 2_000.0
+        and rank_unique_ratio >= 0.95
+    )
+    snapshot_date_consistent = bool(
+        snapshot["rank_timestamp"].notna().all()
+        and snapshot["rank_timestamp"]
+        .dt.strftime("%Y%m%d")
+        .eq(trade_date)
+        .all()
+        and snapshot["trade_date"].eq(trade_date).all()
     )
     unique_codes = int(snapshot["ts_code"].nunique())
     passed = bool(
-        date_consistent
+        snapshot_date_consistent
         and unique_codes >= 50
         and not duplicates
         and rank_coverage >= 0.95
@@ -270,14 +304,19 @@ def hot_snapshot_record(
         "trade_date": trade_date,
         "rows": int(len(data)),
         "schema_ok": True,
-        "date_consistent": date_consistent,
+        "response_date_consistent": response_date_consistent,
+        "date_consistent": snapshot_date_consistent,
         "usable_snapshot_time": snapshot_time.isoformat(),
         "raw_rank_time_min": snapshot["rank_timestamp"].min().isoformat(),
         "raw_rank_time_max": snapshot["rank_timestamp"].max().isoformat(),
+        "batch_selection": batch_selection,
         "usable_snapshot_rows": int(len(snapshot)),
         "unique_a_share_codes": unique_codes,
         "duplicate_codes_in_snapshot": bool(duplicates),
         "rank_coverage": rank_coverage,
+        "rank_min": rank_min,
+        "rank_max": rank_max,
+        "rank_unique_ratio": rank_unique_ratio,
         "rank_range_ok": rank_range_ok,
         "coverage_pass": passed,
     }

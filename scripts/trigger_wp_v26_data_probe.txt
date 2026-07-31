@@ -1,2 +1,2 @@
-requested_at=2026-07-31T18:08:55Z
-reason=Rerun V26 probe with minute-bucketed historical hot-list batches
+requested_at=2026-07-31T18:15:30Z
+reason=Resolve historical rank base and duplicate hot-list fetch batches
