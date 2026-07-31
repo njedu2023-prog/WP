@@ -1,0 +1,121 @@
+name: Build WP V23 Point-in-Time Data
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed V19 run containing immutable V9 OOS shards
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v23_data_build.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v23-point-in-time-data-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve immutable source run
+        id: source
+        shell: bash
+        env:
+          DISPATCH_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          source_run_id="${DISPATCH_SOURCE_RUN_ID:-}"
+          if [[ -z "$source_run_id" ]]; then
+            source_run_id="$(
+              sed -n 's/^source_run_id=//p' \
+                scripts/trigger_wp_v23_data_build.txt |
+                tail -n 1
+            )"
+          fi
+          if [[ ! "$source_run_id" =~ ^[0-9]+$ ]]; then
+            echo "Invalid source_run_id: $source_run_id" >&2
+            exit 1
+          fi
+          echo "run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Restore immutable V9 research contract
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v19-panel-20210726-20260724-20230727-20260724-r15-${{ steps.source.outputs.run_id }}
+          fail-on-cache-miss: true
+      - name: Download immutable full-universe V9 OOS shards
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v19-v9-fold-*
+          path: artifacts/wp_v23_source
+          merge-multiple: false
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore resumable Tushare query cache
+        uses: actions/cache@v4
+        with:
+          path: artifacts/wp_v23_query_cache
+          key: wp-v23-point-in-time-cache-1-${{ steps.source.outputs.run_id }}
+      - name: Verify outcome-blind data contracts
+        run: >-
+          python -m pytest
+          tests/test_v23_data.py
+          tests/test_v23_data_probe.py
+          tests/test_v22_market_license.py
+          tests/test_v19_recall.py
+          tests/test_v3_sharding.py
+          tests/test_v3_contracts.py
+          -q
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "4"
+      - name: Build causal V23 point-in-time dataset
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/build_wp_v23_point_in_time_data.py \
+            --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
+            --shard-dir artifacts/wp_v23_source \
+            --output-dir artifacts/wp_v23_point_in_time_data \
+            --cache-dir artifacts/wp_v23_query_cache \
+            --top-per-source 48 \
+            --exploration-per-slot 24 \
+            --workers 4 &
+          build_pid=$!
+          while kill -0 "$build_pid" 2>/dev/null; do
+            echo "[wp-v23-data] heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$build_pid"
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          LOKY_MAX_CPU_COUNT: "4"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Upload immutable V23 point-in-time dataset
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v23-point-in-time-data-${{ github.run_id }}
+          path: artifacts/wp_v23_point_in_time_data
+          retention-days: 90
+          if-no-files-found: warn
