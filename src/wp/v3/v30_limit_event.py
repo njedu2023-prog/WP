@@ -190,6 +190,32 @@ def audit_kpl_frame(
         .all()
         for column in timestamp_columns
     )
+    time_diagnostics: dict[str, dict[str, Any]] = {}
+    for source, target in (
+        ("lu_time", "_lu_timestamp"),
+        ("open_time", "_open_timestamp"),
+        ("ld_time", "_ld_timestamp"),
+        ("last_time", "_last_timestamp"),
+    ):
+        values = normalized[target].dropna()
+        in_session = values.between(
+            session_start,
+            session_end,
+            inclusive="both",
+        )
+        time_diagnostics[source] = {
+            "min": (
+                values.min().strftime("%H:%M:%S")
+                if not values.empty
+                else None
+            ),
+            "max": (
+                values.max().strftime("%H:%M:%S")
+                if not values.empty
+                else None
+            ),
+            "out_of_session": int((~in_session).sum()),
+        }
     open_order = normalized.loc[
         normalized["_lu_timestamp"].notna()
         & normalized["_open_timestamp"].notna()
@@ -234,6 +260,7 @@ def audit_kpl_frame(
         "supplied_relevant_time_parse_rate": supplied_parse_rate,
         "all_supplied_times_parseable": all_supplied_parse,
         "times_within_session": valid_session,
+        "time_diagnostics": time_diagnostics,
         "open_not_before_first_touch": open_after_touch,
         "coverage_pass": coverage_pass,
     }

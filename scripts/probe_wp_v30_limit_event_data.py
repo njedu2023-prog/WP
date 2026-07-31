@@ -306,6 +306,7 @@ def main() -> int:
                     "supplied_relevant_time_parse_rate",
                     "all_supplied_times_parseable",
                     "times_within_session",
+                    "time_diagnostics",
                     "open_not_before_first_touch",
                     "coverage_pass",
                     "error",
@@ -332,6 +333,45 @@ def main() -> int:
             .reset_index()
             .to_dict(orient="records")
         )
+        event_identity = stock_event_frame[
+            [
+                "trade_date",
+                "ts_code",
+                "first_limit_touch",
+                "first_limit_open",
+                "first_limit_down",
+            ]
+        ].copy()
+        event_identity["candidate_event_code_match"] = event_identity[
+            [
+                "first_limit_touch",
+                "first_limit_open",
+                "first_limit_down",
+            ]
+        ].notna().any(axis=1)
+        candidate_event_identity = sample_candidates.merge(
+            event_identity[
+                ["trade_date", "ts_code", "candidate_event_code_match"]
+            ],
+            on=["trade_date", "ts_code"],
+            how="left",
+            validate="many_to_one",
+        )
+        candidate_event_identity["candidate_event_code_match"] = (
+            candidate_event_identity["candidate_event_code_match"]
+            .fillna(False)
+            .astype(bool)
+        )
+        identity_overlap_by_date = (
+            candidate_event_identity.groupby("trade_date", sort=True)
+            .agg(
+                candidate_rows=("ts_code", "size"),
+                candidate_codes=("ts_code", "nunique"),
+                event_matched_rows=("candidate_event_code_match", "sum"),
+            )
+            .reset_index()
+            .to_dict(orient="records")
+        )
         print(
             "WP_V30_PROBE_FAILURES="
             + json.dumps(
@@ -339,6 +379,9 @@ def main() -> int:
                     "failed_queries": failed_queries,
                     "date_projection_records": date_records,
                     "candidate_overlap_by_date": overlap_by_date,
+                    "candidate_event_identity_overlap_by_date": (
+                        identity_overlap_by_date
+                    ),
                     "failed_gates": {
                         "query_contract": not queries_pass,
                         "date_projection": not all(
