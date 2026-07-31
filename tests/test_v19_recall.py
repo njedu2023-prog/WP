@@ -1,8 +1,17 @@
 from __future__ import annotations
 
+import json
+
 import numpy as np
 import pandas as pd
 
+from scripts.research_wp_v19_recall import load_recall_frontier
+from wp.v3.io import file_sha256
+from wp.v3.sharding import (
+    SHARD_MANIFEST_NAME,
+    SHARD_PREDICTIONS_NAME,
+    SHARD_SCHEMA_VERSION,
+)
 from wp.v3.v18_ranked import prepare_ranked_frame
 from wp.v3.v19_recall import (
     FrozenRecallPolicy,
@@ -235,6 +244,57 @@ def test_readiness_requires_frequency_profit_and_source_integrity() -> None:
         temporal_integrity=True,
         source_integrity=False,
     )["all_historical_gates_passed"]
+
+
+def test_source_contract_keeps_full_folds_outside_evaluation_window(
+    tmp_path,
+) -> None:
+    source = _source_frame(days=2, stocks=8, seed=190019)
+    first_day, second_day = sorted(source["trade_date"].unique())
+    first_mask = source["trade_date"].eq(first_day)
+    second_mask = source["trade_date"].eq(second_day)
+    source.loc[first_mask, ["trade_date", "fold"]] = ["20221216", 1]
+    source.loc[second_mask, ["trade_date", "fold"]] = ["20230727", 2]
+    source["model_fingerprint"] = source["fold"].map(
+        {1: "model-fold-1", 2: "model-fold-2"}
+    )
+    source["policy_fingerprint"] = source["fold"].map(
+        {1: "learned-policy-1", 2: "learned-policy-2"}
+    )
+
+    shard = tmp_path / "shard-0"
+    shard.mkdir()
+    prediction_path = shard / SHARD_PREDICTIONS_NAME
+    source.to_parquet(prediction_path, index=False)
+    manifest = {
+        "schema_version": SHARD_SCHEMA_VERSION,
+        "policy_fingerprint": "fixed-config-contract",
+        "dataset_manifest_sha256": "immutable-dataset-contract",
+        "expected_folds": [1, 2],
+        "produced_folds": [1, 2],
+        "prediction_rows": len(source),
+        "prediction_sha256": file_sha256(prediction_path),
+    }
+    (shard / SHARD_MANIFEST_NAME).write_text(
+        json.dumps(manifest),
+        encoding="utf-8",
+    )
+
+    frontier, audit = load_recall_frontier(
+        tmp_path,
+        evaluation_start="20230727",
+        evaluation_end="20230727",
+        top_per_source=4,
+        exploration_per_slot=2,
+    )
+
+    assert set(frontier["fold"]) == {2}
+    assert audit["evaluation_folds"] == [2]
+    assert audit["full_source_folds"] == [1, 2]
+    assert audit["expected_folds"] == [1, 2]
+    assert audit["folds_complete"]
+    assert audit["source_integrity"]
+    assert audit["full_source_rows"] > audit["source_rows"]
 
 
 def _source_frame(
