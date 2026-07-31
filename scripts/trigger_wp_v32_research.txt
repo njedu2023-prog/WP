@@ -1,0 +1,6 @@
+source_run_id=30600193544
+v24_data_run_id=30635569735
+v32_data_run_id=30665412715
+protocol=WP_V32_PUBLIC_EVENT_MODEL_PROTOCOL
+reason=Run the single preregistered nested-OOS V32 public-event research
+triggered_at_utc=2026-07-31T22:27:48Z
