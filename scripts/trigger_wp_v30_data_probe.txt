@@ -1,0 +1,3 @@
+target=v30_limit_event_data_probe
+requested_at=2026-07-31T11:30:00+08:00
+reason=outcome_blind_limit_event_data_feasibility
