@@ -1,0 +1,62 @@
+name: Diagnose WP V28 Feature Coverage
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v28_coverage_diagnosis.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v28-feature-coverage-diagnosis-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  diagnose:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Download immutable failed-gate V28 data evidence
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v28-fine-industry-peer-data-30656696310
+          path: artifacts/wp_v28_failed_gate_source
+          merge-multiple: false
+          run-id: 30656696310
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify outcome-blind diagnostic contracts
+        run: >-
+          python -m pytest
+          tests/test_v28_coverage_diagnosis.py
+          tests/test_v28_industry_peer_data.py
+          -q
+        env:
+          PYTHONPATH: src:scripts
+      - name: Diagnose frozen V28 coverage shortfall
+        run: >-
+          python -u scripts/diagnose_wp_v28_feature_coverage.py
+          --data-dir artifacts/wp_v28_failed_gate_source
+          --output-dir artifacts/wp_v28_coverage_diagnosis
+        env:
+          PYTHONPATH: src:scripts
+          PYTHONUNBUFFERED: "1"
+      - name: Upload immutable V28 diagnosis
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v28-feature-coverage-diagnosis-${{ github.run_id }}
+          path: artifacts/wp_v28_coverage_diagnosis
+          retention-days: 90
+          if-no-files-found: warn
