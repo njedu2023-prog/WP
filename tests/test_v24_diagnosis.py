@@ -9,6 +9,7 @@ from scripts.diagnose_wp_v24_evidence import (
     binary_auc,
     causal_feature_diagnostics,
     diagnose,
+    prediction_diagnostics,
 )
 from wp.v3.v24_cross_section import MODEL_FEATURES
 
@@ -61,6 +62,16 @@ def test_stable_within_slot_feature_is_detected() -> None:
     assert row["mean_daily_slot_ic"] > 0.99
     assert row["positive_years"] == 4
     assert row["stable_exploratory_signal"]
+
+
+def test_prediction_output_reports_within_slot_ranking() -> None:
+    diagnostics = prediction_diagnostics(synthetic_scored())
+    row = diagnostics.loc[
+        diagnostics["output"].eq("v23_p_positive")
+        & diagnostics["metric"].eq("mean_daily_slot_ic")
+    ].iloc[0]
+    assert row["events"] == 120
+    assert row["value"] > 0.99
 
 
 def test_diagnosis_rejects_selected_count_mismatch() -> None:

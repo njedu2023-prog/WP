@@ -201,7 +201,13 @@ def diagnose(
     }
     predictive_rows = predictions.loc[
         predictions["metric"].isin(
-            ["roc_auc", "spearman_return_correlation"]
+            [
+                "roc_auc",
+                "spearman_return_correlation",
+                "mean_daily_slot_ic",
+                "mean_daily_top_minus_bottom_return_pct",
+                "daily_slot_ic_bh_q",
+            ]
         )
     ].copy()
     model_discrimination = records(
@@ -266,6 +272,11 @@ def prepare_frame(frame: pd.DataFrame) -> pd.DataFrame:
 def prediction_diagnostics(frame: pd.DataFrame) -> pd.DataFrame:
     rows: list[dict[str, Any]] = []
     returns = numeric(frame, "net_return_pct")
+    years = (
+        frame["year"].astype(str)
+        if "year" in frame
+        else frame["trade_date"].astype(str).str[:4]
+    )
     for column, threshold, direction, label in PREDICTION_TARGETS:
         if column not in frame:
             continue
@@ -309,7 +320,21 @@ def prediction_diagnostics(frame: pd.DataFrame) -> pd.DataFrame:
                 },
             ]
         )
-        for year, indexes in frame.loc[clean].groupby("year").groups.items():
+        rank_metrics = within_slot_rank_metrics(
+            frame.loc[clean],
+            column,
+            higher_is_better=direction != "below",
+        )
+        rows.extend(
+            prediction_rank_metric_rows(
+                column,
+                label,
+                rank_metrics,
+            )
+        )
+        for year, indexes in frame.loc[clean].groupby(
+            years.loc[clean]
+        ).groups.items():
             year_target = target.loc[indexes]
             if len(indexes) < 100 or year_target.nunique() < 2:
                 continue
@@ -348,7 +373,21 @@ def prediction_diagnostics(frame: pd.DataFrame) -> pd.DataFrame:
                 ),
             }
         )
-        for year, indexes in frame.loc[clean].groupby("year").groups.items():
+        rank_metrics = within_slot_rank_metrics(
+            frame.loc[clean],
+            column,
+            higher_is_better=True,
+        )
+        rows.extend(
+            prediction_rank_metric_rows(
+                column,
+                "net_return_pct",
+                rank_metrics,
+            )
+        )
+        for year, indexes in frame.loc[clean].groupby(
+            years.loc[clean]
+        ).groups.items():
             if len(indexes) < 100:
                 continue
             rows.append(
@@ -366,7 +405,125 @@ def prediction_diagnostics(frame: pd.DataFrame) -> pd.DataFrame:
                     ),
                 }
             )
-    return pd.DataFrame(rows)
+    result = pd.DataFrame(rows)
+    if result.empty:
+        return result
+    p_rows = result.index[
+        result["metric"].eq("daily_slot_ic_p_value")
+        & result["scope"].eq("overall")
+    ]
+    if len(p_rows):
+        q_values = benjamini_hochberg(result.loc[p_rows, "value"])
+        additions = result.loc[p_rows].copy()
+        additions["metric"] = "daily_slot_ic_bh_q"
+        additions["value"] = q_values
+        result = pd.concat([result, additions], ignore_index=True)
+    return result
+
+
+def within_slot_rank_metrics(
+    frame: pd.DataFrame,
+    column: str,
+    *,
+    higher_is_better: bool,
+) -> dict[str, Any]:
+    values = numeric(frame, column)
+    returns = numeric(frame, "net_return_pct")
+    clean = values.notna() & returns.notna()
+    subset = frame.loc[
+        clean,
+        ["trade_date", "signal_slot"],
+    ].copy()
+    subset["_desirability"] = values.loc[clean] * (
+        1.0 if higher_is_better else -1.0
+    )
+    subset["_target"] = returns.loc[clean]
+    rows = []
+    for (trade_date, signal_slot), group in subset.groupby(
+        ["trade_date", "signal_slot"],
+        sort=False,
+    ):
+        if len(group) < 4 or group["_desirability"].nunique() < 2:
+            continue
+        ordered = group.sort_values("_desirability", kind="stable")
+        rows.append(
+            {
+                "trade_date": str(trade_date),
+                "year": str(trade_date)[:4],
+                "signal_slot": str(signal_slot),
+                "ic": float(
+                    group["_desirability"].corr(
+                        group["_target"],
+                        method="spearman",
+                    )
+                ),
+                "spread": float(
+                    ordered["_target"].iloc[-1]
+                    - ordered["_target"].iloc[0]
+                ),
+            }
+        )
+    sections = pd.DataFrame(rows)
+    if sections.empty:
+        return {
+            "cross_sections": 0,
+            "days": 0,
+            "mean_daily_slot_ic": float("nan"),
+            "daily_slot_ic_p_value": 1.0,
+            "mean_daily_top_minus_bottom_return_pct": float("nan"),
+            "year_metrics": [],
+        }
+    daily = (
+        sections.groupby(["trade_date", "year"], as_index=False)
+        .agg(ic=("ic", "mean"), spread=("spread", "mean"))
+    )
+    yearly = (
+        daily.groupby("year", sort=True)
+        .agg(
+            mean_ic=("ic", "mean"),
+            mean_spread=("spread", "mean"),
+            days=("trade_date", "nunique"),
+        )
+        .reset_index()
+    )
+    return {
+        "cross_sections": int(len(sections)),
+        "days": int(len(daily)),
+        "mean_daily_slot_ic": float(daily["ic"].mean()),
+        "daily_slot_ic_p_value": mean_zero_p_value(daily["ic"]),
+        "mean_daily_top_minus_bottom_return_pct": float(
+            daily["spread"].mean()
+        ),
+        "year_metrics": records(yearly),
+    }
+
+
+def prediction_rank_metric_rows(
+    output: str,
+    target: str,
+    metrics: dict[str, Any],
+) -> list[dict[str, Any]]:
+    return [
+        {
+            "output": output,
+            "target": target,
+            "scope": "overall",
+            "metric": metric,
+            "events": int(metrics["cross_sections"]),
+            "value": float(metrics[metric]),
+            "days": int(metrics["days"]),
+            "year_metrics": json.dumps(
+                metrics["year_metrics"],
+                ensure_ascii=False,
+                separators=(",", ":"),
+            ),
+        }
+        for metric in (
+            "mean_daily_slot_ic",
+            "daily_slot_ic_p_value",
+            "mean_daily_top_minus_bottom_return_pct",
+        )
+    ]
 
 
 def causal_feature_diagnostics(frame: pd.DataFrame) -> pd.DataFrame:

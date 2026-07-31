@@ -17,6 +17,8 @@ subgroup.
 - Measure positive, margin, and severe-loss probability discrimination.
 - Measure expected-return and economic-score rank correlation with realized
   net return.
+- Measure every model output's same-day same-slot ranking IC and
+  highest-minus-lowest desirability return spread.
 - For every active V24 causal feature, calculate same-day same-slot
   cross-sectional Spearman IC and highest-minus-lowest feature return spread.
 - Aggregate cross-sections by trade date before inference.
