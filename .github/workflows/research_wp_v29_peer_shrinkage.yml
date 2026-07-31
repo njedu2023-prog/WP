@@ -7,6 +7,10 @@ on:
         description: Completed V19 run containing immutable V9 OOS shards
         required: true
         type: string
+      v24_data_run_id:
+        description: Completed immutable V24 point-in-time data run
+        required: true
+        type: string
       v29_data_run_id:
         description: Completed immutable V29 peer-shrinkage data run
         required: true
@@ -35,14 +39,23 @@ jobs:
         shell: bash
         env:
           DISPATCH_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          DISPATCH_V24_DATA_RUN_ID: ${{ inputs.v24_data_run_id }}
           DISPATCH_V29_DATA_RUN_ID: ${{ inputs.v29_data_run_id }}
         run: |
           set -euo pipefail
           source_run_id="${DISPATCH_SOURCE_RUN_ID:-}"
+          v24_data_run_id="${DISPATCH_V24_DATA_RUN_ID:-}"
           v29_data_run_id="${DISPATCH_V29_DATA_RUN_ID:-}"
           if [[ -z "$source_run_id" ]]; then
             source_run_id="$(
               sed -n 's/^source_run_id=//p' \
+                scripts/trigger_wp_v29_research.txt |
+                tail -n 1
+            )"
+          fi
+          if [[ -z "$v24_data_run_id" ]]; then
+            v24_data_run_id="$(
+              sed -n 's/^v24_data_run_id=//p' \
                 scripts/trigger_wp_v29_research.txt |
                 tail -n 1
             )"
@@ -54,13 +67,17 @@ jobs:
                 tail -n 1
             )"
           fi
-          for value in "$source_run_id" "$v29_data_run_id"; do
+          for value in \
+            "$source_run_id" \
+            "$v24_data_run_id" \
+            "$v29_data_run_id"; do
             if [[ ! "$value" =~ ^[0-9]+$ ]]; then
               echo "Invalid immutable source run: $value" >&2
               exit 1
             fi
           done
           echo "run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+          echo "v24_data_run_id=$v24_data_run_id" >> "$GITHUB_OUTPUT"
           echo "v29_data_run_id=$v29_data_run_id" >> "$GITHUB_OUTPUT"
       - uses: actions/setup-python@v6
         with:
@@ -91,6 +108,14 @@ jobs:
           merge-multiple: false
           run-id: ${{ steps.source.outputs.v29_data_run_id }}
           github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download immutable V24 point-in-time dataset
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v24-point-in-time-data-*
+          path: artifacts/wp_v24_data
+          merge-multiple: false
+          run-id: ${{ steps.source.outputs.v24_data_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
       - name: Verify preregistered V29 contracts
         run: >-
           python -m pytest
@@ -112,6 +137,7 @@ jobs:
           python -u scripts/research_wp_v29_peer_shrinkage.py \
             --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
             --shard-dir artifacts/wp_v29_source \
+            --v24-data-dir artifacts/wp_v24_data \
             --v29-data-dir artifacts/wp_v29_data \
             --output-dir artifacts/wp_v29_research \
             --bootstrap-samples 1000 &

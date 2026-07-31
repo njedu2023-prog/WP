@@ -37,6 +37,10 @@ Existing V9 estimates are limited to hard execution controls:
 - market-data age no more than 420 seconds when available;
 - complete point-in-time and V29 feature records.
 
+The immutable V24 point-in-time artifact is joined only to enforce its
+predeclared completeness flag and source identity contract. Its feature values
+are not V29 alpha inputs.
+
 Old model scores, post-signal prices, T-day close, T+1 values, outcomes, truth,
 and artificial user choices are not V29 alpha features.
 

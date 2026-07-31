@@ -21,6 +21,10 @@ from research_wp_v21_margin import (
     concat_or_empty,
 )
 from research_wp_v22_market_license import economic_policy_metrics
+from research_wp_v24_cross_section import (
+    join_features,
+    load_v24_features,
+)
 from wp.v3.contracts import load_v3_config
 from wp.v3.io import (
     atomic_write_csv,
@@ -76,6 +80,7 @@ from wp.v3.v29_peer_shrinkage import (
 
 
 V9_SOURCE_RUN_ID = 30_600_193_544
+V24_DATA_RUN_ID = 30_635_569_735
 V29_DATA_RUN_ID = 30_659_547_685
 
 
@@ -87,6 +92,7 @@ def parse_args() -> argparse.Namespace:
     )
     parser.add_argument("--config", required=True)
     parser.add_argument("--shard-dir", required=True)
+    parser.add_argument("--v24-data-dir", required=True)
     parser.add_argument("--v29-data-dir", required=True)
     parser.add_argument("--output-dir", required=True)
     parser.add_argument("--bootstrap-samples", type=int, default=1_000)
@@ -99,14 +105,21 @@ def main() -> int:
     output = Path(args.output_dir)
     output.mkdir(parents=True, exist_ok=True)
 
+    v24_features, v24_manifest, v24_integrity = load_v24_features(
+        args.v24_data_dir
+    )
     peer_features, data_manifest, peer_integrity = (
         load_v29_peer_features(args.v29_data_dir)
+    )
+    validate_v29_v24_source(
+        args.v24_data_dir,
+        data_manifest,
     )
     source_candidates, source = load_v23_research_source(
         args.shard_dir,
         evaluation_end=config.history.evaluation_end_date,
-        features=peer_features,
-        data_manifest=data_manifest,
+        features=v24_features,
+        data_manifest=v24_manifest,
     )
     source = {
         **source,
@@ -117,11 +130,12 @@ def main() -> int:
         source_candidates,
         "V29 immutable outcome-blind V9 top-five candidates",
     )
-    joined = join_peer_features(source_candidates, peer_features)
+    joined = join_features(source_candidates, v24_features)
+    joined = join_peer_features(joined, peer_features)
     assert_unique(joined, "V29 joined source candidates")
 
     evaluation_dates = load_evaluation_calendar(
-        data_manifest,
+        v24_manifest,
         start_date=config.history.evaluation_start_date,
         end_date=config.history.evaluation_end_date,
     )
@@ -137,14 +151,14 @@ def main() -> int:
         .unique()
     )
     numeric_fold = pd.to_numeric(joined["fold"], errors="coerce")
-    full_calendar = load_full_trade_calendar(data_manifest)
+    full_calendar = load_full_trade_calendar(v24_manifest)
     fold_rows: list[dict[str, Any]] = []
     scored_frames: list[pd.DataFrame] = []
     selected_frames: list[pd.DataFrame] = []
     covered_dates: set[str] = set()
     temporal_integrity = True
     feature_integrity = True
-    data_integrity = bool(peer_integrity)
+    data_integrity = bool(v24_integrity and peer_integrity)
     policy_spec = PeerPolicySpec(
         target_candidate_day_rate=FIXED_TARGET_CANDIDATE_DAY_RATE,
         max_candidates_per_day=FIXED_MAX_CANDIDATES_PER_DAY,
@@ -185,6 +199,7 @@ def main() -> int:
             fold_rows.append(
                 skipped_fold(
                     base,
+                    test,
                     test_dates,
                     reason="insufficient_prior_oos_peer_history",
                     config=config,
@@ -229,6 +244,7 @@ def main() -> int:
                 {
                     **skipped_fold(
                         base,
+                        test,
                         test_dates,
                         reason="insufficient_complete_prior_peer_rows",
                         config=config,
@@ -357,6 +373,7 @@ def main() -> int:
             "peer_ranker": final_bundle,
             "policy": final_policy,
             "source": source,
+            "v24_data_manifest": v24_manifest,
             "v29_data_manifest": data_manifest,
         },
         bundle_path,
@@ -399,6 +416,7 @@ def main() -> int:
         },
         "protocol": {
             "source_run_id": V9_SOURCE_RUN_ID,
+            "v24_data_run_id": V24_DATA_RUN_ID,
             "v29_data_run_id": V29_DATA_RUN_ID,
             "model_train_days": MODEL_TRAIN_DAYS,
             "model_calibration_days": MODEL_CALIBRATION_DAYS,
@@ -428,6 +446,7 @@ def main() -> int:
             "post_result_threshold_search_allowed": False,
         },
         "source": source,
+        "v24_data_manifest": v24_manifest,
         "v29_data_manifest": data_manifest,
         "source_candidate_rows": int(len(source_candidates)),
         "joined_rows": int(len(joined)),
@@ -641,6 +660,29 @@ def join_peer_features(
     return result.drop(columns=["_v29_peer_fold", "_merge"])
 
 
+def validate_v29_v24_source(
+    v24_data_dir: str | Path,
+    v29_manifest: dict[str, Any],
+) -> None:
+    manifests = list(
+        Path(v24_data_dir).rglob("wp_v24_data_manifest.json")
+    )
+    if len(manifests) != 1:
+        raise RuntimeError(
+            "V29 requires one immutable V24 data manifest"
+        )
+    expected_sha = str(
+        (v29_manifest.get("source_contract") or {}).get(
+            "v24_manifest_sha256"
+        )
+        or ""
+    )
+    if not expected_sha or file_sha256(manifests[0]) != expected_sha:
+        raise RuntimeError(
+            "V29 peer data does not match immutable V24 quality data"
+        )
+
+
 def peer_rank_diagnostics(
     scored: pd.DataFrame,
     *,
@@ -663,6 +705,7 @@ def peer_rank_diagnostics(
 
 def skipped_fold(
     base: dict[str, Any],
+    test: pd.DataFrame,
     test_dates: list[str],
     *,
     reason: str,
@@ -670,7 +713,7 @@ def skipped_fold(
     bootstrap_samples: int,
 ) -> dict[str, Any]:
     metrics = economic_policy_metrics(
-        pd.DataFrame(),
+        test.head(0),
         total_days=len(test_dates),
         seed=config.model.random_seed + int(base["fold"]),
         bootstrap_samples=bootstrap_samples,
