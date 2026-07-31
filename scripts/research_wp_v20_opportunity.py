@@ -379,7 +379,7 @@ def main() -> int:
         "research_readiness": readiness,
         "final_model": final_model,
         "final_policy": final_policy.as_dict(),
-        "frozen_bundle": artifact(final_bundle_path),
+        "frozen_bundle": artifact(final_bundle_path.resolve()),
     }
     atomic_write_json(output / "wp_v20_research_summary.json", summary)
     atomic_write_csv(
