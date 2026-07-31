@@ -1,0 +1,115 @@
+name: Recover WP V19 Research
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed V19 run containing all immutable fold artifacts
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v19_recovery.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v19-research-recovery-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve immutable source run
+        id: source
+        shell: bash
+        env:
+          DISPATCH_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+        run: |
+          set -euo pipefail
+          source_run_id="${DISPATCH_SOURCE_RUN_ID:-}"
+          if [[ -z "$source_run_id" ]]; then
+            source_run_id="$(
+              sed -n 's/^source_run_id=//p' \
+                scripts/trigger_wp_v19_recovery.txt |
+                tail -n 1
+            )"
+          fi
+          if [[ ! "$source_run_id" =~ ^[0-9]+$ ]]; then
+            echo "Invalid source_run_id: $source_run_id" >&2
+            exit 1
+          fi
+          echo "run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Restore immutable V19 research contract
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v19-panel-20210726-20260724-20230727-20260724-r15-${{ steps.source.outputs.run_id }}
+          fail-on-cache-miss: true
+      - name: Download immutable full-universe OOS shards
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v19-v9-fold-*
+          path: artifacts/wp_v19_source
+          merge-multiple: false
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify V19 preregistered contracts
+        run: >-
+          python -m pytest
+          tests/test_v19_recall.py
+          tests/test_v18_ranked.py
+          tests/test_v17_selector.py
+          tests/test_v16_policy.py
+          tests/test_v3_sharding.py
+          tests/test_v3_contracts.py
+          -q
+        env:
+          PYTHONPATH: src
+          LOKY_MAX_CPU_COUNT: "4"
+      - name: Run nested V19 broad-recall research
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/research_wp_v19_recall.py \
+            --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
+            --shard-dir artifacts/wp_v19_source \
+            --output-dir artifacts/wp_v19_research \
+            --top-per-source 48 \
+            --exploration-per-slot 24 \
+            --max-train-stocks-per-day 160 \
+            --bootstrap-samples 1000 &
+          research_pid=$!
+          while kill -0 "$research_pid" 2>/dev/null; do
+            echo "[wp-v19] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$research_pid"
+        env:
+          PYTHONPATH: src
+          PYTHONUNBUFFERED: "1"
+          LOKY_MAX_CPU_COUNT: "4"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Upload immutable V19 evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v19-broad-recall-recovery-${{ github.run_id }}
+          path: artifacts/wp_v19_research
+          retention-days: 90
+          if-no-files-found: warn
