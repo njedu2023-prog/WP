@@ -1,1 +1,2 @@
 2026-07-28 21:28:30 +08:00 target_slot=2026-07-28 21:28:30 mode=once reason=refresh_human_friendly_dashboard
+2026-07-31 16:13:10 +08:00 target_trade_date=20260731 mode=once self_heal=final-wp refresh_after_close_truth
