@@ -39,6 +39,8 @@ from wp.v3.v23_microstructure import (
     MODEL_FEATURES,
     MODEL_PURGE_DAYS,
     MODEL_TRAIN_DAYS,
+    MINIMUM_CALIBRATION_ROWS,
+    MINIMUM_TRAIN_ROWS,
     SCHEMA_VERSION,
     FrozenMicrostructurePolicy,
     MicrostructureGateBundle,
@@ -209,6 +211,47 @@ def main() -> int:
             raise RuntimeError(
                 f"V23 fold {fold} historical evidence crosses test start"
             )
+        if (
+            len(train) < MINIMUM_TRAIN_ROWS
+            or len(calibration) < MINIMUM_CALIBRATION_ROWS
+        ):
+            metrics = economic_policy_metrics(
+                test.head(0),
+                total_days=len(test_dates),
+                seed=config.model.random_seed + int(fold),
+                bootstrap_samples=args.bootstrap_samples,
+            )
+            fold_rows.append(
+                {
+                    **base,
+                    "scored": False,
+                    "reason": "insufficient_complete_prior_oos_rows",
+                    "temporal_integrity": fold_temporal,
+                    "model": {
+                        "train_start": train_dates[0],
+                        "train_end": train_dates[-1],
+                        "train_days": len(train_dates),
+                        "train_rows": len(train),
+                        "minimum_train_rows": MINIMUM_TRAIN_ROWS,
+                        "calibration_start": calibration_dates[0],
+                        "calibration_end": calibration_dates[-1],
+                        "calibration_days": len(calibration_dates),
+                        "calibration_rows": len(calibration),
+                        "minimum_calibration_rows": (
+                            MINIMUM_CALIBRATION_ROWS
+                        ),
+                    },
+                    "selected": metrics,
+                }
+            )
+            print(
+                f"[wp-v23] fold={fold} skipped "
+                f"train_rows={len(train)}/{MINIMUM_TRAIN_ROWS} "
+                f"calibration_rows={len(calibration)}/"
+                f"{MINIMUM_CALIBRATION_ROWS}",
+                flush=True,
+            )
+            continue
         print(
             f"[wp-v23] fold={fold} "
             f"train={train_dates[0]}..{train_dates[-1]} rows={len(train):,} "

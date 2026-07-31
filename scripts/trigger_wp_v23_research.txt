@@ -1,4 +1,4 @@
 source_run_id=30600193544
 data_run_id=30630271759
-requested_at=2026-07-31T13:01:31Z
-reason=Run frozen V23 microstructure research after causal data authorization
+requested_at=2026-07-31T13:11:16Z
+reason=Resume frozen V23 research while preserving fixed sample floors

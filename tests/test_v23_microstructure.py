@@ -4,6 +4,7 @@ import json
 
 import numpy as np
 import pandas as pd
+import pytest
 
 from wp.v3.v23_microstructure import (
     REQUIRED_RESEARCH_SOURCE_COLUMNS,
@@ -21,6 +22,8 @@ from wp.v3.sharding import (
 from wp.v3.v23_data import V23_FEATURE_COLUMNS
 from wp.v3.v23_microstructure import (
     MODEL_FEATURES,
+    MINIMUM_CALIBRATION_ROWS,
+    MINIMUM_TRAIN_ROWS,
     MicrostructurePolicySpec,
     apply_microstructure_policy,
     calibrate_microstructure_policy,
@@ -236,6 +239,18 @@ def test_feature_matrix_derives_signal_slot_without_future_data() -> None:
     )
 
     assert matrix["slot_minute"].tolist() == [0.0, 15.0, 30.0]
+
+
+def test_fixed_sample_floor_rejects_incomplete_earliest_history() -> None:
+    assert MINIMUM_TRAIN_ROWS == 1_200
+    assert MINIMUM_CALIBRATION_ROWS == 200
+
+    with pytest.raises(ValueError, match="847 train rows"):
+        fit_microstructure_gate(
+            model_frame(847, seed=11),
+            model_frame(294, seed=12),
+            random_seed=23,
+        )
 
 
 def test_selected_outcome_audit_rejects_missing_truth() -> None:

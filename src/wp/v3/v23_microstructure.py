@@ -38,6 +38,8 @@ SCHEMA_VERSION = "wp_v23_microstructure_gate_1"
 MODEL_TRAIN_DAYS = 252
 MODEL_CALIBRATION_DAYS = 42
 MODEL_PURGE_DAYS = 2
+MINIMUM_TRAIN_ROWS = 1_200
+MINIMUM_CALIBRATION_ROWS = 200
 
 FIXED_TARGET_CANDIDATE_DAY_RATE = 0.20
 FIXED_MAX_CANDIDATES_PER_DAY = 3
@@ -262,8 +264,8 @@ def fit_microstructure_gate(
     calibration: pd.DataFrame,
     *,
     random_seed: int,
-    minimum_train_rows: int = 1_200,
-    minimum_calibration_rows: int = 200,
+    minimum_train_rows: int = MINIMUM_TRAIN_ROWS,
+    minimum_calibration_rows: int = MINIMUM_CALIBRATION_ROWS,
 ) -> MicrostructureGateBundle:
     prepared_train = labeled_complete_rows(train)
     prepared_calibration = labeled_complete_rows(calibration)
