@@ -293,6 +293,72 @@ def main() -> int:
         flush=True,
     )
     if not authorized:
+        failed_queries = [
+            {
+                key: record.get(key)
+                for key in (
+                    "status",
+                    "role",
+                    "trade_date",
+                    "requested_tag",
+                    "rows",
+                    "relevant_time_coverage",
+                    "supplied_relevant_time_parse_rate",
+                    "all_supplied_times_parseable",
+                    "times_within_session",
+                    "open_not_before_first_touch",
+                    "coverage_pass",
+                    "error",
+                )
+                if key in record
+            }
+            for record in query_records
+            if not record.get("coverage_pass")
+        ]
+        overlap_by_date = (
+            candidate_state.groupby("trade_date", sort=True)
+            .agg(
+                candidate_rows=("ts_code", "size"),
+                candidate_codes=("ts_code", "nunique"),
+                causal_limit_hits=(
+                    "candidate_limit_hit_before_signal",
+                    "sum",
+                ),
+                causal_limit_opens=(
+                    "candidate_limit_open_before_signal",
+                    "sum",
+                ),
+            )
+            .reset_index()
+            .to_dict(orient="records")
+        )
+        print(
+            "WP_V30_PROBE_FAILURES="
+            + json.dumps(
+                {
+                    "failed_queries": failed_queries,
+                    "date_projection_records": date_records,
+                    "candidate_overlap_by_date": overlap_by_date,
+                    "failed_gates": {
+                        "query_contract": not queries_pass,
+                        "date_projection": not all(
+                            record["coverage_pass"]
+                            for record in date_records
+                        ),
+                        "market_context": not context_complete,
+                        "candidate_projection": not candidates_complete,
+                        "candidate_limit_event_observed": (
+                            candidate_limit_hits < 1
+                        ),
+                        "forbidden_output": not no_forbidden_output,
+                    },
+                },
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+            flush=True,
+        )
         raise RuntimeError("V30 limit-event source failed frozen probe gates")
     return 0
 
