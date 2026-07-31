@@ -23,6 +23,7 @@ from wp.v3.sharding import (
     AGGREGATE_PREDICTION_COLUMNS,
     SHARD_MANIFEST_NAME,
     SHARD_PREDICTIONS_NAME,
+    SHARD_SCHEMA_VERSION,
 )
 from wp.v3.v16_policy import policy_metrics
 from wp.v3.v16_research import (
@@ -444,13 +445,16 @@ def load_recall_frontier(
         raise FileNotFoundError(f"no V9 shard manifests under {root}")
     frames: list[pd.DataFrame] = []
     audit_rows: list[dict[str, Any]] = []
-    produced_folds: set[int] = set()
+    evaluation_folds: set[int] = set()
+    full_source_folds: set[int] = set()
     expected_folds: set[int] = set()
     model_fingerprints: set[str] = set()
     policy_fingerprints: set[str] = set()
+    manifest_policy_fingerprints: set[str] = set()
     fold_model_contract_ok = True
     dataset_manifest_digests: set[str] = set()
     source_rows = 0
+    full_source_rows = 0
     source_integrity = True
     prediction_columns = tuple(
         dict.fromkeys(
@@ -462,8 +466,26 @@ def load_recall_frontier(
     )
     for manifest_path in manifest_paths:
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
-        expected_folds.update(
+        if manifest.get("schema_version") != SHARD_SCHEMA_VERSION:
+            raise RuntimeError(f"invalid shard schema in {manifest_path}")
+        manifest_expected_folds = {
             int(value) for value in manifest.get("expected_folds", [])
+        }
+        manifest_produced_folds = {
+            int(value) for value in manifest.get("produced_folds", [])
+        }
+        if (
+            not manifest_expected_folds
+            or manifest_produced_folds != manifest_expected_folds
+        ):
+            raise RuntimeError(
+                f"manifest fold mismatch in {manifest_path}: "
+                f"produced={sorted(manifest_produced_folds)} "
+                f"expected={sorted(manifest_expected_folds)}"
+            )
+        expected_folds.update(manifest_expected_folds)
+        manifest_policy_fingerprints.add(
+            str(manifest.get("policy_fingerprint") or "")
         )
         dataset_manifest_digests.add(
             str(manifest.get("dataset_manifest_sha256") or "")
@@ -504,13 +526,29 @@ def load_recall_frontier(
             prediction_path,
             columns=columns,
         ).to_pandas()
-        frame["trade_date"] = frame["trade_date"].astype(str)
-        frame = frame.loc[
-            frame["trade_date"].between(
-                str(evaluation_start),
-                str(evaluation_end),
+        if int(manifest.get("prediction_rows", -1)) != len(frame):
+            raise RuntimeError(
+                f"prediction row count mismatch for {prediction_path}"
             )
-        ].copy()
+        shard_full_folds = {
+            int(value)
+            for value in pd.to_numeric(frame["fold"], errors="coerce")
+            .dropna()
+            .astype(int)
+        }
+        if shard_full_folds != manifest_expected_folds:
+            raise RuntimeError(
+                f"prediction fold mismatch for {prediction_path}: "
+                f"found={sorted(shard_full_folds)} "
+                f"expected={sorted(manifest_expected_folds)}"
+            )
+        full_overlap = full_source_folds & shard_full_folds
+        if full_overlap:
+            raise RuntimeError(
+                f"duplicate source folds: {sorted(full_overlap)}"
+            )
+        full_source_folds.update(shard_full_folds)
+        full_source_rows += len(frame)
         model_fingerprints.update(
             str(value)
             for value in frame.get(
@@ -542,6 +580,42 @@ def load_recall_frontier(
                 .eq(1)
                 .all()
             )
+        frame["trade_date"] = frame["trade_date"].astype(str)
+        frame = frame.loc[
+            frame["trade_date"].between(
+                str(evaluation_start),
+                str(evaluation_end),
+            )
+        ].copy()
+        shard_evaluation_folds = {
+            int(value)
+            for value in pd.to_numeric(frame["fold"], errors="coerce")
+            .dropna()
+            .astype(int)
+        }
+        evaluation_overlap = evaluation_folds & shard_evaluation_folds
+        if evaluation_overlap:
+            raise RuntimeError(
+                f"duplicate evaluation folds: {sorted(evaluation_overlap)}"
+            )
+        evaluation_folds.update(shard_evaluation_folds)
+        if frame.empty:
+            audit_rows.append(
+                {
+                    "manifest": str(manifest_path.relative_to(root)),
+                    "prediction_sha256": actual_sha,
+                    "digest_verified": digest_ok,
+                    "manifest_folds": sorted(manifest_expected_folds),
+                    "evaluation_folds": [],
+                    "source_rows": 0,
+                    "frontier_rows": 0,
+                    "frontier_fraction": 0.0,
+                    "positive_source_rows": 0,
+                    "positive_frontier_rows": 0,
+                    "positive_row_recall": 0.0,
+                }
+            )
+            continue
         source_rows += len(frame)
         frontier = build_recall_frontier(
             frame,
@@ -555,18 +629,13 @@ def load_recall_frontier(
             .dropna()
             .astype(int)
         }
-        overlap = produced_folds & folds
-        if overlap:
-            raise RuntimeError(
-                f"duplicate prediction folds: {sorted(overlap)}"
-            )
-        produced_folds.update(folds)
         audit_rows.append(
             {
                 "manifest": str(manifest_path.relative_to(root)),
                 "prediction_sha256": actual_sha,
                 "digest_verified": digest_ok,
-                "folds": sorted(folds),
+                "manifest_folds": sorted(manifest_expected_folds),
+                "evaluation_folds": sorted(folds),
                 **audit,
             }
         )
@@ -578,6 +647,8 @@ def load_recall_frontier(
             f"folds={sorted(folds)}",
             flush=True,
         )
+    if not frames:
+        raise RuntimeError("V19 evaluation window contains no source rows")
     result = pd.concat(frames, ignore_index=True)
     result.sort_values(
         ["fold", *IDENTITY_COLUMNS],
@@ -592,14 +663,21 @@ def load_recall_frontier(
         raise RuntimeError(
             f"V19 recall frontier has {duplicate_rows} duplicate identities"
         )
-    folds_complete = produced_folds == expected_folds and bool(expected_folds)
+    folds_complete = (
+        full_source_folds == expected_folds and bool(expected_folds)
+    )
     source_integrity &= (
         duplicate_rows == 0
         and folds_complete
+        and bool(evaluation_folds)
+        and evaluation_folds.issubset(full_source_folds)
         and bool(model_fingerprints)
         and bool(policy_fingerprints)
+        and len(manifest_policy_fingerprints - {""}) == 1
+        and "" not in manifest_policy_fingerprints
         and fold_model_contract_ok
         and len(dataset_manifest_digests - {""}) == 1
+        and "" not in dataset_manifest_digests
     )
     if not source_integrity:
         raise RuntimeError(
@@ -608,16 +686,22 @@ def load_recall_frontier(
     return result, {
         "schema_version": "wp_v19_v9_shard_source_1",
         "shards": audit_rows,
-        "folds": sorted(produced_folds),
+        "folds": sorted(evaluation_folds),
+        "evaluation_folds": sorted(evaluation_folds),
+        "full_source_folds": sorted(full_source_folds),
         "expected_folds": sorted(expected_folds),
         "folds_complete": folds_complete,
         "model_fingerprints": sorted(model_fingerprints),
         "policy_fingerprints": sorted(policy_fingerprints),
+        "manifest_policy_fingerprint": sorted(
+            manifest_policy_fingerprints - {""}
+        ),
         "one_model_fingerprint_per_fold": fold_model_contract_ok,
         "dataset_manifest_sha256": sorted(
             dataset_manifest_digests - {""}
         ),
         "source_rows": int(source_rows),
+        "full_source_rows": int(full_source_rows),
         "frontier_rows": int(len(result)),
         "frontier_fraction_of_source": (
             len(result) / source_rows if source_rows else 0.0
