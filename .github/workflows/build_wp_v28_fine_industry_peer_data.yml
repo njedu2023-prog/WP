@@ -1,0 +1,98 @@
+name: Build WP V28 Fine Industry Peer Data
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v28_data_build.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v28-fine-industry-peer-data-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Restore immutable full-market V9 substrate
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v19-panel-20210726-20260724-20230727-20260724-r15-30600193544
+          fail-on-cache-miss: true
+      - name: Download immutable V24 candidate index
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v24-point-in-time-data-30635569735
+          path: artifacts/wp_v28_v24_source
+          merge-multiple: false
+          run-id: 30635569735
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore resumable V28 point-in-time query cache
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v28_query_cache
+          key: wp-v28-fine-industry-peer-cache-1-30600193544-30635569735-${{ github.run_id }}
+          restore-keys: |
+            wp-v28-fine-industry-peer-cache-1-30600193544-30635569735-
+      - name: Verify outcome-blind V28 full-data contracts
+        run: >-
+          python -m pytest
+          tests/test_v28_industry_peer_data.py
+          tests/test_v24_data.py
+          tests/test_v3_history.py
+          -q
+        env:
+          PYTHONPATH: src:scripts
+      - name: Build three-year causal fine-industry peer features
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/build_wp_v28_fine_industry_peer_data.py \
+            --history-root artifacts/wp_v3_history \
+            --v24-data-dir artifacts/wp_v28_v24_source \
+            --output-dir artifacts/wp_v28_fine_industry_peer_data \
+            --cache-dir artifacts/wp_v28_query_cache \
+            --source-panel-run-id 30600193544 \
+            --source-v24-data-run-id 30635569735 &
+          build_pid=$!
+          while kill -0 "$build_pid" 2>/dev/null; do
+            echo "[wp-v28-data] heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$build_pid"
+        env:
+          PYTHONPATH: src:scripts
+          PYTHONUNBUFFERED: "1"
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Save resumable V28 point-in-time query cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/wp_v28_query_cache
+          key: wp-v28-fine-industry-peer-cache-1-30600193544-30635569735-${{ github.run_id }}
+      - name: Upload immutable V28 full-data evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v28-fine-industry-peer-data-${{ github.run_id }}
+          path: artifacts/wp_v28_fine_industry_peer_data
+          retention-days: 90
+          if-no-files-found: warn

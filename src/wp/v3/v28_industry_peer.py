@@ -22,6 +22,40 @@ SIGNAL_SLOTS = (
     "14:50",
 )
 PEER_LEVELS = ("l2_code", "l3_code")
+PEER_FEATURE_SUFFIXES = (
+    "count",
+    "return_count",
+    "return_median_pct",
+    "return_mean_pct",
+    "return_q75_pct",
+    "return_iqr_pct",
+    "return_dispersion_pct",
+    "return_max_pct",
+    "positive_share",
+    "above_2pct_share",
+    "above_5pct_share",
+    "above_7pct_share",
+    "tail_median_pct",
+    "tail_q75_pct",
+    "tail_positive_share",
+    "own_excess_pct",
+    "own_gap_to_q75_pct",
+    "own_gap_to_max_pct",
+    "own_percentile",
+    "own_log_amount_excess",
+)
+V28_PEER_FEATURE_COLUMNS = tuple(
+    f"v28_{level[:2]}_peer_{suffix}"
+    for level in PEER_LEVELS
+    for suffix in PEER_FEATURE_SUFFIXES
+)
+MINIMUM_L2_PEERS = 4
+MINIMUM_L3_PEERS = 2
+MINIMUM_STOCKS_PER_SLOT = 1_000
+MINIMUM_FIELD_COVERAGE = 0.95
+MINIMUM_PRECLOSE_COVERAGE = 0.98
+MINIMUM_L2_GROUPS = 80
+MINIMUM_L3_GROUPS = 120
 
 
 def normalize_membership(frame: pd.DataFrame) -> pd.DataFrame:
@@ -219,6 +253,89 @@ def peer_group_count(
     return int(sizes.ge(int(minimum_members)).sum())
 
 
+def audit_stock_slot_frame(
+    stock_slots: pd.DataFrame,
+    *,
+    trade_date: str,
+) -> dict[str, Any]:
+    timestamps = pd.to_datetime(
+        stock_slots.reindex(columns=["trade_timestamp"])["trade_timestamp"],
+        errors="coerce",
+    )
+    date_consistent = bool(
+        len(stock_slots)
+        and timestamps.notna().all()
+        and timestamps.dt.strftime("%Y%m%d").eq(str(trade_date)).all()
+    )
+    duplicate_identity = bool(
+        stock_slots.duplicated(
+            ["trade_date", "signal_slot", "ts_code"]
+        ).any()
+    )
+    slot_records: list[dict[str, Any]] = []
+    for slot in SIGNAL_SLOTS:
+        frame = stock_slots.loc[
+            stock_slots["signal_slot"].astype(str).eq(slot)
+        ].copy()
+        rows = int(len(frame))
+        preclose_coverage = _positive_coverage(frame, "pre_close")
+        l2_coverage = _text_coverage(frame, "l2_code")
+        l3_coverage = _text_coverage(frame, "l3_code")
+        return_coverage = _numeric_coverage(
+            frame,
+            "ret_from_prev_close_pct",
+        )
+        tail_coverage = _numeric_coverage(frame, "ret_20m_pct")
+        l2_groups = peer_group_count(
+            frame,
+            level="l2_code",
+            minimum_members=5,
+        )
+        l3_groups = peer_group_count(
+            frame,
+            level="l3_code",
+            minimum_members=3,
+        )
+        passed = bool(
+            rows >= MINIMUM_STOCKS_PER_SLOT
+            and preclose_coverage >= MINIMUM_PRECLOSE_COVERAGE
+            and l2_coverage >= MINIMUM_FIELD_COVERAGE
+            and l3_coverage >= MINIMUM_FIELD_COVERAGE
+            and return_coverage >= MINIMUM_FIELD_COVERAGE
+            and tail_coverage >= MINIMUM_FIELD_COVERAGE
+            and l2_groups >= MINIMUM_L2_GROUPS
+            and l3_groups >= MINIMUM_L3_GROUPS
+        )
+        slot_records.append(
+            {
+                "signal_slot": slot,
+                "rows": rows,
+                "preclose_coverage": preclose_coverage,
+                "l2_coverage": l2_coverage,
+                "l3_coverage": l3_coverage,
+                "return_coverage": return_coverage,
+                "tail_20m_coverage": tail_coverage,
+                "eligible_l2_groups": l2_groups,
+                "eligible_l3_groups": l3_groups,
+                "coverage_pass": passed,
+            }
+        )
+    return {
+        "trade_date": str(trade_date),
+        "rows": int(len(stock_slots)),
+        "date_consistent": date_consistent,
+        "duplicate_identity": duplicate_identity,
+        "slot_count": len(slot_records),
+        "slot_records": slot_records,
+        "coverage_pass": bool(
+            date_consistent
+            and not duplicate_identity
+            and len(slot_records) == len(SIGNAL_SLOTS)
+            and all(record["coverage_pass"] for record in slot_records)
+        ),
+    }
+
+
 def leave_one_out_peer_features(
     stock_slots: pd.DataFrame,
     candidate_index: pd.DataFrame,
@@ -247,9 +364,9 @@ def leave_one_out_peer_features(
     prefix = f"v28_{level[:2]}_peer"
     for row in selected.to_dict(orient="records"):
         key = (
-            str(row.get("trade_date") or ""),
-            str(row.get("signal_slot") or ""),
-            str(row.get(level) or ""),
+            _clean_key(row.get("trade_date")),
+            _clean_key(row.get("signal_slot")),
+            _clean_key(row.get(level)),
         )
         group = universe_groups.get(key, universe.iloc[0:0])
         peers = group.loc[
@@ -265,24 +382,62 @@ def leave_one_out_peer_features(
             peers.reindex(columns=["ret_20m_pct"])["ret_20m_pct"],
             errors="coerce",
         ).dropna()
+        amounts = pd.to_numeric(
+            peers.reindex(columns=["amount"])["amount"],
+            errors="coerce",
+        )
+        amounts = amounts.loc[amounts.ge(0)].dropna()
         own_return = _finite_or_nan(row.get("ret_from_prev_close_pct"))
+        own_amount = _finite_or_nan(row.get("amount"))
         peer_median = float(returns.median()) if len(returns) else np.nan
+        peer_q75 = (
+            float(returns.quantile(0.75)) if len(returns) else np.nan
+        )
+        peer_q25 = (
+            float(returns.quantile(0.25)) if len(returns) else np.nan
+        )
+        peer_max = float(returns.max()) if len(returns) else np.nan
+        log_amount_median = (
+            float(np.log1p(amounts).median()) if len(amounts) else np.nan
+        )
         rows.append(
             {
                 **{column: row.get(column) for column in identity},
                 f"{prefix}_count": int(peers["ts_code"].nunique()),
+                f"{prefix}_return_count": int(len(returns)),
                 f"{prefix}_return_median_pct": peer_median,
+                f"{prefix}_return_mean_pct": (
+                    float(returns.mean()) if len(returns) else np.nan
+                ),
+                f"{prefix}_return_q75_pct": peer_q75,
+                f"{prefix}_return_iqr_pct": (
+                    peer_q75 - peer_q25
+                    if np.isfinite(peer_q75) and np.isfinite(peer_q25)
+                    else np.nan
+                ),
                 f"{prefix}_return_dispersion_pct": (
                     float(returns.std(ddof=0)) if len(returns) else np.nan
                 ),
+                f"{prefix}_return_max_pct": peer_max,
                 f"{prefix}_positive_share": (
                     float(returns.gt(0).mean()) if len(returns) else np.nan
                 ),
                 f"{prefix}_above_2pct_share": (
                     float(returns.gt(2.0).mean()) if len(returns) else np.nan
                 ),
+                f"{prefix}_above_5pct_share": (
+                    float(returns.gt(5.0).mean()) if len(returns) else np.nan
+                ),
+                f"{prefix}_above_7pct_share": (
+                    float(returns.gt(7.0).mean()) if len(returns) else np.nan
+                ),
                 f"{prefix}_tail_median_pct": (
                     float(tail_returns.median())
+                    if len(tail_returns)
+                    else np.nan
+                ),
+                f"{prefix}_tail_q75_pct": (
+                    float(tail_returns.quantile(0.75))
                     if len(tail_returns)
                     else np.nan
                 ),
@@ -296,9 +451,89 @@ def leave_one_out_peer_features(
                     if np.isfinite(own_return) and np.isfinite(peer_median)
                     else np.nan
                 ),
+                f"{prefix}_own_gap_to_q75_pct": (
+                    own_return - peer_q75
+                    if np.isfinite(own_return) and np.isfinite(peer_q75)
+                    else np.nan
+                ),
+                f"{prefix}_own_gap_to_max_pct": (
+                    own_return - peer_max
+                    if np.isfinite(own_return) and np.isfinite(peer_max)
+                    else np.nan
+                ),
+                f"{prefix}_own_percentile": (
+                    float(returns.le(own_return).mean())
+                    if len(returns) and np.isfinite(own_return)
+                    else np.nan
+                ),
+                f"{prefix}_own_log_amount_excess": (
+                    float(np.log1p(own_amount) - log_amount_median)
+                    if own_amount >= 0 and np.isfinite(log_amount_median)
+                    else np.nan
+                ),
             }
         )
-    return pd.DataFrame(rows)
+    return pd.DataFrame(rows).reindex(
+        columns=[*identity, *peer_feature_columns(level)]
+    )
+
+
+def peer_feature_columns(level: str) -> tuple[str, ...]:
+    if level not in PEER_LEVELS:
+        raise ValueError(f"unsupported peer level: {level}")
+    prefix = f"v28_{level[:2]}_peer"
+    return tuple(f"{prefix}_{suffix}" for suffix in PEER_FEATURE_SUFFIXES)
+
+
+def audit_peer_feature_coverage(
+    features: pd.DataFrame,
+    candidate_index: pd.DataFrame,
+) -> dict[str, Any]:
+    identity = ["trade_date", "signal_slot", "ts_code"]
+    missing = sorted(
+        set(identity).union(V28_PEER_FEATURE_COLUMNS) - set(features.columns)
+    )
+    expected = candidate_index.reindex(columns=identity).drop_duplicates()
+    duplicate_identity = bool(features.duplicated(identity).any())
+    actual = features.reindex(columns=identity).drop_duplicates()
+    candidate_match = bool(
+        len(actual) == len(expected)
+        and actual.merge(
+            expected.assign(_expected=1),
+            on=identity,
+            how="outer",
+            indicator=True,
+        )["_merge"].eq("both").all()
+    )
+    if missing:
+        complete = pd.Series(False, index=features.index, dtype=bool)
+    else:
+        numeric = features.loc[:, V28_PEER_FEATURE_COLUMNS].apply(
+            pd.to_numeric,
+            errors="coerce",
+        )
+        complete = (
+            numeric.notna().all(axis=1)
+            & numeric["v28_l2_peer_count"].ge(MINIMUM_L2_PEERS)
+            & numeric["v28_l3_peer_count"].ge(MINIMUM_L3_PEERS)
+        )
+    complete_rate = float(complete.mean()) if len(features) else 0.0
+    return {
+        "expected_candidate_rows": int(len(expected)),
+        "feature_rows": int(len(features)),
+        "missing_columns": missing,
+        "duplicate_identity": duplicate_identity,
+        "candidate_identity_match": candidate_match,
+        "complete_feature_rows": int(complete.sum()),
+        "complete_feature_coverage": complete_rate,
+        "minimum_complete_feature_coverage": 0.98,
+        "coverage_passed": bool(
+            not missing
+            and not duplicate_identity
+            and candidate_match
+            and complete_rate >= 0.98
+        ),
+    }
 
 
 def normalize_trade_date(value: Any) -> str:
@@ -315,3 +550,31 @@ def _finite_or_nan(value: Any) -> float:
     except (TypeError, ValueError):
         return np.nan
     return numeric if np.isfinite(numeric) else np.nan
+
+
+def _clean_key(value: Any) -> str:
+    if value is None or bool(pd.isna(value)):
+        return ""
+    return str(value).strip()
+
+
+def _numeric_coverage(frame: pd.DataFrame, column: str) -> float:
+    if frame.empty or column not in frame:
+        return 0.0
+    return float(
+        pd.to_numeric(frame[column], errors="coerce").notna().mean()
+    )
+
+
+def _positive_coverage(frame: pd.DataFrame, column: str) -> float:
+    if frame.empty or column not in frame:
+        return 0.0
+    return float(pd.to_numeric(frame[column], errors="coerce").gt(0).mean())
+
+
+def _text_coverage(frame: pd.DataFrame, column: str) -> float:
+    if frame.empty or column not in frame:
+        return 0.0
+    return float(
+        frame[column].fillna("").astype(str).str.strip().ne("").mean()
+    )

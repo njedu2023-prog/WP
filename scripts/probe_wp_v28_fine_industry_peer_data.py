@@ -13,10 +13,9 @@ from wp.v3.history import TushareHistoryClient
 from wp.v3.io import atomic_write_json, file_sha256
 from wp.v3.v28_industry_peer import (
     MEMBER_FIELDS,
-    SIGNAL_SLOTS,
+    audit_stock_slot_frame,
     build_stock_slot_frame,
     normalize_membership,
-    peer_group_count,
 )
 
 
@@ -42,13 +41,6 @@ MINUTE_COLUMNS = (
     "close",
     "amount",
 )
-MINIMUM_STOCKS_PER_SLOT = 1_000
-MINIMUM_FIELD_COVERAGE = 0.95
-MINIMUM_PRECLOSE_COVERAGE = 0.98
-MINIMUM_L2_GROUPS = 80
-MINIMUM_L3_GROUPS = 120
-
-
 def main() -> int:
     token = os.getenv("TUSHARE_TOKEN", "").strip()
     if not token:
@@ -199,109 +191,7 @@ def probe_date(
         membership,
         trade_date=trade_date,
     )
-    timestamps = pd.to_datetime(
-        stock_slots["trade_timestamp"],
-        errors="coerce",
-    )
-    date_consistent = bool(
-        timestamps.notna().all()
-        and timestamps.dt.strftime("%Y%m%d").eq(trade_date).all()
-    )
-    duplicate_identity = bool(
-        stock_slots.duplicated(["trade_date", "signal_slot", "ts_code"]).any()
-    )
-    slot_records: list[dict[str, Any]] = []
-    for slot in SIGNAL_SLOTS:
-        frame = stock_slots.loc[stock_slots["signal_slot"].eq(slot)].copy()
-        rows = int(len(frame))
-        preclose_coverage = (
-            float(
-                pd.to_numeric(frame["pre_close"], errors="coerce")
-                .gt(0)
-                .mean()
-            )
-            if rows
-            else 0.0
-        )
-        l2_coverage = (
-            float(frame["l2_code"].fillna("").astype(str).str.strip().ne("").mean())
-            if rows
-            else 0.0
-        )
-        l3_coverage = (
-            float(frame["l3_code"].fillna("").astype(str).str.strip().ne("").mean())
-            if rows
-            else 0.0
-        )
-        return_coverage = (
-            float(
-                pd.to_numeric(
-                    frame["ret_from_prev_close_pct"],
-                    errors="coerce",
-                )
-                .notna()
-                .mean()
-            )
-            if rows
-            else 0.0
-        )
-        tail_coverage = (
-            float(
-                pd.to_numeric(frame["ret_20m_pct"], errors="coerce")
-                .notna()
-                .mean()
-            )
-            if rows
-            else 0.0
-        )
-        l2_groups = peer_group_count(
-            frame,
-            level="l2_code",
-            minimum_members=5,
-        )
-        l3_groups = peer_group_count(
-            frame,
-            level="l3_code",
-            minimum_members=3,
-        )
-        passed = bool(
-            rows >= MINIMUM_STOCKS_PER_SLOT
-            and preclose_coverage >= MINIMUM_PRECLOSE_COVERAGE
-            and l2_coverage >= MINIMUM_FIELD_COVERAGE
-            and l3_coverage >= MINIMUM_FIELD_COVERAGE
-            and return_coverage >= MINIMUM_FIELD_COVERAGE
-            and tail_coverage >= MINIMUM_FIELD_COVERAGE
-            and l2_groups >= MINIMUM_L2_GROUPS
-            and l3_groups >= MINIMUM_L3_GROUPS
-        )
-        slot_records.append(
-            {
-                "signal_slot": slot,
-                "rows": rows,
-                "preclose_coverage": preclose_coverage,
-                "l2_coverage": l2_coverage,
-                "l3_coverage": l3_coverage,
-                "return_coverage": return_coverage,
-                "tail_20m_coverage": tail_coverage,
-                "eligible_l2_groups": l2_groups,
-                "eligible_l3_groups": l3_groups,
-                "coverage_pass": passed,
-            }
-        )
-    return {
-        "trade_date": trade_date,
-        "rows": int(len(stock_slots)),
-        "date_consistent": date_consistent,
-        "duplicate_identity": duplicate_identity,
-        "slot_count": len(slot_records),
-        "slot_records": slot_records,
-        "coverage_pass": bool(
-            date_consistent
-            and not duplicate_identity
-            and len(slot_records) == len(SIGNAL_SLOTS)
-            and all(record["coverage_pass"] for record in slot_records)
-        ),
-    }
+    return audit_stock_slot_frame(stock_slots, trade_date=trade_date)
 
 
 if __name__ == "__main__":
