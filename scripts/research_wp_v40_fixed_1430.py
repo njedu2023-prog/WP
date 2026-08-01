@@ -85,6 +85,21 @@ def main() -> int:
         top_per_score=args.top_per_score,
         require_label=False,
     )
+    print(
+        "[wp-v40] aggregate source "
+        f"raw_rows={len(raw):,} "
+        f"raw_folds={raw['fold'].nunique()} "
+        f"execution_eligible={int(_boolean(raw['execution_eligible']).sum()):,} "
+        f"labelled={int(_boolean(raw['label_available']).sum()):,} "
+        f"frontier_rows={len(frontier):,} "
+        f"frontier_dates={frontier['trade_date'].nunique() if not frontier.empty else 0} "
+        f"frontier_folds={frontier['fold'].nunique() if not frontier.empty else 0}",
+        flush=True,
+    )
+    if frontier.empty:
+        raise RuntimeError(
+            "V40 candidate frontier is empty after execution pruning"
+        )
     frontier = attach_original_features(
         frontier,
         args.panel_dir,
@@ -129,12 +144,22 @@ def main() -> int:
             "test_rows": int(len(test)),
         }
         if meta_segments is None or risk_segments is None:
-            fold_audit.append(
-                {
-                    **base_row,
-                    "scored": False,
-                    "reason": "insufficient_strictly_prior_history",
-                }
+            audit = {
+                **base_row,
+                "scored": False,
+                "reason": "insufficient_strictly_prior_history",
+                "history_rows": int(len(history)),
+                "history_dates": int(len(dates)),
+            }
+            fold_audit.append(audit)
+            print(
+                "[wp-v40] skipped "
+                + json.dumps(
+                    audit,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                flush=True,
             )
             continue
         meta_train_dates, meta_calibration_dates = meta_segments
@@ -166,12 +191,32 @@ def main() -> int:
                 random_seed=config.model.random_seed + fold * 139,
             )
         except ValueError as error:
-            fold_audit.append(
-                {
-                    **base_row,
-                    "scored": False,
-                    "reason": str(error),
-                }
+            audit = {
+                **base_row,
+                "scored": False,
+                "reason": str(error),
+                "history_rows": int(len(history)),
+                "history_dates": int(len(dates)),
+                "meta_train_rows": int(len(meta_train)),
+                "meta_calibration_rows": int(len(meta_calibration)),
+                "risk_train_rows": int(len(risk_train)),
+                "risk_calibration_rows": int(len(risk_calibration)),
+                "risk_train_failures": int(
+                    (~_boolean(risk_train["exit_fillable"])).sum()
+                ),
+                "risk_calibration_failures": int(
+                    (~_boolean(risk_calibration["exit_fillable"])).sum()
+                ),
+            }
+            fold_audit.append(audit)
+            print(
+                "[wp-v40] skipped "
+                + json.dumps(
+                    audit,
+                    ensure_ascii=False,
+                    separators=(",", ":"),
+                ),
+                flush=True,
             )
             continue
         scored = risk.predict(meta.predict(test))
@@ -204,7 +249,14 @@ def main() -> int:
             flush=True,
         )
     if not scored_frames:
-        raise RuntimeError("V40 produced no strictly out-of-sample fold")
+        raise RuntimeError(
+            "V40 produced no strictly out-of-sample fold; audit="
+            + json.dumps(
+                fold_audit,
+                ensure_ascii=False,
+                separators=(",", ":"),
+            )
+        )
     scored_all = pd.concat(scored_frames, ignore_index=True)
     expected_trade_dates = (
         load_panel_partitions(
