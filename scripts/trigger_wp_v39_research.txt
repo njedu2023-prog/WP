@@ -1,0 +1,4 @@
+source_run_id=30600193544
+v39_data_run_id=30687183695
+protocol=WP_V39_DERIVATIVES_LICENSE_PROTOCOL
+requested_at=2026-08-01T14:28:00+08:00
