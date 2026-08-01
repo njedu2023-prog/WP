@@ -11,6 +11,14 @@ from .contracts import V3Config
 from .ledger import session_records
 
 
+HEALTHY_MANIFEST_STATUSES = {
+    "",
+    "ok",
+    "research_ready",
+    "无符合条件股票",
+}
+
+
 def render_v3_dashboard(
     path: str | Path,
     *,
@@ -990,7 +998,7 @@ def _decision_copy(
     live_visible: bool,
     health: str,
 ) -> dict[str, str]:
-    if health not in {"", "ok", "无符合条件股票"}:
+    if health not in HEALTHY_MANIFEST_STATUSES:
         return {
             "kicker": "数据或账本异常",
             "title": "暂不使用本次名单",
@@ -1065,7 +1073,12 @@ def _data_status(manifest: dict[str, Any]) -> str:
     health = str(manifest.get("health_status") or "未知")
     coverage = _float(manifest.get("tail_universe_coverage"))
     age = _float(manifest.get("market_data_p95_age_seconds"))
-    parts = ["正常" if health in {"ok", "无符合条件股票"} else health]
+    health_label = {
+        "ok": "正常",
+        "research_ready": "研究回测就绪",
+        "无符合条件股票": "正常",
+    }.get(health, health)
+    parts = [health_label]
     if coverage is not None:
         parts.append(f"覆盖 {coverage:.1%}")
     if age is not None:
