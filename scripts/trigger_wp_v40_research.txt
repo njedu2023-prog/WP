@@ -3,3 +3,4 @@ source_run_id=30704037225
 retrospective=20260501-20260731
 live_shadow_start=20260803
 retry_reason=registry_exact_shadow_binding
+rerender_reason=research_ready_dashboard_state
