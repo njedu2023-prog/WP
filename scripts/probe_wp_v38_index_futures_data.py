@@ -97,7 +97,7 @@ def main() -> int:
                         "stage": "fut_mapping",
                         "trade_date": trade_date,
                         "ts_code": spec["continuous_code"],
-                        "error": str(error)[:500],
+                        "error": _clean_error(error, token),
                     }
                 )
     mappings = (
@@ -191,7 +191,7 @@ def main() -> int:
                         ),
                         "trade_date": requirement["trade_date"],
                         "ts_code": requirement["ts_code"],
-                        "error": str(error)[:500],
+                        "error": _clean_error(error, token),
                     }
                 )
     etf_minutes = (
@@ -302,6 +302,17 @@ def main() -> int:
         ),
         flush=True,
     )
+    if failures:
+        print(
+            "WP_V38_QUERY_FAILURES="
+            + json.dumps(
+                _summarize_failures(failures),
+                ensure_ascii=False,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+            flush=True,
+        )
     if not authorized:
         raise RuntimeError("V38 data probe failed its frozen contract")
     return 0
@@ -317,6 +328,40 @@ def _file_artifact(path: Path) -> dict[str, Any]:
         "bytes": path.stat().st_size,
         "sha256": file_sha256(path),
     }
+
+
+def _clean_error(error: Exception, token: str) -> str:
+    message = str(error).replace(token, "***") if token else str(error)
+    return " ".join(message.split())[:500]
+
+
+def _summarize_failures(
+    failures: list[dict[str, str]],
+) -> list[dict[str, Any]]:
+    grouped: dict[tuple[str, str], dict[str, Any]] = {}
+    for failure in failures:
+        key = (failure["stage"], failure["error"])
+        summary = grouped.setdefault(
+            key,
+            {
+                "stage": failure["stage"],
+                "error": failure["error"],
+                "count": 0,
+                "examples": [],
+            },
+        )
+        summary["count"] += 1
+        if len(summary["examples"]) < 2:
+            summary["examples"].append(
+                {
+                    "trade_date": failure["trade_date"],
+                    "ts_code": failure["ts_code"],
+                }
+            )
+    return sorted(
+        grouped.values(),
+        key=lambda item: (-item["count"], item["stage"], item["error"]),
+    )[:12]
 
 
 if __name__ == "__main__":

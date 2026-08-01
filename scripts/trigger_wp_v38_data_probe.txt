@@ -1,3 +1,3 @@
 protocol=wp_v38_index_futures_data_probe_1
-requested_at=2026-07-31T00:00:00Z
-reason=outcome_blind_independent_index_futures_regime_feasibility
+requested_at=2026-08-01T05:41:00Z
+reason=diagnose_v38_query_failures_without_secret_exposure
