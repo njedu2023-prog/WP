@@ -1,0 +1,99 @@
+name: Build WP V34 Full Session Path Data
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v34_data_build.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v34-full-session-path-data-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 360
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Download immutable V24 candidate source
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v24-point-in-time-data-30635569735
+          path: artifacts/wp_v34_v24_source
+          merge-multiple: false
+          run-id: 30635569735
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download immutable V34 probe source
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v34-intraday-path-probe-30676761165
+          path: artifacts/wp_v34_probe_source
+          merge-multiple: false
+          run-id: 30676761165
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Restore resumable V34 minute cache
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v34_query_cache
+          key: wp-v34-full-session-cache-1-30635569735-${{ github.run_id }}
+          restore-keys: |
+            wp-v34-full-session-cache-1-30635569735-
+      - name: Verify V34 full-data contracts
+        run: >-
+          python -m pytest
+          tests/test_v34_intraday_path.py
+          tests/test_v34_intraday_path_data.py
+          tests/test_v24_data.py
+          -q
+        env:
+          PYTHONPATH: src:scripts
+      - name: Build three-year causal full-session paths
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/build_wp_v34_intraday_path_data.py \
+            --v24-data-dir artifacts/wp_v34_v24_source \
+            --v34-probe-dir artifacts/wp_v34_probe_source \
+            --output-dir artifacts/wp_v34_intraday_path_data \
+            --cache-dir artifacts/wp_v34_query_cache \
+            --workers 4 &
+          build_pid=$!
+          while kill -0 "$build_pid" 2>/dev/null; do
+            echo "[wp-v34-data] heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$build_pid"
+        env:
+          PYTHONPATH: src:scripts
+          PYTHONUNBUFFERED: "1"
+          TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Save resumable V34 minute cache
+        if: always()
+        uses: actions/cache/save@v4
+        with:
+          path: artifacts/wp_v34_query_cache
+          key: wp-v34-full-session-cache-1-30635569735-${{ github.run_id }}
+      - name: Upload immutable V34 full-data evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v34-intraday-path-data-${{ github.run_id }}
+          path: artifacts/wp_v34_intraday_path_data
+          retention-days: 90
+          if-no-files-found: warn

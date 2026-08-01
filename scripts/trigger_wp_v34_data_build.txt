@@ -1,0 +1,5 @@
+trigger=2026-08-01T01:05:00Z
+source_v24_data_run_id=30635569735
+source_v34_probe_run_id=30676761165
+source_v34_probe_artifact_id=8810771478
+purpose=build frozen three-year outcome-blind V34 full-session path features
