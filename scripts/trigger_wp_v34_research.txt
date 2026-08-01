@@ -1,0 +1,6 @@
+trigger=2026-08-01T03:14:08Z
+source_run_id=30600193544
+v24_data_run_id=30635569735
+v34_data_run_id=30677075531
+v34_data_artifact_id=8812271933
+purpose=run frozen V34 full-session nested OOS research
