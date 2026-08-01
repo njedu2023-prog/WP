@@ -1,0 +1,4 @@
+v24_data_run_id=30635569735
+protocol=WP_V34_FULL_SESSION_PATH_DATA_FEASIBILITY_PROTOCOL
+reason=Probe outcome-blind open-to-signal intraday path coverage
+triggered_at_utc=2026-08-01T00:55:00Z
