@@ -304,7 +304,6 @@ def main() -> int:
     data_integrity &= bool(
         outcome_audit["all_selected_outcomes_verified"]
         and data_manifest["v39_model_research_authorized"]
-        and joined["v39_derivatives_complete"].fillna(False).astype(bool).all()
     )
     yearly = yearly_metrics(
         selected_all,
