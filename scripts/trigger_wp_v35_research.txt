@@ -1,7 +1,7 @@
 schema_version=wp_v35_research_trigger_1
-requested_at=2026-08-01T03:46:58Z
+requested_at=2026-08-01T03:58:58Z
 source_run_id=30600193544
 v24_data_run_id=30635569735
 v34_data_run_id=30677075531
 protocol=WP_V35_FULL_SESSION_REGIME_PROTOCOL
-reason=Run frozen V35 full session regime research once
+reason=Rerun unchanged frozen V35 after documented execution fix
