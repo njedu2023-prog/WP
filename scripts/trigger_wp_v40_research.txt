@@ -2,4 +2,4 @@ WP V40 fixed 14:30 frozen build
 source_run_id=30704037225
 retrospective=20260501-20260731
 live_shadow_start=20260803
-retry_reason=rare_exit_risk_252d_window
+retry_reason=registry_exact_shadow_binding

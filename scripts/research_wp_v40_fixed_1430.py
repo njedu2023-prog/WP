@@ -20,6 +20,7 @@ from wp.v3.io import (
 from wp.v3.meta_alpha import fit_meta_alpha, prune_candidate_universe
 from wp.v3.model import load_bundle
 from wp.v3.registry import (
+    initialize_exact_model_shadow,
     load_registry,
     register_research_model,
     save_registry,
@@ -340,7 +341,7 @@ def main() -> int:
         / "wp_v40_backtest_observations_202605_202607.csv",
     )
     registry = load_registry(args.registry)
-    record = register_research_model(
+    register_research_model(
         registry,
         metadata=metadata,
         backtest={
@@ -351,10 +352,10 @@ def main() -> int:
         },
         artifact_path=model_path.as_posix(),
     )
-    record["shadow"]["evidence_scope"] = "exact_model"
-    record["shadow"]["model_fingerprint"] = deployable.fingerprint
-    record["shadow"]["started_trade_date"] = (
-        config.evidence.live_shadow_start_date
+    record = initialize_exact_model_shadow(
+        registry,
+        deployable.fingerprint,
+        started_trade_date=config.evidence.live_shadow_start_date,
     )
     save_registry(registry, args.registry)
     marker = {

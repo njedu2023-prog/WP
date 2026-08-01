@@ -4,6 +4,7 @@ from wp.v3.contracts import V3Config
 from wp.v3.registry import (
     empty_registry,
     evaluate_promotion,
+    initialize_exact_model_shadow,
     refresh_shadow_metrics,
     register_research_model,
 )
@@ -194,6 +195,35 @@ def _metadata(
         "train_start": "20230101",
         "train_end": train_end,
     }
+
+
+def test_exact_model_shadow_is_initialized_on_the_registered_record():
+    registry = empty_registry()
+    register_research_model(
+        registry,
+        metadata=_metadata(
+            "model-a",
+            "policy-a",
+            "2026-08-01T00:00:00Z",
+            train_end="20260731",
+        ),
+        backtest={"backtest_gate": {"passed": False}},
+        artifact_path="a.joblib",
+    )
+
+    record = initialize_exact_model_shadow(
+        registry,
+        "model-a",
+        started_trade_date="20260803",
+    )
+
+    assert "shadow" not in registry
+    assert record["shadow"]["evidence_scope"] == "exact_model"
+    assert record["shadow"]["model_fingerprint"] == "model-a"
+    assert record["shadow"]["policy_fingerprint"] == "policy-a"
+    assert record["shadow"]["observation_after_trade_date"] == "20260731"
+    assert record["shadow"]["model_trained_at"] == "2026-08-01T00:00:00Z"
+    assert record["shadow"]["started_trade_date"] == "20260803"
 
 
 def test_same_policy_monthly_retrain_cannot_inherit_shadow_clock():

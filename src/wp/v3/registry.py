@@ -185,6 +185,30 @@ def model_record(registry: dict[str, Any], fingerprint: str) -> dict[str, Any] |
     )
 
 
+def initialize_exact_model_shadow(
+    registry: dict[str, Any],
+    fingerprint: str,
+    *,
+    started_trade_date: str,
+) -> dict[str, Any]:
+    record = model_record(registry, fingerprint)
+    if record is None:
+        raise KeyError(f"model fingerprint not found: {fingerprint}")
+    shadow = record.setdefault("shadow", _empty_shadow())
+    shadow["evidence_scope"] = "exact_model"
+    shadow["model_fingerprint"] = fingerprint
+    shadow["policy_fingerprint"] = record.get("policy_fingerprint")
+    shadow["observation_after_trade_date"] = record.get("train_end")
+    shadow["model_trained_at"] = record.get("trained_at")
+    existing_start = str(shadow.get("started_trade_date") or "")
+    requested_start = str(started_trade_date or "")
+    if requested_start:
+        shadow["started_trade_date"] = min(
+            date for date in (existing_start, requested_start) if date
+        )
+    return record
+
+
 def evaluate_promotion(record: dict[str, Any], config: V3Config) -> PromotionDecision:
     backtest = record.get("backtest", {})
     shadow = record.get("shadow", {})
