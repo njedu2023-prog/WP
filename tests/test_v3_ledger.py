@@ -13,15 +13,21 @@ from wp.v3.ledger import (
 )
 
 
-def _prediction(price: float, fingerprint: str = "abc") -> pd.DataFrame:
+def _prediction(
+    price: float,
+    fingerprint: str = "abc",
+    *,
+    code: str = "600001.SH",
+    passes_policy: bool = True,
+) -> pd.DataFrame:
     return pd.DataFrame(
         [
             {
-                "ts_code": "600001.SH",
+                "ts_code": code,
                 "name": "测试",
                 "target_trade_date": "20260724",
                 "signal_price": price,
-                "passes_policy": True,
+                "passes_policy": passes_policy,
                 "p_entry_fill": 0.99,
                 "p_exit_fill_given_entry": 0.995,
                 "p_round_trip_fill": 0.985,
@@ -39,35 +45,58 @@ def _prediction(price: float, fingerprint: str = "abc") -> pd.DataFrame:
     )
 
 
-def test_ledger_locks_first_signal_and_only_updates_last_observation():
+def _dual_cohort_predictions() -> pd.DataFrame:
+    frames = [_prediction(10.0)]
+    for index in range(5):
+        frames.append(
+            _prediction(
+                9.0 + index,
+                code=f"6001{index:02d}.SH",
+                passes_policy=False,
+            ).assign(
+                p_net_positive_lower=0.53 - index * 0.01,
+                expected_utility_lower_pct=0.10 - index * 0.02,
+                selection_score=1.0 - index * 0.05,
+            )
+        )
+    return pd.concat(frames, ignore_index=True)
+
+
+def test_ledger_locks_fixed_1430_signal_and_separates_both_cohorts():
     ledger = empty_shadow_ledger()
     config = V3Config()
     record_shadow_slot(
         ledger,
-        _prediction(10.0),
-        trade_date="20260723",
-        signal_slot="14:20",
-        config=config,
-    )
-    record_shadow_slot(
-        ledger,
-        _prediction(10.4),
+        _dual_cohort_predictions(),
         trade_date="20260723",
         signal_slot="14:30",
         config=config,
     )
-    candidate = ledger["sessions"][0]["candidates"][0]
-    assert candidate["first_signal_time"] == "14:20"
+    session = ledger["sessions"][0]
+    candidate = session["candidates"][0]
+    assert candidate["first_signal_time"] == "14:30"
     assert candidate["first_signal_price"] == 10.0
-    assert candidate["last_signal_price"] == 10.4
-    assert candidate["appearance_count"] == 2
+    assert candidate["last_signal_price"] == 10.0
+    assert candidate["appearance_count"] == 1
     assert candidate["policy_fingerprint"] == "policy-a"
     assert candidate["baseline_all_in_cost_bps"] == 35.0
-    assert candidate["entry_benchmark_slot"] == "14:25"
+    assert candidate["entry_benchmark_slot"] == "14:35"
     assert candidate["entry_benchmark_status"] == "PENDING"
+    assert candidate["candidate_cohort"] == "QUALIFIED"
+    assert candidate["is_user_trade"] is False
     assert "first_signal_features" in candidate
     assert "qualification_evidence" in candidate
-    assert ledger["sessions"][0]["policy_fingerprint"] == "policy-a"
+    assert len(session["observations"]) == 5
+    assert {
+        row["ts_code"] for row in session["candidates"]
+    }.isdisjoint({row["ts_code"] for row in session["observations"]})
+    assert all(
+        row["candidate_cohort"] == "OBSERVATION"
+        and row["is_user_trade"] is False
+        and row["entry_benchmark_slot"] == "14:35"
+        for row in session["observations"]
+    )
+    assert session["policy_fingerprint"] == "policy-a"
     assert_ledger_invariants(ledger, config)
 
 
@@ -78,17 +107,17 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
         ledger,
         _prediction(10.0),
         trade_date="20260723",
-        signal_slot="14:20",
+        signal_slot="14:30",
         config=config,
     )
     settlement = pd.DataFrame(
         [
             {
                 "ts_code": "600001.SH",
-                "entry_benchmark_slot": "14:25",
+                "entry_benchmark_slot": "14:35",
                 "entry_benchmark_price": 10.2,
                 "entry_benchmark_amount": 20_000_000,
-                "entry_benchmark_bar_time": "2026-07-23 14:25:00",
+                "entry_benchmark_bar_time": "2026-07-23 14:35:00",
                 "data_age_seconds": 0,
                 "up_limit": 11.0,
             }
@@ -98,7 +127,7 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
         ledger,
         settlement,
         trade_date="20260723",
-        settlement_slot="14:25",
+        settlement_slot="14:35",
         config=config,
     )
     candidate = ledger["sessions"][0]["candidates"][0]
@@ -114,34 +143,68 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
             ledger,
             changed,
             trade_date="20260723",
-            settlement_slot="14:25",
+            settlement_slot="14:35",
             config=config,
         )
 
 
-def test_freeze_fails_integrity_when_a_v7_entry_is_still_pending():
+def test_freeze_fails_integrity_when_dual_cohort_entries_are_pending():
     ledger = empty_shadow_ledger()
     config = V3Config()
-    for slot in config.strategy.signal_slots:
-        predictions = (
-            _prediction(10.0)
-            if slot == "14:50"
-            else _prediction(10.0).assign(passes_policy=False)
-        )
-        record_shadow_slot(
-            ledger,
-            predictions,
-            trade_date="20260723",
-            signal_slot=slot,
-            config=config,
-        )
+    record_shadow_slot(
+        ledger,
+        _dual_cohort_predictions(),
+        trade_date="20260723",
+        signal_slot="14:30",
+        config=config,
+    )
     freeze_shadow_session(
         ledger,
         trade_date="20260723",
         config=config,
     )
     assert ledger["sessions"][0]["integrity_status"] == "INCOMPLETE_ENTRY"
-    assert ledger["sessions"][0]["pending_entry_benchmark_count"] == 1
+    assert ledger["sessions"][0]["pending_entry_benchmark_count"] == 6
+
+
+def test_freeze_reports_observation_shortfall_without_fabrication():
+    ledger = empty_shadow_ledger()
+    config = V3Config()
+    record_shadow_slot(
+        ledger,
+        _prediction(10.0),
+        trade_date="20260723",
+        signal_slot="14:30",
+        config=config,
+    )
+    settlement = pd.DataFrame(
+        [
+            {
+                "ts_code": "600001.SH",
+                "entry_benchmark_slot": "14:35",
+                "entry_benchmark_price": 10.2,
+                "entry_benchmark_amount": 20_000_000,
+                "entry_benchmark_bar_time": "2026-07-23 14:35:00",
+                "data_age_seconds": 0,
+                "up_limit": 11.0,
+            }
+        ]
+    )
+    settle_entry_benchmarks(
+        ledger,
+        settlement,
+        trade_date="20260723",
+        settlement_slot="14:35",
+        config=config,
+    )
+    freeze_shadow_session(
+        ledger,
+        trade_date="20260723",
+        config=config,
+    )
+    session = ledger["sessions"][0]
+    assert session["observations"] == []
+    assert session["integrity_status"] == "INCOMPLETE_OBSERVATION"
 
 
 def test_frozen_session_rejects_new_candidates():
@@ -153,7 +216,7 @@ def test_frozen_session_rejects_new_candidates():
             ledger,
             _prediction(10.0),
             trade_date="20260723",
-            signal_slot="14:20",
+            signal_slot="14:30",
             config=config,
         )
 
@@ -166,12 +229,12 @@ def test_repeating_the_same_slot_is_idempotent():
             ledger,
             _prediction(10.0),
             trade_date="20260723",
-            signal_slot="14:20",
+            signal_slot="14:30",
             config=config,
         )
     candidate = ledger["sessions"][0]["candidates"][0]
     assert candidate["appearance_count"] == 1
-    assert ledger["sessions"][0]["covered_slots"] == ["14:20"]
+    assert ledger["sessions"][0]["covered_slots"] == ["14:30"]
 
 
 def test_repeating_freeze_preserves_the_original_freeze_time():

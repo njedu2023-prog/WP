@@ -1,17 +1,18 @@
 strategy:
-  strategy_id: wp_t1_net_profit_v9
-  model_family: causal_hurdle_net_return_v9
+  strategy_id: wp_t1_net_profit_v40_1430
+  model_family: v15_seeded_1430_dual_cohort
   timezone: Asia/Shanghai
-  signal_slots: ["14:20", "14:25", "14:30", "14:35", "14:40", "14:45", "14:50"]
-  candidate_freeze_time: "14:55"
+  signal_slots: ["14:30"]
+  candidate_freeze_time: "14:40"
   clear_live_display_time: "15:00"
   exit_contract: T+1_close
   board_scope: main_board
+  observation_count: 5
 
 execution:
   entry_price_contract: next_5m_close_plus_slippage
   entry_delay_minutes: 5
-  entry_execution_deadline: "14:55"
+  entry_execution_deadline: "14:35"
   entry_slippage_bps: 10
   round_trip_cost_bps: 25
   exit_order_contract: T+1_14:57_down_limit_sell_for_close_auction
@@ -88,12 +89,18 @@ promotion:
 
 history:
   start_date: "20210726"
-  end_date: "20260724"
+  end_date: "20260731"
   evaluation_start_date: "20230727"
-  evaluation_end_date: "20260724"
+  evaluation_end_date: "20260731"
   partition: month
   tushare_page_size: 8000
   tushare_requests_per_minute: 180
   minute_fetch_workers: 4
   raw_cache_days: 7
   minimum_minute_universe_coverage: 0.90
+
+evidence:
+  retrospective_start_date: "20260501"
+  retrospective_end_date: "20260731"
+  live_shadow_start_date: "20260803"
+  keep_cohort_statistics_separate: true

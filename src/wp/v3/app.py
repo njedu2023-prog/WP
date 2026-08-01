@@ -12,6 +12,7 @@ from wp.calendar import now_cn
 from wp.utils import ensure_dir, write_json
 
 from .contracts import V3Config, load_v3_config, session_phase
+from .cohorts import attach_cohort_labels, select_live_cohorts
 from .dashboard import render_v3_dashboard
 from .evidence import archive_signal_evidence
 from .io import atomic_write_csv
@@ -21,6 +22,7 @@ from .ledger import (
     load_shadow_ledger,
     record_shadow_slot,
     save_shadow_ledger,
+    session_records,
     settle_entry_benchmarks,
 )
 from .live import inference_manifest, run_live_inference
@@ -91,13 +93,18 @@ def run_v3() -> dict[str, Any]:
         model_path=model_path,
         registry_path=registry_path,
     )
+    cohort_selection = select_live_cohorts(inference.predictions, config)
+    predictions = attach_cohort_labels(
+        inference.predictions,
+        cohort_selection,
+    )
     inference_summary = inference_manifest(inference)
     evidence_manifest: dict[str, Any] = {}
     if source_signal_authorized and signal_slot in config.strategy.signal_slots:
         evidence_manifest = archive_signal_evidence(
             output,
             features=frame,
-            predictions=inference.predictions,
+            predictions=predictions,
             source_manifest=source_manifest,
             inference_manifest=inference_summary,
             config=config,
@@ -160,7 +167,7 @@ def run_v3() -> dict[str, Any]:
     ):
         record_shadow_slot(
             ledger,
-            inference.predictions,
+            predictions,
             trade_date=trade_date,
             signal_slot=signal_slot,
             config=config,
@@ -194,21 +201,21 @@ def run_v3() -> dict[str, Any]:
         == "PENDING"
         and candidate.get("entry_contract")
         == config.execution.entry_price_contract
-        for candidate in current_session.get("candidates", [])
+        for candidate in session_records(current_session)
     )
     integrity_status = str(
         current_session.get("integrity_status") or "COLLECTING"
     )
 
-    formal = inference.predictions.loc[
-        inference.predictions.get(
-            "passes_policy",
-            pd.Series(False, index=inference.predictions.index),
-        ).fillna(False)
-        & inference.formal_authorization
-    ].copy()
+    qualified_live = cohort_selection.qualified.copy()
+    observations_live = cohort_selection.observations.copy()
     if not live_display_allowed:
-        formal = formal.iloc[0:0].copy()
+        qualified_live = qualified_live.iloc[0:0].copy()
+        observations_live = observations_live.iloc[0:0].copy()
+    qualified_live["production_authorized"] = inference.formal_authorization
+    qualified_live["manual_execution_only"] = True
+    observations_live["production_authorized"] = False
+    observations_live["manual_execution_only"] = True
     data_age = pd.to_numeric(runtime_data_age, errors="coerce")
     finite_data_age = data_age.loc[data_age.notna() & data_age.ge(0)]
     update_time = current.strftime("%Y-%m-%d %H:%M:%S")
@@ -221,7 +228,7 @@ def run_v3() -> dict[str, Any]:
         "signal_slot": signal_slot,
         "source_scheduled_slot": signal_slot,
         "market_data_time": source_manifest.get("market_data_time"),
-        "source_mode": "direct_tushare_v9",
+        "source_mode": "direct_tushare_v40",
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
         "signal_capture_started_at": source_manifest.get("capture_started_at"),
@@ -230,11 +237,20 @@ def run_v3() -> dict[str, Any]:
         ),
         "signal_source_authorized": source_signal_authorized,
         "live_display_allowed": live_display_allowed,
-        "buy_plan_count": int(len(formal)),
+        "buy_plan_count": int(len(qualified_live)),
+        "qualified_count": int(len(qualified_live)),
+        "observation_count": int(len(observations_live)),
+        "observation_target_count": config.strategy.observation_count,
+        "observation_selection_status": (
+            cohort_selection.observation_selection_status
+        ),
+        "observation_shortfall_reason": (
+            cohort_selection.observation_shortfall_reason
+        ),
         "shadow_qualified_count": int(
-            inference.predictions.get(
+            predictions.get(
                 "passes_policy",
-                pd.Series(False, index=inference.predictions.index),
+                pd.Series(False, index=predictions.index),
             ).sum()
         ),
         "live_universe_count": int(len(frame)),
@@ -252,7 +268,16 @@ def run_v3() -> dict[str, Any]:
         "health_status": (
             "session_integrity_fault"
             if phase in {"FROZEN", "CLOSED"}
-            and (missing_slots or pending_entry_benchmarks)
+            and (
+                missing_slots
+                or pending_entry_benchmarks
+                or (
+                    current_session.get("cohort_contract_version")
+                    == "dual_cohort_v1"
+                    and int(current_session.get("observation_count") or 0)
+                    != config.strategy.observation_count
+                )
+            )
             else "ok"
         ),
         "session_integrity_status": integrity_status,
@@ -261,6 +286,16 @@ def run_v3() -> dict[str, Any]:
         "pending_entry_benchmark_count": pending_entry_benchmarks,
         "manual_execution_only": True,
         "order_routing_enabled": False,
+        "retrospective_evidence_start": (
+            config.evidence.retrospective_start_date
+        ),
+        "retrospective_evidence_end": (
+            config.evidence.retrospective_end_date
+        ),
+        "live_shadow_start_date": config.evidence.live_shadow_start_date,
+        "cohort_statistics_separate": (
+            config.evidence.keep_cohort_statistics_separate
+        ),
         "signal_evidence_digest": evidence_manifest.get("evidence_digest"),
         "signal_evidence_path": (
             (
@@ -278,8 +313,11 @@ def run_v3() -> dict[str, Any]:
         **inference_summary,
     }
     predictions_path = output / "csv" / "wp_v3_live_predictions.csv"
-    atomic_write_csv(inference.predictions, predictions_path)
-    atomic_write_csv(formal, output / "csv" / "wp_buy_plan.csv")
+    atomic_write_csv(predictions, predictions_path)
+    atomic_write_csv(
+        qualified_live,
+        output / "csv" / "wp_buy_plan.csv",
+    )
     write_json(output / "json" / "wp_manifest.json", manifest)
     write_json(
         output / "json" / "wp_decision_support.json",
@@ -287,7 +325,17 @@ def run_v3() -> dict[str, Any]:
             "generated_at": update_time,
             "market_data_time": manifest["market_data_time"],
             "summary": manifest,
-            "records": formal.to_dict(orient="records"),
+            "records": qualified_live.to_dict(orient="records"),
+            "qualified_records": qualified_live.to_dict(orient="records"),
+            "observation_records": observations_live.to_dict(
+                orient="records"
+            ),
+            "cohort_contract": {
+                "decision_time": config.strategy.signal_slots[0],
+                "qualified_count_rule": "all_fixed_gate_passes",
+                "observation_count": config.strategy.observation_count,
+                "statistics_separate": True,
+            },
             "manual_execution_only": True,
             "order_routing_enabled": False,
         },
@@ -296,25 +344,38 @@ def run_v3() -> dict[str, Any]:
         output / "json" / "wp_strategy_ledger.json",
         {
             "generated_at": update_time,
-            "schema_version": "wp_strategy_ledger_v3_bridge",
+            "schema_version": "wp_strategy_ledger_v4_bridge",
             "summary": {
                 "state": inference.state,
                 "formal_authorization": inference.formal_authorization,
                 "candidate_semantics": "model_candidates_not_user_fills",
+                "qualified_statistics_scope": "official_strategy",
+                "observation_statistics_scope": "research_only",
+                "live_shadow_start_date": (
+                    config.evidence.live_shadow_start_date
+                ),
             },
             "sessions": ledger.get("sessions", []),
         },
+    )
+    retrospective = _read_json(
+        output / "json" / "wp_v40_backtest_202605_202607.json"
+    )
+    research_seed = _read_json(
+        ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"
     )
     report_path = output / "html_reports" / "latest.html"
     render_v3_dashboard(
         report_path,
         manifest=manifest,
-        predictions=inference.predictions,
+        predictions=predictions,
         ledger=ledger,
         registry=registry,
         config=config,
         replay=replay,
         legacy_audit=legacy_audit,
+        retrospective=retrospective,
+        research_seed=research_seed,
     )
     archive = (
         output
@@ -326,12 +387,14 @@ def run_v3() -> dict[str, Any]:
     render_v3_dashboard(
         archive,
         manifest=manifest,
-        predictions=inference.predictions,
+        predictions=predictions,
         ledger=ledger,
         registry=registry,
         config=config,
         replay=replay,
         legacy_audit=legacy_audit,
+        retrospective=retrospective,
+        research_seed=research_seed,
     )
     return manifest
 
@@ -492,6 +555,12 @@ def _write_not_ready(
     legacy_audit = _read_json(
         output / "json" / "wp_legacy_history_audit.json"
     )
+    retrospective = _read_json(
+        output / "json" / "wp_v40_backtest_202605_202607.json"
+    )
+    research_seed = _read_json(
+        ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"
+    )
     write_json(output / "json" / "wp_manifest.json", manifest)
     render_v3_dashboard(
         output / "html_reports" / "latest.html",
@@ -502,6 +571,8 @@ def _write_not_ready(
         config=config,
         replay=replay,
         legacy_audit=legacy_audit,
+        retrospective=retrospective,
+        research_seed=research_seed,
     )
     return manifest
 
@@ -581,13 +652,13 @@ def _missing_input_state(
         return (
             "MODEL_NOT_READY",
             "model_not_ready",
-            "V9 研究模型尚未发布，所有候选保持关闭。",
+            "V40 可部署模型尚未发布，合格候选保持关闭；不会用旧模型冒充。",
         )
     if phase == "PRE_SIGNAL":
         return (
             model_status,
             "ok",
-            "模型已就绪，等待 14:20 开始采集当日合法尾盘快照。",
+            "模型已就绪，等待 14:30 固定时点生成当日双队列决策。",
         )
     if phase == "CLOSED":
         return (

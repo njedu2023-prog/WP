@@ -11,6 +11,11 @@ from .dataset import execution_eligibility
 from .features import enrich_feature_frame
 from .model import ModelBundle, load_bundle, predict_bundle
 from .registry import is_model_promoted, load_registry, model_record
+from .v40_model import (
+    V40ModelBundle,
+    load_v40_bundle,
+    predict_v40_bundle,
+)
 
 
 @dataclass(frozen=True)
@@ -47,7 +52,7 @@ def run_live_inference(
         )
 
     try:
-        bundle: ModelBundle = load_bundle(artifact)
+        bundle = _load_runtime_bundle(artifact)
     except Exception as error:
         rejected = frame.copy()
         rejected["passes_policy"] = False
@@ -113,7 +118,11 @@ def run_live_inference(
         )
     features = enrich_feature_frame(frame)
     features["execution_eligible"] = execution_eligibility(features, config)
-    predictions = predict_bundle(bundle, features, config=config)
+    predictions = (
+        predict_v40_bundle(bundle, features, config=config)
+        if isinstance(bundle, V40ModelBundle)
+        else predict_bundle(bundle, features, config=config)
+    )
     predictions["candidate_state"] = "REJECTED"
     predictions.loc[predictions["passes_policy"], "candidate_state"] = (
         "QUALIFIED" if promoted else "SHADOW_QUALIFIED"
@@ -145,6 +154,16 @@ def run_live_inference(
             )
         ),
     )
+
+
+def _load_runtime_bundle(path: str | Path) -> ModelBundle | V40ModelBundle:
+    try:
+        return load_v40_bundle(path)
+    except Exception as v40_error:
+        try:
+            return load_bundle(path)
+        except Exception:
+            raise v40_error
 
 
 def inference_manifest(inference: LiveInference) -> dict[str, Any]:

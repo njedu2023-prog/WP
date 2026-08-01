@@ -30,37 +30,37 @@ def test_data_age_is_computed_per_symbol_bar_not_global_latest_bar():
     assert result["data_age_seconds"].tolist() == [120.0, 720.0]
 
 
-def test_completed_1450_bar_capture_is_authorized_at_1452():
+def test_completed_1430_bar_capture_is_authorized_at_1432():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:50",
-        "market_data_time": "2026-07-27 14:50:00",
-        "capture_started_at": "2026-07-27T14:52:00+08:00",
-        "capture_completed_at": "2026-07-27T14:52:18+08:00",
+        "signal_slot": "14:30",
+        "market_data_time": "2026-07-27 14:30:00",
+        "capture_started_at": "2026-07-27T14:32:00+08:00",
+        "capture_completed_at": "2026-07-27T14:32:18+08:00",
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is True
 
 
-def test_stale_capture_cannot_masquerade_as_the_1450_signal():
+def test_stale_capture_cannot_masquerade_as_the_1430_signal():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:50",
-        "market_data_time": "2026-07-27 14:50:00",
-        "capture_started_at": "2026-07-27T14:57:01+08:00",
-        "capture_completed_at": "2026-07-27T14:57:30+08:00",
+        "signal_slot": "14:30",
+        "market_data_time": "2026-07-27 14:30:00",
+        "capture_started_at": "2026-07-27T14:37:01+08:00",
+        "capture_completed_at": "2026-07-27T14:37:30+08:00",
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is False
 
 
-def test_future_market_bar_cannot_be_backdated_to_the_1450_signal():
+def test_future_market_bar_cannot_be_backdated_to_the_1430_signal():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:50",
-        "market_data_time": "2026-07-27 14:51:00",
-        "capture_started_at": "2026-07-27T14:52:00+08:00",
-        "capture_completed_at": "2026-07-27T14:52:30+08:00",
+        "signal_slot": "14:30",
+        "market_data_time": "2026-07-27 14:31:00",
+        "capture_started_at": "2026-07-27T14:32:00+08:00",
+        "capture_completed_at": "2026-07-27T14:32:30+08:00",
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is False

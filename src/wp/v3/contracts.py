@@ -12,7 +12,7 @@ import yaml
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
-DEFAULT_SIGNAL_SLOTS = (
+LEGACY_SIGNAL_SLOTS = (
     "14:20",
     "14:25",
     "14:30",
@@ -21,25 +21,29 @@ DEFAULT_SIGNAL_SLOTS = (
     "14:45",
     "14:50",
 )
+DEFAULT_SIGNAL_SLOTS = (
+    "14:30",
+)
 
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v9"
-    model_family: str = "causal_hurdle_net_return_v9"
+    strategy_id: str = "wp_t1_net_profit_v40_1430"
+    model_family: str = "v15_seeded_1430_dual_cohort"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
-    candidate_freeze_time: str = "14:55"
+    candidate_freeze_time: str = "14:40"
     clear_live_display_time: str = "15:00"
     exit_contract: str = "T+1_close"
     board_scope: str = "main_board"
+    observation_count: int = 5
 
 
 @dataclass(frozen=True)
 class ExecutionContract:
     entry_price_contract: str = "next_5m_close_plus_slippage"
     entry_delay_minutes: int = 5
-    entry_execution_deadline: str = "14:55"
+    entry_execution_deadline: str = "14:35"
     entry_slippage_bps: float = 10.0
     round_trip_cost_bps: float = 25.0
     exit_order_contract: str = "T+1_14:57_down_limit_sell_for_close_auction"
@@ -126,9 +130,9 @@ class PromotionContract:
 @dataclass(frozen=True)
 class HistoryContract:
     start_date: str = "20210726"
-    end_date: str = "20260724"
+    end_date: str = "20260731"
     evaluation_start_date: str = "20230727"
-    evaluation_end_date: str = "20260724"
+    evaluation_end_date: str = "20260731"
     partition: str = "month"
     tushare_page_size: int = 8_000
     tushare_requests_per_minute: int = 180
@@ -138,12 +142,21 @@ class HistoryContract:
 
 
 @dataclass(frozen=True)
+class EvidenceContract:
+    retrospective_start_date: str = "20260501"
+    retrospective_end_date: str = "20260731"
+    live_shadow_start_date: str = "20260803"
+    keep_cohort_statistics_separate: bool = True
+
+
+@dataclass(frozen=True)
 class V3Config:
     strategy: StrategyContract = field(default_factory=StrategyContract)
     execution: ExecutionContract = field(default_factory=ExecutionContract)
     model: ModelContract = field(default_factory=ModelContract)
     promotion: PromotionContract = field(default_factory=PromotionContract)
     history: HistoryContract = field(default_factory=HistoryContract)
+    evidence: EvidenceContract = field(default_factory=EvidenceContract)
 
 
 def _coerce(cls: type[Any], raw: dict[str, Any]) -> Any:
@@ -174,12 +187,15 @@ def load_v3_config(path: str | Path = "config/wp_v3.yml") -> V3Config:
         model=_coerce(ModelContract, raw.get("model", {})),
         promotion=_coerce(PromotionContract, raw.get("promotion", {})),
         history=_coerce(HistoryContract, raw.get("history", {})),
+        evidence=_coerce(EvidenceContract, raw.get("evidence", {})),
     )
     validate_contract(config)
     return config
 
 
 def validate_contract(config: V3Config) -> None:
+    if not config.strategy.signal_slots:
+        raise ValueError("signal_slots cannot be empty")
     if tuple(sorted(config.strategy.signal_slots)) != config.strategy.signal_slots:
         raise ValueError("signal_slots must be strictly chronological")
     if any(slot < "14:20" or slot > "14:50" for slot in config.strategy.signal_slots):
@@ -194,8 +210,15 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("WP entry truth must use the next five-minute close")
     if config.execution.entry_delay_minutes != 5:
         raise ValueError("WP entry benchmark delay is fixed at five minutes")
-    if config.execution.entry_execution_deadline != "14:55":
-        raise ValueError("WP entry benchmark must finish by 14:55")
+    expected_deadline = max(
+        entry_benchmark_slot(slot, config)
+        for slot in config.strategy.signal_slots
+    )
+    if config.execution.entry_execution_deadline != expected_deadline:
+        raise ValueError(
+            "WP entry execution deadline must equal the final exact "
+            "five-minute benchmark slot"
+        )
     if any(
         entry_benchmark_slot(slot, config) > config.execution.entry_execution_deadline
         for slot in config.strategy.signal_slots
@@ -249,6 +272,8 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("stress costs cannot be below the baseline all-in cost")
     if config.execution.non_fill_penalty_pct >= 0:
         raise ValueError("non-fill penalty must be negative")
+    if not 1 <= config.strategy.observation_count <= 20:
+        raise ValueError("observation_count must be between 1 and 20")
     if not 0.0 < config.promotion.minimum_entry_fill_rate <= 1.0:
         raise ValueError("minimum_entry_fill_rate must be in (0, 1]")
     if not 0.0 < config.promotion.minimum_exit_fill_rate <= 1.0:
@@ -276,6 +301,30 @@ def validate_contract(config: V3Config) -> None:
             "history dates must satisfy start_date < evaluation_start_date "
             "<= evaluation_end_date <= end_date"
         )
+    evidence_dates = {
+        name: datetime.strptime(value, "%Y%m%d")
+        for name, value in (
+            (
+                "retrospective_start_date",
+                config.evidence.retrospective_start_date,
+            ),
+            (
+                "retrospective_end_date",
+                config.evidence.retrospective_end_date,
+            ),
+            ("live_shadow_start_date", config.evidence.live_shadow_start_date),
+        )
+    }
+    if not (
+        evidence_dates["retrospective_start_date"]
+        <= evidence_dates["retrospective_end_date"]
+        < evidence_dates["live_shadow_start_date"]
+    ):
+        raise ValueError(
+            "retrospective evidence must end before live shadow statistics start"
+        )
+    if not config.evidence.keep_cohort_statistics_separate:
+        raise ValueError("qualified and observation statistics must remain separate")
 
 
 def policy_fingerprint(config: V3Config) -> str:

@@ -101,6 +101,39 @@ def test_missing_t1_close_on_suspension_is_an_observed_failure():
     assert panel.loc[0, "target_exit_fillable"] == 0
 
 
+def test_future_target_truth_is_pending_not_an_exit_failure():
+    raw = pd.DataFrame(
+        [
+            {
+                "trade_date": "20260731",
+                "target_trade_date": "20260803",
+                "signal_slot": "14:30",
+                "ts_code": "600001.SH",
+                "board": "main_board",
+                "signal_price": 10.0,
+                "entry_benchmark_price": 10.0,
+                "t1_close": float("nan"),
+                "t1_total_return_close": float("nan"),
+                "adj_factor": 1.0,
+                "listing_days": 500,
+                "prev_20d_amount": 300_000_000,
+                "slot_amount": 20_000_000,
+                "distance_to_up_limit_pct": 3.0,
+                "distance_to_down_limit_pct": 12.0,
+                "entry_fillable": True,
+                "exit_fillable": False,
+                "target_market_truth_available": False,
+            }
+        ]
+    )
+
+    panel = build_supervised_panel(raw, V3Config())
+
+    assert bool(panel.loc[0, "label_available"]) is False
+    assert pd.isna(panel.loc[0, "target_net_positive"])
+    assert pd.isna(panel.loc[0, "net_return_pct"])
+
+
 def test_missing_next_bar_is_an_observed_entry_failure():
     raw = pd.DataFrame(
         [
@@ -318,7 +351,7 @@ def test_cold_session_without_five_observations_is_not_execution_eligible():
     assert bool(panel.loc[0, "execution_eligible"]) is False
 
 
-def test_first_crossing_keeps_the_first_signal_per_stock():
+def test_fixed_1430_contract_ignores_legacy_early_slots():
     predictions = pd.DataFrame(
         [
             {"trade_date": "20260723", "signal_slot": "14:30", "ts_code": "600001.SH", "passes_policy": True, "signal_price": 10.2},
@@ -328,7 +361,7 @@ def test_first_crossing_keeps_the_first_signal_per_stock():
     )
     selected = first_crossing_candidates(predictions, V3Config())
     assert selected[["ts_code", "signal_slot", "signal_price"]].to_dict("records") == [
-        {"ts_code": "600001.SH", "signal_slot": "14:20", "signal_price": 10.0}
+        {"ts_code": "600001.SH", "signal_slot": "14:30", "signal_price": 10.2}
     ]
 
 

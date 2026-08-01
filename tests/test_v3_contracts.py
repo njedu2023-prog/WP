@@ -14,9 +14,10 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 
 def test_signal_window_and_closed_state_are_immutable():
     config = V3Config()
-    assert session_phase(datetime(2026, 7, 27, 14, 20, tzinfo=CN_TZ), config) == "SIGNAL"
-    assert session_phase(datetime(2026, 7, 27, 14, 50, tzinfo=CN_TZ), config) == "SIGNAL"
-    assert session_phase(datetime(2026, 7, 27, 14, 51, tzinfo=CN_TZ), config) == "NO_NEW_SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 29, tzinfo=CN_TZ), config) == "PRE_SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 30, tzinfo=CN_TZ), config) == "SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 31, tzinfo=CN_TZ), config) == "NO_NEW_SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 40, tzinfo=CN_TZ), config) == "FROZEN"
     assert session_phase(datetime(2026, 7, 27, 15, 0, tzinfo=CN_TZ), config) == "CLOSED"
 
 
@@ -47,3 +48,14 @@ def test_exit_order_enters_the_closing_auction_at_1457():
         config.execution.exit_order_contract
         == "T+1_14:57_down_limit_sell_for_close_auction"
     )
+
+
+def test_retrospective_and_live_shadow_statistics_cannot_overlap():
+    config = V3Config(
+        evidence=replace(
+            V3Config().evidence,
+            live_shadow_start_date="20260731",
+        )
+    )
+    with pytest.raises(ValueError, match="must end before"):
+        validate_contract(config)

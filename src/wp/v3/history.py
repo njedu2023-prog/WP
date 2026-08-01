@@ -44,7 +44,14 @@ MINUTE_STORE_COLUMNS = (
     "amount",
     "slot_amount",
 )
-WARMUP_SLOTS = ("14:00", "14:05", "14:10", "14:15")
+WARMUP_SLOTS = (
+    "14:00",
+    "14:05",
+    "14:10",
+    "14:15",
+    "14:20",
+    "14:25",
+)
 INDUSTRY_FIELDS = (
     "l1_code,l1_name,l2_code,l2_name,l3_code,l3_name,"
     "ts_code,name,in_date,out_date,is_new"
@@ -52,7 +59,7 @@ INDUSTRY_FIELDS = (
 T = TypeVar("T")
 R = TypeVar("R")
 TUSHARE_CACHE_SCHEMA_VERSION = "wp_tushare_query_cache_2"
-PANEL_SCHEMA_VERSION = "wp_point_in_time_panel_5"
+PANEL_SCHEMA_VERSION = "wp_point_in_time_panel_6"
 MINUTE_SCHEMA_VERSION = "wp_historical_minutes_3"
 
 
@@ -207,7 +214,7 @@ def build_three_year_panel(
         existing_manifest["strategy_id"] = config.strategy.strategy_id
         existing_manifest["feature_version"] = config.model.feature_version
         existing_manifest["target_projection_version"] = (
-            "wp_v9_train_time_hurdle_net_return_1"
+            "wp_v40_pending_truth_safe_hurdle_net_return_1"
         )
         existing_manifest["compatibility_reused_from"] = reused_from
         existing_manifest["compatibility_reused_at"] = datetime.now(
@@ -357,7 +364,7 @@ def build_three_year_panel(
         "strategy_id": config.strategy.strategy_id,
         "feature_version": config.model.feature_version,
         "target_projection_version": (
-            "wp_v9_train_time_hurdle_net_return_1"
+            "wp_v40_pending_truth_safe_hurdle_net_return_1"
         ),
         "panel_builder_fingerprint": _panel_builder_fingerprint(),
         "minute_normalizer_fingerprint": _minute_normalizer_fingerprint(),
@@ -833,6 +840,10 @@ def _build_day_panel(
     )
     base["trade_date"] = trade_date
     base["target_trade_date"] = target_trade_date
+    base["target_market_truth_available"] = bool(
+        len(target_daily) > 1_000
+        and len(target_limit) > 1_000
+    )
     base["listing_days"] = (
         pd.Timestamp(_date(trade_date))
         - pd.to_datetime(base["list_date"], format="%Y%m%d", errors="coerce")
@@ -976,9 +987,11 @@ def _build_day_panel(
     panel = _add_market_context(panel)
     panel = _add_industry_context(panel)
     panel = build_supervised_panel(panel, config)
+    # Keep the latest causal signal day even when its T+1 truth has not arrived.
+    # Training code filters label_available; retaining this row lets the fixed
+    # policy freeze its historical selection before future truth is observed.
     panel = panel.loc[
         panel["execution_eligible"].fillna(False)
-        & panel["label_available"].fillna(False)
     ].reset_index(drop=True)
     panel.attrs["data_quality"] = quality
     return panel

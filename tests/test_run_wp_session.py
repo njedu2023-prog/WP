@@ -43,7 +43,7 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
     monkeypatch.setattr(
         run_wp_session,
         "now_cn",
-        lambda: datetime(2026, 7, 27, 14, 25, tzinfo=run_wp_session.CN_TZ),
+        lambda: datetime(2026, 7, 27, 14, 32, tzinfo=run_wp_session.CN_TZ),
     )
     source_path = tmp_path / "data" / "v3" / "latest" / "wp_v3_live_features.csv"
     source_path.parent.mkdir(parents=True)
@@ -55,7 +55,7 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
             source_path,
             {
                 "trade_date": "20260727",
-                "signal_slot": "14:25",
+                "signal_slot": "14:30",
             },
         ),
     )
@@ -73,12 +73,12 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
     run_wp_session.run_once()
 
     assert captured["WP_EXPECTED_TRADE_DATE"] == "20260727"
-    assert captured["WP_V3_SIGNAL_SLOT"] == "14:25"
+    assert captured["WP_V3_SIGNAL_SLOT"] == "14:30"
     assert captured["WP_V3_SOURCE_CSV"] == source_path.as_posix()
     assert captured["WP_MODE"] == "live"
 
 
-def test_1450_signal_is_built_at_1452_after_completed_bar_grace(
+def test_1430_signal_is_built_at_1432_after_completed_bar_grace(
     monkeypatch,
     tmp_path,
 ):
@@ -92,7 +92,7 @@ def test_1450_signal_is_built_at_1452_after_completed_bar_grace(
             7,
             27,
             14,
-            52,
+            32,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -106,7 +106,7 @@ def test_1450_signal_is_built_at_1452_after_completed_bar_grace(
         captured["built"] = True
         return source_path, {
             "trade_date": "20260727",
-            "signal_slot": "14:50",
+            "signal_slot": "14:30",
         }
 
     def fake_run(command, **kwargs):
@@ -114,7 +114,7 @@ def test_1450_signal_is_built_at_1452_after_completed_bar_grace(
             manifest = tmp_path / "outputs" / "json" / "wp_manifest.json"
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
-                '{"report_revision":"1450"}\n',
+                '{"report_revision":"1430"}\n',
                 encoding="utf-8",
             )
         return SimpleNamespace(returncode=0)
@@ -126,12 +126,12 @@ def test_1450_signal_is_built_at_1452_after_completed_bar_grace(
     )
     monkeypatch.setattr(run_wp_session.subprocess, "run", fake_run)
 
-    run_wp_session.run_once("14:50")
+    run_wp_session.run_once("14:30")
 
     assert captured["built"] is True
 
 
-def test_signal_iteration_can_settle_previous_candidates_and_score_new_slot(
+def test_1435_settlement_reuses_immutable_1430_snapshot(
     monkeypatch,
     tmp_path,
 ):
@@ -145,7 +145,7 @@ def test_signal_iteration_can_settle_previous_candidates_and_score_new_slot(
             7,
             27,
             14,
-            27,
+            37,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -175,16 +175,7 @@ def test_signal_iteration_can_settle_previous_candidates_and_score_new_slot(
     monkeypatch.setattr(
         run_wp_session,
         "build_live_input",
-        lambda **kwargs: (
-            calls.append(("signal", "14:25"))
-            or (
-                live_path,
-                {
-                    "trade_date": "20260727",
-                    "signal_slot": "14:25",
-                },
-            )
-        ),
+        lambda **kwargs: calls.append(("unexpected_signal_rebuild", "14:30")),
     )
 
     def fake_run(command, **kwargs):
@@ -192,13 +183,13 @@ def test_signal_iteration_can_settle_previous_candidates_and_score_new_slot(
             manifest = tmp_path / "outputs" / "json" / "wp_manifest.json"
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
-                '{"report_revision":"1425"}\n',
+                '{"report_revision":"1435"}\n',
                 encoding="utf-8",
             )
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(run_wp_session.subprocess, "run", fake_run)
 
-    run_wp_session.run_once("14:25", settlement_slot="14:25")
+    run_wp_session.run_once(settlement_slot="14:35")
 
-    assert calls == [("settle", "14:25"), ("signal", "14:25")]
+    assert calls == [("settle", "14:35")]

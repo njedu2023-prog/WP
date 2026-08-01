@@ -21,6 +21,9 @@ CLOSE_COMMIT_PATHS = [
     "outputs/json/wp_manifest.json",
     "outputs/json/wp_v3_candidate_ledger.json",
     "outputs/json/wp_model_registry_v3.json",
+    "outputs/json/wp_v40_backtest_202605_202607.json",
+    "outputs/csv/wp_v40_backtest_qualified_202605_202607.csv",
+    "outputs/csv/wp_v40_backtest_observations_202605_202607.csv",
 ]
 
 
@@ -33,6 +36,7 @@ def run_once() -> int:
     tracked_paths = [
         Path("outputs/json/wp_v3_candidate_ledger.json"),
         Path("outputs/json/wp_model_registry_v3.json"),
+        Path("outputs/json/wp_v40_backtest_202605_202607.json"),
     ]
     before = tuple(path.read_bytes() if path.exists() else b"" for path in tracked_paths)
     env = os.environ.copy()
@@ -52,18 +56,18 @@ def run_once() -> int:
         )
     )
     if before == after:
-        print(f"No V9 close-truth state change; pending_due={pending}.")
+        print(f"No V40 close-truth state change; pending_due={pending}.")
         return pending
     commit_paths = list(CLOSE_COMMIT_PATHS)
     archive = _latest_close_archive()
     if archive:
         commit_paths.append(archive)
     subprocess.run(
-        [sys.executable, "scripts/github_commit_paths.py", "Validate WP V9 next-day close", *commit_paths],
+        [sys.executable, "scripts/github_commit_paths.py", "Validate WP V40 next-day close", *commit_paths],
         check=True,
         env=env,
     )
-    print(f"V9 close-truth state committed; pending_due={pending}.")
+    print(f"V40 close-truth state committed; pending_due={pending}.")
     return pending
 
 

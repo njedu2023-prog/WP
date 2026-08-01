@@ -341,6 +341,7 @@ def prune_candidate_universe(
     frame: pd.DataFrame,
     *,
     top_per_score: int = 12,
+    require_label: bool = True,
 ) -> pd.DataFrame:
     if top_per_score < 1:
         raise ValueError("top_per_score must be positive")
@@ -351,11 +352,15 @@ def prune_candidate_universe(
             pd.Series(False, index=contextual.index),
         )
     )
-    labelled = _boolean(
-        contextual.get(
-            "label_available",
-            pd.Series(True, index=contextual.index),
+    labelled = (
+        _boolean(
+            contextual.get(
+                "label_available",
+                pd.Series(True, index=contextual.index),
+            )
         )
+        if require_label
+        else pd.Series(True, index=contextual.index, dtype=bool)
     )
     eligible = contextual.loc[execution & labelled].copy()
     selected_indices: set[int] = set()

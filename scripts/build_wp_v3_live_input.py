@@ -12,7 +12,7 @@ import tushare as ts
 from wp.v3.contracts import DEFAULT_SIGNAL_SLOTS, load_v3_config
 from wp.v3.history import TushareHistoryClient
 from wp.v3.io import atomic_write_csv, atomic_write_json
-from wp.v3.ledger import load_shadow_ledger
+from wp.v3.ledger import load_shadow_ledger, session_records
 from wp.v3.live_data import (
     build_live_feature_frame,
     capture_entry_settlement_frame,
@@ -145,7 +145,7 @@ def capture_entry_settlement_input(
     )
     codes = [
         str(candidate.get("ts_code"))
-        for candidate in session.get("candidates", [])
+        for candidate in session_records(session)
         if str(candidate.get("entry_benchmark_slot") or "")
         == settlement_slot
         and str(candidate.get("entry_benchmark_status") or "PENDING")

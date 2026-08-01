@@ -28,7 +28,7 @@ PAGES_MANIFEST_URL = os.environ.get(
 )
 MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "10"))
 ACCEPTED_HEALTH_STATUSES = {"ok", "无符合条件股票"}
-ACCEPTED_SOURCE_MODES = {"direct_tushare_v9"}
+ACCEPTED_SOURCE_MODES = {"direct_tushare_v40"}
 ACTIVE_RUN_STATUSES = {"queued", "in_progress", "waiting", "pending"}
 
 
@@ -37,11 +37,11 @@ def now_cn() -> datetime:
 
 
 def in_trade_window(current: datetime) -> bool:
-    return time(14, 20) <= current.time() <= time(15, 2)
+    return time(14, 30) <= current.time() <= time(15, 2)
 
 
 def in_session_start_window(current: datetime) -> bool:
-    return time(14, 0) <= current.time() < time(14, 20)
+    return time(14, 0) <= current.time() < time(14, 30)
 
 
 def in_close_finalize_window(current: datetime) -> bool:
@@ -162,10 +162,32 @@ def wp_health(manifest: dict[str, Any], slot: datetime) -> tuple[bool, list[str]
         reasons.append(f"source_mode={source_mode or 'missing'}")
     if source_trade_date != slot.strftime("%Y%m%d"):
         reasons.append(f"source_trade_date={source_trade_date or 'missing'}")
-    if slot.time() <= time(14, 50):
+    if slot.time() == time(14, 30):
         if coverage is None or coverage < slot:
             reasons.append(
                 f"coverage={coverage.strftime('%Y-%m-%d %H:%M:%S') if coverage else 'missing'}"
+            )
+    elif slot.time() == time(14, 35):
+        if str(manifest.get("entry_settlement_slot") or "") != "14:35":
+            reasons.append(
+                f"entry_settlement_slot="
+                f"{manifest.get('entry_settlement_slot') or 'missing'}"
+            )
+        if int(manifest.get("pending_entry_benchmark_count") or 0) != 0:
+            reasons.append(
+                f"pending_entry_benchmark_count="
+                f"{manifest.get('pending_entry_benchmark_count')}"
+            )
+    elif slot.time() == time(14, 40):
+        if str(manifest.get("session_phase")) != "FROZEN":
+            reasons.append(
+                f"session_phase={manifest.get('session_phase') or 'missing'}"
+            )
+        if int(manifest.get("observation_count") or 0) != int(
+            manifest.get("observation_target_count") or 5
+        ):
+            reasons.append(
+                f"observation_count={manifest.get('observation_count')}"
             )
     elif slot.time() >= time(15, 0):
         if str(manifest.get("session_phase")) != "CLOSED":
@@ -257,7 +279,7 @@ def monitor(current: datetime | None = None) -> int:
             print("Monitor passed: WP tail session is active before signal time.")
             return 0
         return repair_or_wait(
-            reason="WP tail session is not active before the 14:20 signal window",
+            reason="WP decision session is not active before the 14:30 decision",
             runs=runs,
             token=github_token,
         )
@@ -294,7 +316,7 @@ def monitor(current: datetime | None = None) -> int:
             runs=runs,
             token=github_token,
         )
-    if slot.time() <= time(14, 50) and not workflow_active(runs):
+    if slot.time() <= time(14, 40) and not workflow_active(runs):
         return repair_or_wait(
             reason=(
                 f"WP covers {slot:%H:%M}, but the continuous tail session "

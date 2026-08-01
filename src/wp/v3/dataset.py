@@ -100,7 +100,18 @@ def build_supervised_panel(frame: pd.DataFrame, config: V3Config) -> pd.DataFram
     )
 
     entry_truth_known = entry_reference.gt(0) | ~panel["entry_fillable"]
-    exit_truth_known = exit_price.gt(0) | ~panel["exit_fillable"]
+    if "target_market_truth_available" in panel:
+        target_market_truth_available = _boolean(
+            panel["target_market_truth_available"]
+        ).reindex(panel.index, fill_value=False)
+        exit_truth_known = target_market_truth_available & (
+            exit_price.gt(0) | ~panel["exit_fillable"]
+        )
+    else:
+        # Backward compatibility for explicitly supplied historical fixtures:
+        # a non-fill with no market-level availability field is an observed
+        # suspension or locked-limit failure, not pending future truth.
+        exit_truth_known = exit_price.gt(0) | ~panel["exit_fillable"]
     observable = (
         signal_price.gt(0)
         & entry_truth_known

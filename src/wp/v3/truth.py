@@ -20,6 +20,7 @@ from .ledger import (
     assert_ledger_invariants,
     load_shadow_ledger,
     save_shadow_ledger,
+    session_records,
     settle_entry_benchmarks,
 )
 from .registry import (
@@ -27,6 +28,7 @@ from .registry import (
     refresh_shadow_metrics,
     save_registry,
 )
+from .retrospective import finalize_v40_retrospective
 
 
 ROOT = Path(__file__).resolve().parents[3]
@@ -47,16 +49,16 @@ def run_v3_close_validation(
     due = [
         candidate
         for session in ledger.get("sessions", [])
-        for candidate in session.get("candidates", [])
+        for candidate in session_records(session)
         if str(candidate.get("target_trade_date") or "") <= today
         and str(candidate.get("target_trade_date") or "").isdigit()
         and candidate.get("truth_status") != "verified"
     ]
+    token = os.environ.get("TUSHARE_TOKEN", "").strip()
+    pro = ts.pro_api(token) if token else None
     if due:
-        token = os.environ.get("TUSHARE_TOKEN", "").strip()
-        if not token:
+        if pro is None:
             raise RuntimeError("TUSHARE_TOKEN is required for V3 close-truth validation")
-        pro = ts.pro_api(token)
         truth_by_date = {}
         truth_errors = {}
         truth_dates = {
@@ -119,7 +121,24 @@ def run_v3_close_validation(
     if json.dumps(registry, ensure_ascii=False, sort_keys=True) != registry_before:
         save_registry(registry, registry_path)
 
+    retrospective_result = finalize_v40_retrospective(
+        output,
+        current_trade_date=today,
+        config=config,
+        pro=pro,
+    )
+
     validation = _validation_frame(ledger)
+    cohort = validation.get(
+        "candidate_cohort",
+        pd.Series("QUALIFIED", index=validation.index),
+    ).astype(str)
+    qualified_mask = cohort.eq("QUALIFIED")
+    observation_mask = cohort.eq("OBSERVATION")
+    verified_mask = (
+        validation.get("truth_status", pd.Series("", index=validation.index))
+        == "verified"
+    )
     pending_mask = (
         validation.get("truth_status", pd.Series("", index=validation.index))
         != "verified"
@@ -149,10 +168,31 @@ def run_v3_close_validation(
             "buy_plan_count": 0,
             "pending_truth_count": int(
                 pending_mask.sum()
+                + int(
+                    retrospective_result.get("pending_total_count") or 0
+                )
             ),
-            "pending_due_truth_count": int(due_pending_mask.sum()),
+            "pending_due_truth_count": int(
+                due_pending_mask.sum()
+                + int(
+                    retrospective_result.get("pending_due_count") or 0
+                )
+            ),
             "verified_candidate_count": int(
-                (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
+                verified_mask.sum()
+            ),
+            "verified_qualified_count": int(
+                (verified_mask & qualified_mask).sum()
+            ),
+            "verified_observation_count": int(
+                (verified_mask & observation_mask).sum()
+            ),
+            "retrospective_status": retrospective_result.get("status"),
+            "retrospective_pending_truth_count": int(
+                retrospective_result.get("pending_total_count") or 0
+            ),
+            "retrospective_pending_due_truth_count": int(
+                retrospective_result.get("pending_due_count") or 0
             ),
         }
     )
@@ -161,17 +201,35 @@ def run_v3_close_validation(
         output / "json" / "wp_buy_plan_validation.json",
         {
             "generated_at": update_time,
-            "schema_version": "wp_v3_candidate_truth_1",
+            "schema_version": "wp_v40_dual_cohort_truth_1",
             "summary": {
-                "candidate_count": int(len(validation)),
-                "verified_count": int(
-                    (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
+                "record_count": int(len(validation)),
+                "qualified_count": int(qualified_mask.sum()),
+                "observation_count": int(observation_mask.sum()),
+                "verified_count": int(verified_mask.sum()),
+                "verified_qualified_count": int(
+                    (verified_mask & qualified_mask).sum()
+                ),
+                "verified_observation_count": int(
+                    (verified_mask & observation_mask).sum()
                 ),
                 "pending_count": int(
                     pending_mask.sum()
+                    + int(
+                        retrospective_result.get("pending_total_count") or 0
+                    )
                 ),
-                "pending_due_count": int(due_pending_mask.sum()),
+                "pending_due_count": int(
+                    due_pending_mask.sum()
+                    + int(
+                        retrospective_result.get("pending_due_count") or 0
+                    )
+                ),
                 "promotion": promotion_results,
+                "statistics_contract": (
+                    "qualified_and_observation_cohorts_must_remain_separate"
+                ),
+                "retrospective": retrospective_result,
             },
             "records": validation.to_dict(orient="records"),
         },
@@ -180,17 +238,32 @@ def run_v3_close_validation(
         output / "json" / "wp_strategy_ledger.json",
         {
             "generated_at": update_time,
-            "schema_version": "wp_strategy_ledger_v3_bridge",
+            "schema_version": "wp_strategy_ledger_v4_bridge",
             "summary": {
                 "candidate_semantics": "model_candidates_not_user_fills",
-                "verified_count": int(
-                    (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
+                "verified_count": int(verified_mask.sum()),
+                "verified_qualified_count": int(
+                    (verified_mask & qualified_mask).sum()
                 ),
+                "verified_observation_count": int(
+                    (verified_mask & observation_mask).sum()
+                ),
+                "qualified_statistics_scope": "official_strategy",
+                "observation_statistics_scope": "research_only",
             },
             "sessions": ledger.get("sessions", []),
         },
     )
     predictions = _read_csv(output / "csv" / "wp_v3_live_predictions.csv")
+    retrospective = _read_json(
+        output / "json" / "wp_v40_backtest_202605_202607.json"
+    )
+    research_seed = _read_json(
+        ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"
+    )
+    legacy_audit = _read_json(
+        output / "json" / "wp_legacy_history_audit.json"
+    )
     render_v3_dashboard(
         output / "html_reports" / "latest.html",
         manifest=manifest,
@@ -199,6 +272,9 @@ def run_v3_close_validation(
         registry=registry,
         config=config,
         replay=_read_json(output / "json" / "wp_v3_historical_replay.json"),
+        legacy_audit=legacy_audit,
+        retrospective=retrospective,
+        research_seed=research_seed,
     )
     archive = (
         output
@@ -215,19 +291,28 @@ def run_v3_close_validation(
         registry=registry,
         config=config,
         replay=_read_json(output / "json" / "wp_v3_historical_replay.json"),
+        legacy_audit=legacy_audit,
+        retrospective=retrospective,
+        research_seed=research_seed,
     )
     newly_verified = sum(
         candidate.get("truth_status") == "verified" for candidate in due
     )
     return {
-        "verified_count": int(
-            (validation.get("truth_status", pd.Series(dtype=str)) == "verified").sum()
+        "verified_count": int(verified_mask.sum()),
+        "verified_qualified_count": int(
+            (verified_mask & qualified_mask).sum()
+        ),
+        "verified_observation_count": int(
+            (verified_mask & observation_mask).sum()
         ),
         "pending_count": int(
             due_pending_mask.sum()
+            + int(retrospective_result.get("pending_due_count") or 0)
         ),
         "pending_total_count": int(pending_mask.sum()),
         "newly_verified": int(newly_verified),
+        "retrospective": retrospective_result,
     }
 
 
@@ -485,7 +570,7 @@ def _backfill_missing_entry_benchmarks(
 def _validation_frame(ledger: dict[str, Any]) -> pd.DataFrame:
     records = []
     for session in ledger.get("sessions", []):
-        for candidate in session.get("candidates", []):
+        for candidate in session_records(session):
             row = dict(candidate)
             row["plan_trade_date"] = row.get("trade_date")
             records.append(row)

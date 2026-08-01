@@ -10,16 +10,18 @@ import pandas as pd
 from .contracts import (
     CN_TZ,
     DEFAULT_SIGNAL_SLOTS,
+    LEGACY_SIGNAL_SLOTS,
     V3Config,
     entry_benchmark_slot,
 )
+from .cohorts import OBSERVATION, QUALIFIED, select_live_cohorts
 from .features import FEATURE_COLUMNS
 from .io import atomic_write_json
 
 
 def empty_shadow_ledger() -> dict[str, Any]:
     return {
-        "schema_version": "wp_candidate_ledger_v3",
+        "schema_version": "wp_candidate_ledger_v4",
         "generated_at": None,
         "sessions": [],
     }
@@ -30,13 +32,44 @@ def load_shadow_ledger(path: str | Path) -> dict[str, Any]:
     if not target.exists():
         return empty_shadow_ledger()
     ledger = json.loads(target.read_text(encoding="utf-8"))
-    if ledger.get("schema_version") != "wp_candidate_ledger_v3":
+    source_schema = str(ledger.get("schema_version") or "")
+    if source_schema not in {
+        "wp_candidate_ledger_v3",
+        "wp_candidate_ledger_v4",
+    }:
         raise ValueError("unsupported candidate ledger schema")
+    ledger["schema_version"] = "wp_candidate_ledger_v4"
     for session in ledger.get("sessions", []):
+        legacy = source_schema == "wp_candidate_ledger_v3"
+        session.setdefault(
+            "cohort_contract_version",
+            "legacy_qualified_only" if legacy else "dual_cohort_v1",
+        )
+        session.setdefault("observations", [])
+        for candidate in session.get("candidates", []):
+            candidate.setdefault("candidate_cohort", QUALIFIED)
+            candidate.setdefault("statistics_scope", "official_strategy")
+            candidate.setdefault("is_user_trade", False)
+        for observation in session.get("observations", []):
+            observation.setdefault("candidate_cohort", OBSERVATION)
+            observation.setdefault("statistics_scope", "research_observation")
+            observation.setdefault("is_user_trade", False)
+        session.setdefault(
+            "qualified_count",
+            len(session.get("candidates", [])),
+        )
+        session.setdefault(
+            "observation_count",
+            len(session.get("observations", [])),
+        )
+        session.setdefault(
+            "observation_target_count",
+            0 if legacy else 5,
+        )
         if session.get("frozen"):
             expected = session.setdefault(
                 "expected_slots",
-                list(DEFAULT_SIGNAL_SLOTS),
+                list(LEGACY_SIGNAL_SLOTS if legacy else DEFAULT_SIGNAL_SLOTS),
             )
             missing = session.setdefault(
                 "missing_slots",
@@ -73,7 +106,7 @@ def record_shadow_slot(
 ) -> dict[str, Any]:
     if signal_slot not in config.strategy.signal_slots:
         raise ValueError(f"slot {signal_slot} is outside the immutable signal window")
-    session = _session(ledger, trade_date)
+    session = _session(ledger, trade_date, config)
     if session.get("frozen"):
         raise ValueError(f"candidate ledger for {trade_date} is already frozen")
 
@@ -86,141 +119,69 @@ def record_shadow_slot(
         slots.append(signal_slot)
         slots.sort(key=config.strategy.signal_slots.index)
 
-    passed = predictions.loc[predictions["passes_policy"].fillna(False)].copy()
+    selection = select_live_cohorts(predictions, config)
     candidates = session.setdefault("candidates", [])
-    by_code = {str(candidate["ts_code"]): candidate for candidate in candidates}
-    for row in passed.to_dict(orient="records"):
+    observations = session.setdefault("observations", [])
+    _record_cohort_rows(
+        candidates,
+        selection.qualified,
+        trade_date=trade_date,
+        signal_slot=signal_slot,
+        config=config,
+        observed_at=observed_at,
+        cohort=QUALIFIED,
+    )
+    _record_cohort_rows(
+        observations,
+        selection.observations,
+        trade_date=trade_date,
+        signal_slot=signal_slot,
+        config=config,
+        observed_at=observed_at,
+        cohort=OBSERVATION,
+    )
+    session["observation_target_count"] = selection.observation_target_count
+    session["observation_selection_status"] = (
+        selection.observation_selection_status
+    )
+    session["observation_shortfall_reason"] = (
+        selection.observation_shortfall_reason
+    )
+    session["status"] = "COLLECTING"
+    session["integrity_status"] = "COLLECTING"
+    session["candidate_count"] = len(candidates)
+    session["qualified_count"] = len(candidates)
+    session["observation_count"] = len(observations)
+    session["decision_status"] = (
+        "QUALIFIED" if candidates else "NO_SIGNAL"
+    )
+    return ledger
+
+
+def _record_cohort_rows(
+    target: list[dict[str, Any]],
+    frame: pd.DataFrame,
+    *,
+    trade_date: str,
+    signal_slot: str,
+    config: V3Config,
+    observed_at: str,
+    cohort: str,
+) -> None:
+    by_code = {str(candidate["ts_code"]): candidate for candidate in target}
+    for row in frame.to_dict(orient="records"):
         code = str(row["ts_code"])
         existing = by_code.get(code)
         if existing is None:
-            candidate = {
-                "trade_date": trade_date,
-                "target_trade_date": row.get("target_trade_date"),
-                "ts_code": code,
-                "name": row.get("name", ""),
-                "status": (
-                    row.get("candidate_state")
-                    if row.get("candidate_state") in {"QUALIFIED", "SHADOW_QUALIFIED"}
-                    else "SHADOW_QUALIFIED"
-                ),
-                "first_signal_time": signal_slot,
-                "first_signal_price": _float(row.get("signal_price")),
-                "entry_adj_factor": _float(row.get("adj_factor")),
-                "entry_adj_factor_observed": _float(row.get("adj_factor")),
-                "entry_benchmark_slot": entry_benchmark_slot(signal_slot, config),
-                "entry_benchmark_status": "PENDING",
-                "entry_order_notional": config.execution.reference_order_notional,
-                "entry_price": None,
-                "entry_fillable": None,
-                "last_signal_time": signal_slot,
-                "last_signal_price": _float(row.get("signal_price")),
-                "appearance_count": 1,
-                "p_entry_fill": _float(row.get("p_entry_fill")),
-                "p_exit_fill_given_entry": _float(
-                    row.get("p_exit_fill_given_entry")
-                ),
-                "p_round_trip_fill": _float(row.get("p_round_trip_fill")),
-                "p_conditional_net_positive": _float(
-                    row.get("p_conditional_net_positive")
-                ),
-                "p_net_positive": _float(row.get("p_net_positive")),
-                "p_net_positive_lower": _float(row.get("p_net_positive_lower")),
-                "p_severe_loss": _float(row.get("p_severe_loss")),
-                "conditional_expected_net_return_pct": _float(
-                    row.get("conditional_expected_net_return_pct")
-                ),
-                "expected_utility_pct": _float(row.get("expected_utility_pct")),
-                "expected_utility_lower_pct": _float(
-                    row.get("expected_utility_lower_pct")
-                ),
-                "expected_return_model_spread": _float(
-                    row.get("expected_return_model_spread")
-                ),
-                "downside_q10_pct": _float(row.get("downside_q10_pct")),
-                "ranking_score": _float(row.get("ranking_score")),
-                "selection_score": _float(row.get("selection_score")),
-                "selection_rank_pct": _float(row.get("selection_rank_pct")),
-                "selection_rank_spread": _float(
-                    row.get("selection_rank_spread")
-                ),
-                "model_version": row.get("model_version"),
-                "model_fingerprint": row.get("model_fingerprint"),
-                "policy_fingerprint": row.get("policy_fingerprint"),
-                "feature_version": config.model.feature_version,
-                "entry_contract": config.execution.entry_price_contract,
-                "exit_contract": config.strategy.exit_contract,
-                "exit_order_contract": config.execution.exit_order_contract,
-                "entry_slippage_bps": config.execution.entry_slippage_bps,
-                "round_trip_cost_bps": config.execution.round_trip_cost_bps,
-                "baseline_all_in_cost_bps": (
-                    config.execution.baseline_all_in_cost_bps
-                ),
-                "first_signal_market_data_time": row.get("market_data_time"),
-                "first_signal_bar_time": row.get("slot_bar_time"),
-                "first_signal_features": {
-                    feature: _float(row.get(feature))
-                    for feature in FEATURE_COLUMNS
-                },
-                "qualification_evidence": {
-                    field: _json_scalar(row.get(field))
-                    for field in (
-                        "p_entry_fill",
-                        "p_exit_fill_given_entry",
-                        "p_round_trip_fill",
-                        "p_round_trip_fill_lower",
-                        "p_conditional_net_positive_raw",
-                        "p_conditional_net_positive",
-                        "p_net_positive_direct",
-                        "p_net_positive_component_product",
-                        "p_net_positive_model_gap",
-                        "p_net_positive",
-                        "p_net_positive_lower",
-                        "p_conditional_severe_loss",
-                        "p_severe_loss_direct",
-                        "p_severe_loss_component_product",
-                        "p_severe_loss",
-                        "probability_model_spread",
-                        "fill_probability_model_spread",
-                        "conditional_expected_net_return_pct",
-                        "direct_all_in_expected_return_pct",
-                        "expected_utility_pct",
-                        "expected_utility_lower_pct",
-                        "expected_utility_residual_q10_adjustment_pct",
-                        "expected_return_model_spread",
-                        "conditional_downside_q10_pct",
-                        "direct_all_in_downside_q10_pct",
-                        "exit_failure_probability",
-                        "downside_q10_pct",
-                        "ranking_score",
-                        "selection_score",
-                        "selection_rank_pct",
-                        "selection_rank_spread",
-                        "selection_evidence_candidate_events",
-                        "selection_evidence_candidate_days",
-                        "selection_evidence_win_rate",
-                        "selection_evidence_mean_net_return_pct",
-                        "data_age_seconds",
-                        "execution_eligible",
-                        "passes_probability",
-                        "passes_probability_lower",
-                        "passes_entry_fill_probability",
-                        "passes_exit_fill_probability",
-                        "passes_round_trip_fill_probability",
-                        "passes_conditional_probability",
-                        "passes_severe_loss",
-                        "passes_expected_utility",
-                        "passes_expected_utility_lower",
-                        "passes_downside",
-                        "passes_selection_rank",
-                        "passes_prior_oos_evidence",
-                        "passes_stability",
-                        "passes_freshness",
-                    )
-                },
-                "observed_at": observed_at,
-                "truth_status": "pending",
-            }
-            candidates.append(candidate)
+            candidate = _candidate_record(
+                row,
+                trade_date=trade_date,
+                signal_slot=signal_slot,
+                config=config,
+                observed_at=observed_at,
+                cohort=cohort,
+            )
+            target.append(candidate)
             by_code[code] = candidate
         else:
             _assert_immutable(existing, row, signal_slot)
@@ -228,10 +189,6 @@ def record_shadow_slot(
             existing["last_signal_price"] = _float(row.get("signal_price"))
             existing["appearance_count"] = int(existing.get("appearance_count", 1)) + 1
             existing["last_observed_at"] = observed_at
-    session["status"] = "COLLECTING"
-    session["integrity_status"] = "COLLECTING"
-    session["candidate_count"] = len(candidates)
-    return ledger
 
 
 def settle_entry_benchmarks(
@@ -255,7 +212,7 @@ def settle_entry_benchmarks(
         return ledger
     due = [
         candidate
-        for candidate in session.get("candidates", [])
+        for candidate in session_records(session)
         if _requires_entry_benchmark(candidate, config)
         and str(candidate.get("entry_benchmark_slot") or "")
         == str(settlement_slot)
@@ -378,7 +335,7 @@ def freeze_shadow_session(
     model_fingerprint: str | None = None,
     policy_fingerprint: str | None = None,
 ) -> dict[str, Any]:
-    session = _session(ledger, trade_date)
+    session = _session(ledger, trade_date, config)
     if session.get("frozen"):
         existing_fingerprint = session.get("model_fingerprint")
         if (
@@ -409,28 +366,33 @@ def freeze_shadow_session(
     session["frozen_at"] = frozen_at or datetime.now(CN_TZ).isoformat()
     session["status"] = "FROZEN" if session.get("candidates") else "NO_SIGNAL"
     session["candidate_count"] = len(session.get("candidates", []))
+    session["qualified_count"] = len(session.get("candidates", []))
+    session["observation_count"] = len(session.get("observations", []))
     session["expected_slots"] = list(config.strategy.signal_slots)
     session["missing_slots"] = [
         slot for slot in config.strategy.signal_slots if slot not in session.get("covered_slots", [])
     ]
     pending_entries = _pending_entry_candidates(session, config)
     session["pending_entry_benchmark_count"] = len(pending_entries)
-    session["integrity_status"] = (
-        "COMPLETE"
-        if not session["missing_slots"] and not pending_entries
-        else (
-            "INCOMPLETE_ENTRY"
-            if not session["missing_slots"]
-            else "INCOMPLETE"
-        )
+    session["integrity_status"] = _session_integrity_status(
+        session,
+        missing_slots=session["missing_slots"],
+        pending_entries=pending_entries,
     )
     return ledger
 
 
 def assert_ledger_invariants(ledger: dict[str, Any], config: V3Config) -> None:
     for session in ledger.get("sessions", []):
+        expected = list(
+            session.get("expected_slots")
+            or (
+                config.strategy.signal_slots
+                if session.get("cohort_contract_version") == "dual_cohort_v1"
+                else LEGACY_SIGNAL_SLOTS
+            )
+        )
         if session.get("frozen"):
-            expected = list(config.strategy.signal_slots)
             missing = [
                 slot
                 for slot in expected
@@ -445,58 +407,276 @@ def assert_ledger_invariants(ledger: dict[str, Any], config: V3Config) -> None:
                     f"frozen session {session.get('trade_date')} has inconsistent missing slots"
                 )
             pending_entries = _pending_entry_candidates(session, config)
-            expected_integrity = (
-                "COMPLETE"
-                if not missing and not pending_entries
-                else ("INCOMPLETE_ENTRY" if not missing else "INCOMPLETE")
+            expected_integrity = _session_integrity_status(
+                session,
+                missing_slots=missing,
+                pending_entries=pending_entries,
             )
             if session.get("integrity_status") != expected_integrity:
                 raise ValueError(
                     f"frozen session {session.get('trade_date')} has inconsistent integrity"
                 )
-        seen: set[str] = set()
-        for candidate in session.get("candidates", []):
-            code = str(candidate.get("ts_code"))
-            if code in seen:
-                raise ValueError(f"duplicate shadow candidate {session.get('trade_date')} {code}")
-            seen.add(code)
-            if candidate.get("first_signal_time") not in config.strategy.signal_slots:
-                raise ValueError(f"invalid first signal time for {code}")
-            if _float(candidate.get("first_signal_price")) is None:
-                raise ValueError(f"missing immutable first signal price for {code}")
-            if candidate.get("exit_contract") != "T+1_close":
-                raise ValueError(f"invalid exit contract for {code}")
-            if _requires_entry_benchmark(candidate, config):
-                expected_benchmark = entry_benchmark_slot(
-                    str(candidate.get("first_signal_time")),
-                    config,
+        qualified_codes = {
+            str(candidate.get("ts_code"))
+            for candidate in session.get("candidates", [])
+        }
+        observation_codes = {
+            str(candidate.get("ts_code"))
+            for candidate in session.get("observations", [])
+        }
+        overlap = sorted(qualified_codes & observation_codes)
+        if overlap:
+            raise ValueError(
+                f"qualified and observation cohorts overlap for "
+                f"{session.get('trade_date')}: {overlap}"
+            )
+        for cohort, records in (
+            (QUALIFIED, session.get("candidates", [])),
+            (OBSERVATION, session.get("observations", [])),
+        ):
+            seen: set[str] = set()
+            for candidate in records:
+                _assert_candidate_invariant(
+                    candidate,
+                    cohort=cohort,
+                    seen=seen,
+                    session=session,
+                    expected_slots=expected,
+                    config=config,
                 )
-                if candidate.get("entry_benchmark_slot") != expected_benchmark:
-                    raise ValueError(f"invalid entry benchmark slot for {code}")
-                benchmark_status = str(
-                    candidate.get("entry_benchmark_status") or "PENDING"
-                )
-                if benchmark_status not in {"PENDING", "SETTLED", "NON_FILL"}:
-                    raise ValueError(f"invalid entry benchmark status for {code}")
-                if benchmark_status == "SETTLED":
-                    if _float(candidate.get("entry_price")) is None:
-                        raise ValueError(f"missing immutable entry price for {code}")
-                    if candidate.get("entry_fillable") is not True:
-                        raise ValueError(f"settled entry is not fillable for {code}")
-                if benchmark_status == "NON_FILL" and candidate.get(
-                    "entry_fillable"
-                ) is not False:
-                    raise ValueError(f"non-fill entry marked fillable for {code}")
-            if (
-                session.get("policy_fingerprint")
-                and candidate.get("policy_fingerprint")
-                and session.get("policy_fingerprint")
-                != candidate.get("policy_fingerprint")
+        if session.get("cohort_contract_version") == "dual_cohort_v1":
+            if int(session.get("qualified_count") or 0) != len(
+                session.get("candidates", [])
             ):
-                raise ValueError(f"candidate policy changed within session for {code}")
+                raise ValueError("qualified count does not match ledger rows")
+            if int(session.get("observation_count") or 0) != len(
+                session.get("observations", [])
+            ):
+                raise ValueError("observation count does not match ledger rows")
 
 
-def _session(ledger: dict[str, Any], trade_date: str) -> dict[str, Any]:
+def _assert_candidate_invariant(
+    candidate: dict[str, Any],
+    *,
+    cohort: str,
+    seen: set[str],
+    session: dict[str, Any],
+    expected_slots: list[str],
+    config: V3Config,
+) -> None:
+    code = str(candidate.get("ts_code"))
+    if code in seen:
+        raise ValueError(
+            f"duplicate {cohort.lower()} record "
+            f"{session.get('trade_date')} {code}"
+        )
+    seen.add(code)
+    if candidate.get("candidate_cohort") != cohort:
+        raise ValueError(f"invalid cohort marker for {code}")
+    if candidate.get("is_user_trade") is not False:
+        raise ValueError(
+            f"model evidence cannot be marked as a user trade: {code}"
+        )
+    if candidate.get("first_signal_time") not in expected_slots:
+        raise ValueError(f"invalid first signal time for {code}")
+    if _float(candidate.get("first_signal_price")) is None:
+        raise ValueError(f"missing immutable first signal price for {code}")
+    if candidate.get("exit_contract") != "T+1_close":
+        raise ValueError(f"invalid exit contract for {code}")
+    if _requires_entry_benchmark(candidate, config):
+        expected_benchmark = entry_benchmark_slot(
+            str(candidate.get("first_signal_time")),
+            config,
+        )
+        if candidate.get("entry_benchmark_slot") != expected_benchmark:
+            raise ValueError(f"invalid entry benchmark slot for {code}")
+        benchmark_status = str(
+            candidate.get("entry_benchmark_status") or "PENDING"
+        )
+        if benchmark_status not in {"PENDING", "SETTLED", "NON_FILL"}:
+            raise ValueError(f"invalid entry benchmark status for {code}")
+        if benchmark_status == "SETTLED":
+            if _float(candidate.get("entry_price")) is None:
+                raise ValueError(f"missing immutable entry price for {code}")
+            if candidate.get("entry_fillable") is not True:
+                raise ValueError(f"settled entry is not fillable for {code}")
+        if benchmark_status == "NON_FILL" and candidate.get(
+            "entry_fillable"
+        ) is not False:
+            raise ValueError(f"non-fill entry marked fillable for {code}")
+    if (
+        session.get("policy_fingerprint")
+        and candidate.get("policy_fingerprint")
+        and session.get("policy_fingerprint")
+        != candidate.get("policy_fingerprint")
+    ):
+        raise ValueError(f"candidate policy changed within session for {code}")
+
+
+def _candidate_record(
+    row: dict[str, Any],
+    *,
+    trade_date: str,
+    signal_slot: str,
+    config: V3Config,
+    observed_at: str,
+    cohort: str,
+) -> dict[str, Any]:
+    evidence_fields = (
+        "p_entry_fill",
+        "p_exit_fill_given_entry",
+        "p_round_trip_fill",
+        "p_round_trip_fill_lower",
+        "p_conditional_net_positive_raw",
+        "p_conditional_net_positive",
+        "p_net_positive_direct",
+        "p_net_positive_component_product",
+        "p_net_positive_model_gap",
+        "p_net_positive",
+        "p_net_positive_lower",
+        "p_conditional_severe_loss",
+        "p_severe_loss_direct",
+        "p_severe_loss_component_product",
+        "p_severe_loss",
+        "probability_model_spread",
+        "fill_probability_model_spread",
+        "conditional_expected_net_return_pct",
+        "direct_all_in_expected_return_pct",
+        "expected_utility_pct",
+        "expected_utility_lower_pct",
+        "expected_utility_residual_q10_adjustment_pct",
+        "expected_return_model_spread",
+        "conditional_downside_q10_pct",
+        "direct_all_in_downside_q10_pct",
+        "exit_failure_probability",
+        "downside_q10_pct",
+        "ranking_score",
+        "selection_score",
+        "selection_rank_pct",
+        "selection_rank_spread",
+        "selection_evidence_candidate_events",
+        "selection_evidence_candidate_days",
+        "selection_evidence_win_rate",
+        "selection_evidence_mean_net_return_pct",
+        "data_age_seconds",
+        "execution_eligible",
+        "passes_execution",
+        "passes_probability",
+        "passes_probability_lower",
+        "passes_entry_fill_probability",
+        "passes_exit_fill_probability",
+        "passes_round_trip_fill_probability",
+        "passes_conditional_probability",
+        "passes_severe_loss",
+        "passes_expected_utility",
+        "passes_expected_utility_lower",
+        "passes_downside",
+        "passes_selection_rank",
+        "passes_prior_oos_evidence",
+        "passes_stability",
+        "passes_freshness",
+        "passes_policy",
+    )
+    status = (
+        str(row.get("candidate_state"))
+        if cohort == QUALIFIED
+        and row.get("candidate_state") in {"QUALIFIED", "SHADOW_QUALIFIED"}
+        else (
+            "SHADOW_QUALIFIED"
+            if cohort == QUALIFIED
+            else "RESEARCH_OBSERVATION"
+        )
+    )
+    return {
+        "trade_date": trade_date,
+        "target_trade_date": row.get("target_trade_date"),
+        "ts_code": str(row["ts_code"]),
+        "name": row.get("name", ""),
+        "status": status,
+        "candidate_cohort": cohort,
+        "statistics_scope": (
+            "official_strategy"
+            if cohort == QUALIFIED
+            else "research_observation"
+        ),
+        "is_user_trade": False,
+        "first_signal_time": signal_slot,
+        "first_signal_price": _float(row.get("signal_price")),
+        "entry_adj_factor": _float(row.get("adj_factor")),
+        "entry_adj_factor_observed": _float(row.get("adj_factor")),
+        "entry_benchmark_slot": entry_benchmark_slot(signal_slot, config),
+        "entry_benchmark_status": "PENDING",
+        "entry_order_notional": config.execution.reference_order_notional,
+        "entry_price": None,
+        "entry_fillable": None,
+        "last_signal_time": signal_slot,
+        "last_signal_price": _float(row.get("signal_price")),
+        "appearance_count": 1,
+        "cohort_rank": _int(row.get("cohort_rank")),
+        "failed_gates": row.get("failed_gates", ""),
+        "failed_gate_labels": row.get("failed_gate_labels", ""),
+        "failed_gate_count": _int(row.get("failed_gate_count")),
+        "rejection_reasons": row.get("rejection_reasons", ""),
+        "p_entry_fill": _float(row.get("p_entry_fill")),
+        "p_exit_fill_given_entry": _float(
+            row.get("p_exit_fill_given_entry")
+        ),
+        "p_round_trip_fill": _float(row.get("p_round_trip_fill")),
+        "p_conditional_net_positive": _float(
+            row.get("p_conditional_net_positive")
+        ),
+        "p_net_positive": _float(row.get("p_net_positive")),
+        "p_net_positive_lower": _float(row.get("p_net_positive_lower")),
+        "p_severe_loss": _float(row.get("p_severe_loss")),
+        "conditional_expected_net_return_pct": _float(
+            row.get("conditional_expected_net_return_pct")
+        ),
+        "expected_utility_pct": _float(row.get("expected_utility_pct")),
+        "expected_utility_lower_pct": _float(
+            row.get("expected_utility_lower_pct")
+        ),
+        "expected_return_model_spread": _float(
+            row.get("expected_return_model_spread")
+        ),
+        "downside_q10_pct": _float(row.get("downside_q10_pct")),
+        "ranking_score": _float(row.get("ranking_score")),
+        "selection_score": _float(row.get("selection_score")),
+        "selection_rank_pct": _float(row.get("selection_rank_pct")),
+        "selection_rank_spread": _float(
+            row.get("selection_rank_spread")
+        ),
+        "model_version": row.get("model_version"),
+        "model_fingerprint": row.get("model_fingerprint"),
+        "policy_fingerprint": row.get("policy_fingerprint"),
+        "feature_version": config.model.feature_version,
+        "entry_contract": config.execution.entry_price_contract,
+        "exit_contract": config.strategy.exit_contract,
+        "exit_order_contract": config.execution.exit_order_contract,
+        "entry_slippage_bps": config.execution.entry_slippage_bps,
+        "round_trip_cost_bps": config.execution.round_trip_cost_bps,
+        "baseline_all_in_cost_bps": (
+            config.execution.baseline_all_in_cost_bps
+        ),
+        "first_signal_market_data_time": row.get("market_data_time"),
+        "first_signal_bar_time": row.get("slot_bar_time"),
+        "first_signal_features": {
+            feature: _float(row.get(feature))
+            for feature in FEATURE_COLUMNS
+        },
+        "qualification_evidence": {
+            field: _json_scalar(row.get(field))
+            for field in evidence_fields
+        },
+        "observed_at": observed_at,
+        "truth_status": "pending",
+    }
+
+
+def _session(
+    ledger: dict[str, Any],
+    trade_date: str,
+    config: V3Config,
+) -> dict[str, Any]:
     for session in ledger.setdefault("sessions", []):
         if str(session.get("trade_date")) == str(trade_date):
             return session
@@ -506,7 +686,14 @@ def _session(ledger: dict[str, Any], trade_date: str) -> dict[str, Any]:
         "frozen": False,
         "covered_slots": [],
         "candidate_count": 0,
+        "qualified_count": 0,
+        "observation_count": 0,
+        "observation_target_count": config.strategy.observation_count,
         "candidates": [],
+        "observations": [],
+        "cohort_contract_version": "dual_cohort_v1",
+        "strategy_id": config.strategy.strategy_id,
+        "expected_slots": list(config.strategy.signal_slots),
         "integrity_status": "COLLECTING",
     }
     ledger["sessions"].append(session)
@@ -530,11 +717,36 @@ def _pending_entry_candidates(
 ) -> list[dict[str, Any]]:
     return [
         candidate
-        for candidate in session.get("candidates", [])
+        for candidate in session_records(session)
         if _requires_entry_benchmark(candidate, config)
         and str(candidate.get("entry_benchmark_status") or "PENDING")
         == "PENDING"
     ]
+
+
+def session_records(session: dict[str, Any]) -> list[dict[str, Any]]:
+    return [
+        *list(session.get("candidates", [])),
+        *list(session.get("observations", [])),
+    ]
+
+
+def _session_integrity_status(
+    session: dict[str, Any],
+    *,
+    missing_slots: list[str],
+    pending_entries: list[dict[str, Any]],
+) -> str:
+    if missing_slots:
+        return "INCOMPLETE"
+    if pending_entries:
+        return "INCOMPLETE_ENTRY"
+    if session.get("cohort_contract_version") == "dual_cohort_v1":
+        target = int(session.get("observation_target_count") or 0)
+        observed = len(session.get("observations", []))
+        if observed != target:
+            return "INCOMPLETE_OBSERVATION"
+    return "COMPLETE"
 
 
 def _requires_entry_benchmark(
@@ -620,6 +832,14 @@ def _bind_session_model(session: dict[str, Any], predictions: pd.DataFrame) -> N
 def _float(value: Any) -> float | None:
     try:
         parsed = float(value)
+        return parsed if pd.notna(parsed) else None
+    except (TypeError, ValueError):
+        return None
+
+
+def _int(value: Any) -> int | None:
+    try:
+        parsed = int(value)
         return parsed if pd.notna(parsed) else None
     except (TypeError, ValueError):
         return None

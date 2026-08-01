@@ -38,16 +38,15 @@ def test_any_manifest_mutation_breaks_integrity() -> None:
         verify_frozen_candidate(mutated)
 
 
-def test_runtime_contract_cannot_weaken_frozen_shadow_floor() -> None:
+def test_v15_cannot_inherit_v40_runtime_or_shadow_clock() -> None:
     manifest = load_frozen_candidate(MANIFEST_PATH)
     config = load_v3_config(CONFIG_PATH)
 
-    result = verify_runtime_contract(manifest, config)
-
-    assert result["runtime_contract_verified"] is True
-    assert result["minimum_shadow_trading_days"] >= 150
-    assert result["minimum_shadow_candidate_days"] >= 50
-    assert result["minimum_shadow_candidates"] >= 250
+    with pytest.raises(
+        FrozenCandidateError,
+        match="entry_execution_deadline",
+    ):
+        verify_runtime_contract(manifest, config)
 
 
 def test_forward_evidence_is_not_mislabeled_as_shadow_time() -> None:

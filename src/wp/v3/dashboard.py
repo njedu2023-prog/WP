@@ -1,14 +1,14 @@
 from __future__ import annotations
 
-import html
-import json
+from html import escape
 from pathlib import Path
 from typing import Any
 
 import pandas as pd
 
+from .cohorts import CohortSelection, select_live_cohorts
 from .contracts import V3Config
-from .io import atomic_write_text
+from .ledger import session_records
 
 
 def render_v3_dashboard(
@@ -21,1113 +21,1163 @@ def render_v3_dashboard(
     config: V3Config,
     replay: dict[str, Any] | None = None,
     legacy_audit: dict[str, Any] | None = None,
+    retrospective: dict[str, Any] | None = None,
+    research_seed: dict[str, Any] | None = None,
 ) -> None:
     target = Path(path)
     target.parent.mkdir(parents=True, exist_ok=True)
-    phase = str(manifest.get("session_phase") or "UNKNOWN")
-    state = str(manifest.get("v3_state") or "MODEL_NOT_READY")
-    trade_date = str(manifest.get("source_trade_date") or "")
-    session = next(
-        (
-            item
-            for item in ledger.get("sessions", [])
-            if str(item.get("trade_date")) == trade_date
-        ),
-        {},
-    )
-    model = next(
-        (
-            item
-            for item in registry.get("models", [])
-            if item.get("fingerprint") == manifest.get("v3_model_fingerprint")
-        ),
-        {},
-    )
-    passed = predictions.loc[
-        predictions.get("passes_policy", pd.Series(False, index=predictions.index)).fillna(False)
-    ].copy()
-    passed = _attach_locked_candidate_fields(passed, session)
-    if not passed.empty:
-        passed_sort = [
-            column
-            for column in (
-                "selection_score",
-                "p_net_positive_lower",
-                "expected_utility_pct",
-            )
-            if column in passed
-        ]
-        if passed_sort:
-            passed = passed.sort_values(
-                passed_sort,
-                ascending=False,
-                kind="stable",
-            )
-    session_candidates = pd.DataFrame(session.get("candidates", []))
-    near = _near_candidates(predictions)
-    historical = [
-        candidate
-        for historical_session in ledger.get("sessions", [])
-        for candidate in historical_session.get("candidates", [])
-    ]
     replay = replay or {}
-    replay_candidates = replay.get("candidates", [])
-    legacy_audit = legacy_audit or {}
-    backtest = model.get("backtest", {})
-    shadow = model.get("shadow", {})
-    live_visible = bool(manifest.get("live_display_allowed", phase == "SIGNAL"))
-    title_state = {
-        "PRODUCTION": "生产模型",
-        "SHADOW": "影子模型",
-        "SHADOW_OBSERVATION": "影子观察（回测未通过）",
-        "MODEL_NOT_READY": "模型尚未就绪",
-        "MODEL_NOT_DESIGNATED": "研究模型未指定",
-        "MODEL_ARTIFACT_INVALID": "模型文件无效",
-    }.get(state, state)
-    status_class = "good" if state == "PRODUCTION" else "warn"
-    decision = _decision_presentation(
-        phase=phase,
-        state=state,
-        live_visible=live_visible,
-        candidate_count=len(passed),
-        health_status=str(manifest.get("health_status") or ""),
+    retrospective = retrospective or {}
+    research_seed = research_seed or {}
+    trade_date = _compact_date(manifest.get("source_trade_date"))
+    phase = str(manifest.get("session_phase") or "PRE_SIGNAL")
+    current_session = _session_for_date(ledger, trade_date)
+    selection = select_live_cohorts(predictions, config)
+    qualified = _current_cohort(
+        current_session,
+        selection,
+        cohort="QUALIFIED",
     )
-    visible_candidates = passed if live_visible else session_candidates
-    candidate_title = "当前合格候选" if live_visible else "今日候选记录"
-    candidate_note = (
-        "通过固定门槛的股票会全部列出，由人工决定是否以及买哪一支。"
-        if live_visible and state == "PRODUCTION"
-        else (
-            "影子候选仅用于验证模型，不是实盘买入建议。"
-            if live_visible
-            else "交易窗口结束后只保留冻结记录，不再新增或替换候选。"
+    observations = _current_cohort(
+        current_session,
+        selection,
+        cohort="OBSERVATION",
+    )
+    live_visible = bool(
+        manifest.get(
+            "live_display_allowed",
+            phase in {"SIGNAL", "NO_NEW_SIGNAL", "FROZEN"},
         )
+    ) and phase != "CLOSED"
+    records = [
+        record
+        for session in ledger.get("sessions", [])
+        for record in session_records(session)
+    ]
+    qualified_stats = _cohort_stats(records, "QUALIFIED")
+    observation_stats = _cohort_stats(records, "OBSERVATION")
+    qualified_shadow_stats = _cohort_stats(
+        [
+            row
+            for row in records
+            if _compact_date(row.get("trade_date"))
+            >= config.evidence.live_shadow_start_date
+        ],
+        "QUALIFIED",
     )
-    candidate_empty_message = _candidate_empty_message(
+    state = str(manifest.get("v3_state") or "MODEL_NOT_READY")
+    decision = _decision_copy(
         phase=phase,
         state=state,
+        qualified_count=len(qualified),
         live_visible=live_visible,
+        health=str(manifest.get("health_status") or "ok"),
     )
-    current_count = len(passed) if live_visible else 0
-    data_status, data_status_class = _data_status(manifest, phase)
-    next_checkpoint = _next_checkpoint(
-        phase=phase,
-        signal_slot=str(manifest.get("signal_slot") or ""),
-        config=config,
+    evidence_contract = (
+        f"{_display_date(config.evidence.retrospective_start_date)} - "
+        f"{_display_date(config.evidence.retrospective_end_date)} 回测；"
+        f"{_display_date(config.evidence.live_shadow_start_date)} 起真实影子统计"
     )
-    authorization_label = (
-        "正式模型"
-        if state == "PRODUCTION"
-        else "仅研究观察"
-    )
-    authorization_class = "good" if state == "PRODUCTION" else "warn"
-    has_backtest_candidates = int(backtest.get("candidate_events") or 0) > 0
-    html_text = f"""<!doctype html>
+
+    html = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V9 尾盘候选助手</title>
-<style>
-:root {{
-  --ink:#151a20; --muted:#65707c; --line:#d9dee4; --paper:#ffffff;
-  --soft:#f1f4f6; --soft-2:#f7f8fa; --green:#087a43; --green-bg:#e8f5ee;
-  --red:#b42318; --red-bg:#fef0ee; --amber:#8a5300; --amber-bg:#fff4dd;
-  --blue:#175e92; --blue-bg:#eaf3f9; --header:#18212b;
-}}
-*{{box-sizing:border-box}}
-html{{scroll-behavior:smooth}}
-body{{margin:0;background:var(--soft);color:var(--ink);
-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-font-size:14px;letter-spacing:0;line-height:1.55}}
-header{{background:var(--header);color:#fff;border-bottom:4px solid #2f9e62}}
-.header-inner{{max-width:1360px;margin:auto;padding:17px 24px;display:flex;gap:28px;
-align-items:center;justify-content:space-between}}
-.brand-kicker{{color:#88caa6;font-size:12px;font-weight:700;margin-bottom:2px}}
-h1{{font-size:24px;line-height:1.25;margin:0;font-weight:760}}
-.sub{{color:#bdc7d0;margin-top:5px}}
-.header-meta{{text-align:right;min-width:220px}}
-.header-meta-row{{display:flex;align-items:center;justify-content:flex-end;gap:8px}}
-.phase-chip{{display:inline-flex;border:1px solid #6d7883;border-radius:4px;padding:3px 7px;
-font-size:12px;color:#e6ebef}}
-.header-state{{display:block;font-size:16px;margin-top:5px}}
-.header-update{{display:block;color:#9eabb6;font-size:12px;margin-top:3px}}
-main{{max-width:1360px;margin:auto;background:var(--paper);min-height:100vh;box-shadow:0 0 0 1px #e6e9ed}}
-.decision-band{{padding:20px 24px;background:var(--soft-2);border-bottom:1px solid var(--line)}}
-.decision-panel{{display:grid;grid-template-columns:minmax(320px,1.15fr) minmax(420px,.85fr);
-border:1px solid var(--line);border-left-width:6px;background:#fff}}
-.decision-panel.good{{border-left-color:var(--green);background:var(--green-bg)}}
-.decision-panel.warn{{border-left-color:var(--amber);background:var(--amber-bg)}}
-.decision-panel.bad{{border-left-color:var(--red);background:var(--red-bg)}}
-.decision-copy{{padding:18px 20px;display:flex;gap:13px;align-items:flex-start}}
-.status-dot{{width:12px;height:12px;border-radius:50%;background:currentColor;margin-top:7px;flex:0 0 auto}}
-.decision-kicker{{display:block;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:3px}}
-.decision-title{{font-size:24px;line-height:1.25;margin:0 0 6px}}
-.decision-text{{margin:0;color:#3e4852;max-width:720px}}
-.decision-facts{{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));border-left:1px solid var(--line)}}
-.fact{{padding:14px 16px;border-bottom:1px solid var(--line);min-height:76px}}
-.fact:nth-child(odd){{border-right:1px solid var(--line)}}
-.fact:nth-last-child(-n+2){{border-bottom:0}}
-.fact:last-child:nth-child(odd){{grid-column:1/-1;border-right:0}}
-.fact span{{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}}
-.fact strong{{font-size:18px;line-height:1.25;font-variant-numeric:tabular-nums}}
-.band{{padding:22px 24px;border-bottom:1px solid var(--line);scroll-margin-top:12px}}
-.primary-band{{padding-top:24px;padding-bottom:26px}}
-.section-head{{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}}
-h2{{font-size:19px;line-height:1.3;margin:0 0 6px}}
-h3{{font-size:15px;margin:0 0 9px}}
-.section-note{{margin:0 0 14px;color:var(--muted)}}
-.tag{{display:inline-flex;align-items:center;border:1px solid var(--line);padding:3px 7px;border-radius:4px;
-font-size:12px;background:#fff;white-space:nowrap}}
-.tag.good{{border-color:#9bcdb3;background:var(--green-bg);color:var(--green)}}
-.tag.warn{{border-color:#e3bd75;background:var(--amber-bg);color:var(--amber)}}
-.metrics{{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--line);
-border-left:1px solid var(--line)}}
-.metric{{padding:14px 16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
-min-height:82px;background:#fff}}
-.metric span{{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}}
-.metric strong{{font-size:20px;line-height:1.2}}
-.good{{color:var(--green)}} .warn{{color:var(--amber)}} .bad{{color:var(--red)}}
-.table-wrap{{overflow:auto;border:1px solid var(--line)}}
-table{{border-collapse:collapse;width:100%;min-width:920px}}
-th,td{{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}}
-th{{position:sticky;top:0;background:#f0f2f4;color:#48515b;font-size:12px;z-index:1}}
-tbody tr:hover{{background:#f7faf8}}
-td.num{{font-variant-numeric:tabular-nums;text-align:right}}
-.empty{{padding:28px 18px;border:1px dashed #b8c0c8;background:var(--soft-2);color:#48515b;text-align:center}}
-.empty strong{{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}}
-.mobile-list{{display:none}}
-.candidate-card,.validation-card{{border:1px solid var(--line);border-radius:8px;background:#fff;padding:14px}}
-.candidate-card-head,.validation-card-head{{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-padding-bottom:10px;border-bottom:1px solid var(--line)}}
-.candidate-card-head strong,.validation-card-head strong{{font-size:17px}}
-.code{{display:block;color:var(--muted);font-size:12px;margin-top:1px}}
-.card-primary{{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:12px 0}}
-.card-primary span{{display:block;color:var(--muted);font-size:12px}}
-.card-primary strong{{font-size:24px;font-variant-numeric:tabular-nums}}
-.card-primary small{{color:var(--muted)}}
-.card-stats{{display:grid;grid-template-columns:repeat(2,1fr);margin:0;border-top:1px solid var(--line);
-border-left:1px solid var(--line)}}
-.card-stats div{{padding:9px 10px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}}
-.card-stats dt{{color:var(--muted);font-size:12px}} .card-stats dd{{margin:2px 0 0;font-weight:700}}
-.truth-summary{{margin:12px 0 14px}}
-.two-col{{display:grid;grid-template-columns:1.15fr .85fr;gap:24px}}
-.gate-list{{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:1px;background:var(--line);
-border:1px solid var(--line)}}
-.gate{{padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:10px}}
-.gate .yes{{color:var(--green)}} .gate .no{{color:var(--red)}}
-.progress{{height:10px;background:#e3e7eb;overflow:hidden;border-radius:4px;margin-top:8px}}
-.progress div{{height:100%;background:#2f9e62;width:{min(100, 100 * int(shadow.get('trading_days', 0) or 0) / config.promotion.minimum_shadow_trading_days):.1f}%}}
-.research-verdict{{padding:12px 14px;margin:4px 0 16px;border-left:4px solid var(--amber);
-background:var(--amber-bg);color:#4d3a19}}
-.foot{{font-size:12px;color:var(--muted);line-height:1.7}}
-.disclosure{{border:0}}
-.disclosure>summary{{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;
-gap:16px;padding:2px 0;font-weight:700}}
-.disclosure>summary::-webkit-details-marker{{display:none}}
-.disclosure>summary::after{{content:"＋";font-size:20px;color:var(--muted);font-weight:400}}
-.disclosure[open]>summary::after{{content:"－"}}
-.disclosure-title{{display:block;font-size:18px;color:var(--ink)}}
-.disclosure-sub{{display:block;color:var(--muted);font-size:12px;font-weight:400;margin-top:2px}}
-.disclosure-body{{padding-top:16px}}
-.tech-footer{{font-size:12px;color:var(--muted);line-height:1.7;background:var(--soft-2)}}
-@media(max-width:980px){{
-  .header-inner{{padding:15px 16px;align-items:flex-start}}
-  .decision-band,.band{{padding-left:16px;padding-right:16px}}
-  .decision-panel{{grid-template-columns:1fr}}
-  .decision-facts{{border-left:0;border-top:1px solid var(--line)}}
-  .two-col{{grid-template-columns:1fr}}
-  .metrics{{grid-template-columns:repeat(2,1fr)}}
-  .header-meta{{min-width:0}}
-}}
-@media(max-width:720px){{
-  body{{font-size:14px}}
-  .header-inner{{display:block}}
-  h1{{font-size:21px}}
-  .sub{{font-size:12px}}
-  .header-meta{{text-align:left;margin-top:12px}}
-  .header-meta-row{{justify-content:flex-start}}
-  .decision-copy{{padding:16px}}
-  .decision-title{{font-size:21px}}
-  .decision-facts{{grid-template-columns:repeat(2,1fr)}}
-  .fact{{padding:11px 12px;min-height:68px}}
-  .fact strong{{font-size:16px}}
-  .band{{padding-top:19px;padding-bottom:20px}}
-  .desktop-only{{display:none}}
-  .mobile-list{{display:grid;gap:10px}}
-  .metrics{{grid-template-columns:repeat(2,1fr)}}
-  .metric{{min-height:76px;padding:12px}}
-  .metric strong{{font-size:17px}}
-  .gate-list{{grid-template-columns:1fr}}
-  .disclosure-title{{font-size:16px}}
-}}
-@media(max-width:420px){{
-  .decision-facts,.metrics{{grid-template-columns:1fr 1fr}}
-  .fact strong{{font-size:15px}}
-  .card-stats{{grid-template-columns:1fr 1fr}}
-}}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WP 尾盘决策台</title>
+  <style>
+    :root {{
+      --page: #f5f5f7;
+      --surface: #ffffff;
+      --surface-soft: #fafafa;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --faint: #86868b;
+      --line: #d2d2d7;
+      --line-soft: #e8e8ed;
+      --blue: #0071e3;
+      --green: #16823b;
+      --green-soft: #eff9f2;
+      --amber: #9a6700;
+      --amber-soft: #fff8e8;
+      --red: #c9342f;
+      --red-soft: #fff2f1;
+      --shadow: 0 12px 30px rgba(0, 0, 0, .045);
+    }}
+    * {{ box-sizing: border-box; }}
+    html {{ background: var(--page); }}
+    body {{
+      margin: 0;
+      color: var(--text);
+      background: var(--page);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }}
+    button {{ font: inherit; letter-spacing: 0; }}
+    .topbar {{
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(245, 245, 247, .88);
+      border-bottom: 1px solid rgba(210, 210, 215, .85);
+      backdrop-filter: saturate(180%) blur(18px);
+    }}
+    .topbar-inner {{
+      width: min(1240px, calc(100% - 36px));
+      min-height: 48px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    .brand {{ font-size: 14px; font-weight: 700; }}
+    .top-meta {{
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }}
+    .page {{
+      width: min(1240px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 28px 0 54px;
+    }}
+    .headline {{
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+      padding: 8px 2px 22px;
+    }}
+    h1, h2, h3, p {{ margin: 0; }}
+    h1 {{
+      font-size: 30px;
+      line-height: 1.16;
+      font-weight: 720;
+      letter-spacing: 0;
+    }}
+    .subtitle {{
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 14px;
+    }}
+    .mode {{
+      min-width: 180px;
+      text-align: right;
+    }}
+    .mode-label {{ color: var(--muted); font-size: 12px; }}
+    .mode-value {{ margin-top: 2px; font-weight: 680; font-size: 15px; }}
+    .status-panel {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(145px, .55fr));
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }}
+    .status-main {{
+      padding: 23px 24px;
+      border-right: 1px solid var(--line-soft);
+    }}
+    .status-kicker {{
+      color: {_e(decision["color"])};
+      font-size: 12px;
+      font-weight: 700;
+    }}
+    .status-title {{
+      margin-top: 4px;
+      font-size: 23px;
+      line-height: 1.22;
+      font-weight: 730;
+    }}
+    .status-copy {{
+      max-width: 660px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }}
+    .status-fact {{
+      padding: 20px 18px;
+      border-right: 1px solid var(--line-soft);
+    }}
+    .status-fact:last-child {{ border-right: 0; }}
+    .label {{ color: var(--muted); font-size: 12px; }}
+    .value {{ margin-top: 4px; font-size: 19px; font-weight: 700; }}
+    .value.small {{ font-size: 15px; line-height: 1.35; }}
+    .section {{
+      margin-top: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }}
+    .section-head {{
+      min-height: 64px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line-soft);
+    }}
+    .section-title {{ font-size: 17px; font-weight: 720; }}
+    .section-sub {{ margin-top: 2px; color: var(--muted); font-size: 12px; }}
+    .count {{
+      min-width: 38px;
+      text-align: right;
+      font-size: 19px;
+      font-weight: 730;
+    }}
+    .notice {{
+      margin: 16px 20px;
+      padding: 13px 14px;
+      border-left: 3px solid var(--blue);
+      background: #f4f8fd;
+      color: #36536f;
+      font-size: 13px;
+    }}
+    .notice.amber {{
+      border-left-color: #d6a229;
+      background: var(--amber-soft);
+      color: #6d5213;
+    }}
+    .notice.red {{
+      border-left-color: var(--red);
+      background: var(--red-soft);
+      color: #7f2a27;
+    }}
+    .empty {{
+      padding: 34px 20px 38px;
+      text-align: center;
+      color: var(--muted);
+    }}
+    .empty strong {{
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 5px;
+    }}
+    .table-wrap {{ overflow-x: auto; }}
+    table {{
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }}
+    th {{
+      padding: 11px 14px;
+      color: var(--muted);
+      background: var(--surface-soft);
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }}
+    td {{
+      padding: 14px;
+      border-bottom: 1px solid var(--line-soft);
+      vertical-align: middle;
+      white-space: nowrap;
+    }}
+    tbody tr:last-child td {{ border-bottom: 0; }}
+    tbody tr:hover {{ background: #fbfbfd; }}
+    .stock {{ font-weight: 700; }}
+    .stock-name {{ color: var(--muted); font-size: 12px; }}
+    .positive {{ color: var(--red); font-weight: 700; }}
+    .negative {{ color: var(--green); font-weight: 700; }}
+    .neutral {{ color: var(--muted); }}
+    .tag {{
+      display: inline-block;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 11px;
+      font-weight: 650;
+    }}
+    .tag.good {{
+      color: var(--green);
+      border-color: #a8d8b5;
+      background: var(--green-soft);
+    }}
+    .tag.warn {{
+      color: var(--amber);
+      border-color: #e7ca82;
+      background: var(--amber-soft);
+    }}
+    .reason {{
+      max-width: 320px;
+      white-space: normal;
+      color: var(--muted);
+      font-size: 12px;
+    }}
+    .metric-grid {{
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }}
+    .metric {{
+      padding: 18px 20px;
+      border-right: 1px solid var(--line-soft);
+    }}
+    .metric:last-child {{ border-right: 0; }}
+    .metric-value {{
+      margin-top: 3px;
+      font-size: 21px;
+      font-weight: 730;
+    }}
+    .split {{
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }}
+    .split > div {{ padding: 20px; }}
+    .split > div:first-child {{ border-right: 1px solid var(--line-soft); }}
+    .evidence-title {{ font-size: 14px; font-weight: 700; }}
+    .evidence-copy {{ margin-top: 7px; color: var(--muted); font-size: 13px; }}
+    .evidence-list {{
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 14px;
+      border-top: 1px solid var(--line-soft);
+    }}
+    .evidence-item {{ padding: 12px 12px 0 0; }}
+    .evidence-item strong {{ display: block; margin-top: 2px; }}
+    .segment {{
+      display: inline-flex;
+      padding: 2px;
+      gap: 2px;
+      background: #ececf0;
+      border-radius: 7px;
+    }}
+    .segment button {{
+      border: 0;
+      border-radius: 5px;
+      padding: 6px 10px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+    }}
+    .segment button.active {{
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
+    }}
+    .footer {{
+      padding: 24px 4px 0;
+      color: var(--faint);
+      font-size: 12px;
+      text-align: center;
+    }}
+    @media (max-width: 900px) {{
+      .status-panel {{ grid-template-columns: 1fr 1fr; }}
+      .status-main {{ grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line-soft); }}
+      .status-fact {{ border-bottom: 1px solid var(--line-soft); }}
+      .status-fact:nth-child(3) {{ border-right: 0; }}
+      .status-fact:last-child {{ grid-column: 1 / -1; border-bottom: 0; }}
+      .metric-grid {{ grid-template-columns: repeat(2, 1fr); }}
+      .metric {{ border-bottom: 1px solid var(--line-soft); }}
+      .metric:nth-child(2n) {{ border-right: 0; }}
+      .split {{ grid-template-columns: 1fr; }}
+      .split > div:first-child {{ border-right: 0; border-bottom: 1px solid var(--line-soft); }}
+    }}
+    @media (max-width: 640px) {{
+      .topbar-inner, .page {{ width: min(100% - 24px, 1240px); }}
+      .top-meta span:first-child {{ display: none; }}
+      .page {{ padding-top: 20px; }}
+      .headline {{ grid-template-columns: 1fr; gap: 12px; }}
+      h1 {{ font-size: 25px; }}
+      .mode {{ text-align: left; }}
+      .status-panel {{ grid-template-columns: 1fr; }}
+      .status-main, .status-fact {{
+        grid-column: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line-soft);
+      }}
+      .status-fact:last-child {{ grid-column: auto; }}
+      .status-title {{ font-size: 20px; }}
+      .section-head {{ align-items: flex-start; }}
+      .metric-grid {{ grid-template-columns: 1fr 1fr; }}
+      .metric {{ padding: 15px 14px; }}
+      .metric-value {{ font-size: 18px; }}
+      .evidence-list {{ grid-template-columns: 1fr; }}
+      .segment {{ width: 100%; }}
+      .segment button {{ flex: 1; }}
+    }}
+  </style>
 </head>
 <body>
-<header><div class="header-inner">
-  <div>
-    <div class="brand-kicker">WP V9 · 可成交概率 × 条件收益</div>
-    <h1>尾盘候选助手</h1>
-    <div class="sub">14:20–14:50 观察全部合格票；没有合格票时明确保持空仓</div>
-  </div>
-  <div class="header-meta">
-    <div class="header-meta-row"><strong>{_e(trade_date)}</strong><span class="phase-chip">{_e(_phase_label(phase))}</span></div>
-    <strong class="header-state {status_class}">{_e(title_state)}</strong>
-    <span class="header-update">更新于 {_e(manifest.get('report_revision', ''))}</span>
-  </div>
-</div></header>
-<main>
-<section class="decision-band" aria-labelledby="decision-title">
-  <div class="decision-panel {decision['tone']}">
-    <div class="decision-copy">
-      <span class="status-dot {decision['tone']}" aria-hidden="true"></span>
-      <div>
-        <span class="decision-kicker">现在该怎么做</span>
-        <h2 class="decision-title" id="decision-title">{_e(decision['title'])}</h2>
-        <p class="decision-text">{_e(decision['message'])}</p>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">WP · T+1 尾盘决策</div>
+      <div class="top-meta">
+        <span>固定决策 14:30</span>
+        <span>{_e(_display_datetime(manifest.get("report_revision")))}</span>
       </div>
     </div>
-    <div class="decision-facts" aria-label="当前交易摘要">
-      {_fact('现在可用候选', str(current_count), 'good' if current_count else '')}
-      {_fact('今日曾出现', str(len(session_candidates)), '')}
-      {_fact('数据状态', data_status, data_status_class)}
-      {_fact(
-          '待结算入场',
-          str(int(manifest.get('pending_entry_benchmark_count') or 0)),
-          'warn' if int(manifest.get('pending_entry_benchmark_count') or 0) else '',
-      )}
-      {_fact('下一节点', next_checkpoint, '')}
-    </div>
-  </div>
-</section>
-<section class="band primary-band" id="candidates">
-  <div class="section-head">
-    <div><h2>{_e(candidate_title)}</h2><p class="section-note">{_e(candidate_note)}</p></div>
-    <span class="tag {authorization_class}">{_e(authorization_label)}</span>
-  </div>
-  {_candidate_table(
-      visible_candidates,
-      live=live_visible,
-      empty_message=candidate_empty_message,
-  )}
-</section>
-{_session_history_section(session_candidates) if live_visible else ''}
-<section class="band" id="truth">
-  <div class="section-head">
-    <div><h2>T+1 真值结果</h2><p class="section-note">使用信号后下一根 5 分钟线锁定的参考成交价，按下一交易日收盘价并扣除固定成本计算。</p></div>
-    <span class="tag">模型候选，不等于人工成交</span>
-  </div>
-  {_validation_summary(historical)}
-  {_validation_table(historical)}
-</section>
-{_legacy_audit_section(legacy_audit)}
-<section class="band" id="research">
-  <details class="disclosure">
-    <summary>
-      <span><span class="disclosure-title">模型研究与上线条件</span>
-      <span class="disclosure-sub">三年样本外结果、150 日影子进度和全部晋级门槛</span></span>
-    </summary>
-    <div class="disclosure-body">
-      <div class="research-verdict">{_e(_research_verdict(state, backtest))}</div>
-      <div class="two-col">
-        <div><h3>三年样本外证据</h3>
-          <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
-            {_metric('候选事件', str(int(backtest.get('candidate_events') or 0)), '')}
-            {_metric('候选胜率', _pct(backtest.get('win_rate')) if has_backtest_candidates else '—', _return_class(backtest.get('win_rate'), 0.60) if has_backtest_candidates else '')}
-            {_metric('按日聚类 95% 下界', _pct(backtest.get('win_rate_day_clustered_lower')) if has_backtest_candidates else '—', _return_class(backtest.get('win_rate_day_clustered_lower'), 0.52) if has_backtest_candidates else '')}
-            {_metric('平均净收益', _pct(backtest.get('mean_net_return_pct'), already_percent=True) if has_backtest_candidates else '—', _return_class(backtest.get('mean_net_return_pct'), 0.30) if has_backtest_candidates else '')}
-            {_metric('Profit Factor', _number(backtest.get('profit_factor')) if has_backtest_candidates else '—', _return_class(backtest.get('profit_factor'), 1.30) if has_backtest_candidates else '')}
-            {_metric('50bp 压力测试', _stress(backtest), 'good' if _stress(backtest) == '通过' else ('bad' if has_backtest_candidates else ''))}
+  </header>
+
+  <main class="page">
+    <section class="headline">
+      <div>
+        <h1>尾盘候选与真实验证</h1>
+        <p class="subtitle">14:30 一次决策 · 14:35 可成交基准 · T+1 收盘退出 · 人工决定是否买入</p>
+      </div>
+      <div class="mode">
+        <div class="mode-label">当前运行状态</div>
+        <div class="mode-value">{_e(_state_label(state))}</div>
+      </div>
+    </section>
+
+    <section class="status-panel">
+      <div class="status-main">
+        <div class="status-kicker">{_e(decision["kicker"])}</div>
+        <div class="status-title">{_e(decision["title"])}</div>
+        <p class="status-copy">{_e(decision["message"])}</p>
+      </div>
+      {_status_fact("合格候选", str(len(qualified)) if live_visible else "已冻结")}
+      {_status_fact("研究观察", f"{len(observations)} / {config.strategy.observation_count}" if live_visible else "历史可查")}
+      {_status_fact("数据状态", _data_status(manifest), small=True)}
+    </section>
+
+    {_live_sections(
+        qualified=qualified,
+        observations=observations,
+        phase=phase,
+        live_visible=live_visible,
+        config=config,
+        manifest=manifest,
+    )}
+
+    {_closed_day_section(
+        current_session,
+        show=not live_visible,
+    )}
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">T+1 真实验证</h2>
+          <p class="section-sub">同一成交合同，合格候选与研究观察分别统计；不记录人工是否买入</p>
+        </div>
+        <div class="segment" role="tablist" aria-label="验证组别">
+          <button class="active" type="button" data-cohort-tab="QUALIFIED">合格候选</button>
+          <button type="button" data-cohort-tab="OBSERVATION">研究观察</button>
+        </div>
+      </div>
+      <div data-cohort-panel="QUALIFIED">
+        {_metric_strip(qualified_stats)}
+        {_validation_table(records, "QUALIFIED")}
+      </div>
+      <div data-cohort-panel="OBSERVATION" hidden>
+        {_metric_strip(observation_stats)}
+        <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
+        {_validation_table(records, "OBSERVATION")}
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">证据与上线边界</h2>
+          <p class="section-sub">{_e(evidence_contract)}</p>
+        </div>
+      </div>
+      <div class="split">
+        <div>
+          <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
+          {_retrospective_evidence(retrospective, config)}
+        </div>
+        <div>
+          <h3 class="evidence-title">2026 年 8 月起真实影子运行</h3>
+          <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
+          <div class="evidence-list">
+            {_evidence_item("已运行交易日", _number(qualified_shadow_stats["trading_days"]))}
+            {_evidence_item("合格候选日", _number(qualified_shadow_stats["candidate_days"]))}
+            {_evidence_item("已验证候选", _number(qualified_shadow_stats["verified"]))}
           </div>
         </div>
-        <div><h3>前瞻影子进度</h3>
-          <strong>{int(shadow.get('trading_days', 0) or 0)} / {config.promotion.minimum_shadow_trading_days} 个交易日</strong>
-          <div class="progress" aria-label="150 日影子进度"><div></div></div>
-          <p class="foot">只有三年回测和至少 150 个真实交易日的影子验证全部通过，模型才有资格进入生产。策略合同发生实质变化后重新计时。</p>
-          {_promotion_checks(model.get('promotion', {}).get('checks', {}))}
-        </div>
       </div>
-    </div>
-  </details>
-</section>
-{_diagnostic_section(backtest)}
-{_near_section(near)}
-<section class="band">
-  <details class="disclosure">
-    <summary><span><span class="disclosure-title">历史因果回放</span>
-    <span class="disclosure-sub">重建的样本外结果，仅用于研究，不冒充实时信号</span></span></summary>
-    <div class="disclosure-body">{_validation_table(replay_candidates)}</div>
-  </details>
-</section>
-<section class="band">
-  <details class="disclosure">
-    <summary><span><span class="disclosure-title">交易与统计口径</span>
-    <span class="disclosure-sub">查看信号时点、成本、入场价和退出规则</span></span></summary>
-    <div class="disclosure-body foot">信号时点：{', '.join(config.strategy.signal_slots)}；参考入场：信号后 5 分钟收盘价再加 {config.execution.entry_slippage_bps:.0f}bp；
-    费用及退出影响：{config.execution.round_trip_cost_bps:.0f}bp；基准全成本：{config.execution.baseline_all_in_cost_bps:.0f}bp；参考订单：{config.execution.reference_order_notional:,.0f} 元；
-    退出：下一 A 股交易日 14:57 提交跌停价限价卖单参加收盘集合竞价；同一股票当日首次通过即锁定信号与后续结算价；人工实际成交与模型候选统计相互独立。</div>
-  </details>
-</section>
-<section class="band tech-footer">报告版本 {_e(manifest.get('report_revision', ''))} · 政策指纹 {_e(manifest.get('v3_policy_fingerprint') or '无')} · 模型指纹 {_e(manifest.get('v3_model_fingerprint') or '无')}</section>
-</main>
-</body></html>"""
-    atomic_write_text(target, html_text)
+      {_research_seed_note(research_seed)}
+    </section>
+
+    {_system_contract(config, manifest, registry, replay)}
+    {_legacy_note(legacy_audit)}
+
+    <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
+  </main>
+  <script>
+    document.querySelectorAll('[data-cohort-tab]').forEach(function (button) {{
+      button.addEventListener('click', function () {{
+        var cohort = button.getAttribute('data-cohort-tab');
+        document.querySelectorAll('[data-cohort-tab]').forEach(function (item) {{
+          item.classList.toggle('active', item === button);
+        }});
+        document.querySelectorAll('[data-cohort-panel]').forEach(function (panel) {{
+          panel.hidden = panel.getAttribute('data-cohort-panel') !== cohort;
+        }});
+      }});
+    }});
+  </script>
+</body>
+</html>
+"""
+    target.write_text(html, encoding="utf-8")
 
 
-def _candidate_table(
-    frame: pd.DataFrame,
+def _live_sections(
     *,
-    live: bool,
-    empty_message: str = "没有通过全部固定门槛的候选。",
+    qualified: list[dict[str, Any]],
+    observations: list[dict[str, Any]],
+    phase: str,
+    live_visible: bool,
+    config: V3Config,
+    manifest: dict[str, Any],
 ) -> str:
-    if frame is None or frame.empty:
-        return (
-            '<div class="empty"><strong>当前没有候选</strong>'
-            f"{_e(empty_message)}</div>"
+    if not live_visible:
+        return ""
+    qualified_body = (
+        _cohort_table(qualified, "QUALIFIED")
+        if qualified
+        else (
+            '<div class="empty"><strong>当前没有合格候选</strong>'
+            "零支是正常结果，系统不会为了产生名单而降低固定门槛。</div>"
         )
+    )
+    observation_status = str(
+        manifest.get("observation_selection_status") or ""
+    )
+    if observations:
+        observation_body = _cohort_table(observations, "OBSERVATION")
+    else:
+        observation_body = (
+            '<div class="empty"><strong>研究观察暂不可用</strong>'
+            "模型分数或可成交股票池不足，系统没有伪造 5 支股票。</div>"
+        )
+    observation_notice_class = (
+        "notice amber"
+        if len(observations) == config.strategy.observation_count
+        else "notice red"
+    )
+    observation_notice = (
+        f"固定展示 {config.strategy.observation_count} 支最接近门槛、"
+        "但未全部通过的可成交股票。仅用于研究比较，不属于合格候选。"
+        if len(observations) == config.strategy.observation_count
+        else (
+            f"观察组完整性异常：期望 {config.strategy.observation_count} 支，"
+            f"实际 {len(observations)} 支；状态 {observation_status or '未知'}。"
+        )
+    )
+    return f"""
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">合格候选</h2>
+          <p class="section-sub">全部固定门槛均通过；数量可以为 0，不设人为配额</p>
+        </div>
+        <div class="count">{len(qualified)}</div>
+      </div>
+      {qualified_body}
+    </section>
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">研究观察</h2>
+          <p class="section-sub">最接近门槛的非合格股票，独立做影子真值</p>
+        </div>
+        <div class="count">{len(observations)} / {config.strategy.observation_count}</div>
+      </div>
+      <div class="{observation_notice_class}">{_e(observation_notice)}</div>
+      {observation_body}
+    </section>
+    """
+
+
+def _closed_day_section(
+    session: dict[str, Any],
+    *,
+    show: bool,
+) -> str:
+    if not show or not session:
+        return ""
+    rows = session_records(session)
+    if not rows:
+        body = (
+            '<div class="empty"><strong>当日无合格信号</strong>'
+            "若观察组也为空，表示当日模型或数据完整性不足。</div>"
+        )
+    else:
+        body = _cohort_table(rows, "HISTORY")
+    return f"""
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">今日冻结证据</h2>
+          <p class="section-sub">已收盘，不再显示可买名单；以下仅供审计与 T+1 验证</p>
+        </div>
+        <div class="count">{len(rows)}</div>
+      </div>
+      {body}
+    </section>
+    """
+
+
+def _cohort_table(
+    records: list[dict[str, Any]],
+    cohort: str,
+) -> str:
+    if not records:
+        return ""
     rows = []
-    cards = []
-    for row in frame.to_dict(orient="records"):
-        common = (
-            "<tr>"
-            f"<td><strong>{_e(row.get('name', ''))}</strong><br><span class='foot'>{_e(row.get('ts_code', ''))}</span></td>"
+    for row in records:
+        record_cohort = str(row.get("candidate_cohort") or "QUALIFIED")
+        status = (
+            '<span class="tag good">合格</span>'
+            if record_cohort == "QUALIFIED"
+            else '<span class="tag warn">研究观察</span>'
         )
-        if live:
-            timing = (
-                f"<td>{_e(row.get('signal_slot', ''))}</td>"
-                f"<td class='num'>{_number(row.get('signal_price'), 2)}</td>"
-                f"<td>{_e(row.get('first_signal_time', ''))}</td>"
-                f"<td>{_e(row.get('entry_benchmark_slot', ''))}</td>"
+        reason = (
+            "全部固定门槛通过"
+            if record_cohort == "QUALIFIED"
+            else str(
+                row.get("failed_gate_labels")
+                or row.get("rejection_reasons")
+                or "未通过全部固定门槛"
             )
-        else:
-            timing = (
-                f"<td>{_e(row.get('first_signal_time', ''))}</td>"
-                f"<td class='num'>{_number(row.get('first_signal_price'), 2)}</td>"
-                f"<td>{_e(row.get('entry_benchmark_slot', ''))}</td>"
-                f"<td class='num'>{_number(row.get('entry_price'), 2)}</td>"
-                f"<td>{_e(_entry_status(row))}</td>"
-            )
+        )
         rows.append(
-            common
-            + timing
-            + f"<td class='num'>{int(row.get('appearance_count') or 1)}</td>"
-            f"<td class='num'>{_pct(row.get('p_entry_fill'))}</td>"
-            f"<td class='num'>{_pct(row.get('p_exit_fill_given_entry'))}</td>"
-            f"<td class='num'>{_pct(row.get('p_conditional_net_positive'))}</td>"
-            f"<td class='num good'>{_pct(row.get('p_net_positive'))}</td>"
-            f"<td class='num'>{_pct(row.get('p_net_positive_lower'))}</td>"
-            f"<td class='num'>{_pct(row.get('expected_utility_pct'), already_percent=True)}</td>"
-            f"<td class='num'>{_pct(row.get('downside_q10_pct'), already_percent=True)}</td>"
-            f"<td>{_e(_candidate_status(row))}</td>"
+            "<tr>"
+            f"<td>{status}</td>"
+            f"<td><div class='stock'>{_e(row.get('ts_code'))}</div>"
+            f"<div class='stock-name'>{_e(row.get('name'))}</div></td>"
+            f"<td>{_e(row.get('first_signal_time') or '14:30')}</td>"
+            f"<td>{_price(row.get('first_signal_price'))}</td>"
+            f"<td>{_price(row.get('entry_price'))}</td>"
+            f"<td>{_pct(row.get('p_net_positive_lower'))}</td>"
+            f"<td>{_return_pct(row.get('expected_utility_lower_pct'))}</td>"
+            f"<td>{_return_pct(row.get('downside_q10_pct'))}</td>"
+            f"<td class='reason'>{_e(reason)}</td>"
             "</tr>"
         )
-        cards.append(_candidate_card(row, live=live))
-    timing_headers = (
-        "<th>当前时点</th><th>当前信号价</th><th>首次时点</th><th>结算时点</th>"
-        if live
-        else "<th>首次时点</th><th>首次信号价</th><th>结算时点</th><th>参考成交价</th><th>入场结算</th>"
-    )
+    heading = "组别" if cohort == "HISTORY" else "状态"
     return (
-        '<div class="table-wrap desktop-only"><table><thead><tr><th>股票</th>'
-        + timing_headers
-        + "<th>出现次数</th><th>买入成交概率</th><th>T+1 可卖概率</th>"
-        "<th>完成往返后盈利</th><th>全路径净盈利</th><th>保守下界</th><th>全口径期望净收益</th>"
-        "<th>下行 Q10</th><th>状态</th></tr></thead><tbody>"
-        + "".join(rows)
-        + '</tbody></table></div><div class="mobile-list">'
-        + "".join(cards)
-        + "</div>"
-    )
-
-
-def _candidate_card(row: dict[str, Any], *, live: bool) -> str:
-    primary_time = (
-        row.get("signal_slot")
-        if live
-        else row.get("first_signal_time")
-    )
-    primary_price = (
-        row.get("signal_price")
-        if live
-        else row.get("first_signal_price")
-    )
-    locked_note = (
-        f"结算 {_e(row.get('entry_benchmark_slot', ''))} · "
-        f"{_e(_entry_status(row))}"
-        if live
-        else (
-            f"信号价 {_number(row.get('first_signal_price'), 2)} · "
-            f"结算 {_e(row.get('entry_benchmark_slot', ''))}"
-        )
-    )
-    return (
-        '<article class="candidate-card">'
-        '<div class="candidate-card-head"><div>'
-        f"<strong>{_e(row.get('name', ''))}</strong>"
-        f"<span class='code'>{_e(row.get('ts_code', ''))}</span></div>"
-        f"<span class='tag'>{_e(_candidate_status(row))}</span></div>"
-        '<div class="card-primary"><div>'
-        f"<span>{'当前信号价' if live else '首次信号价'}</span>"
-        f"<strong>{_number(primary_price, 2)}</strong></div>"
-        f"<small>{_e(primary_time)}<br>{locked_note}</small></div>"
-        '<dl class="card-stats">'
-        f"<div><dt>全路径净盈利概率</dt><dd class='good'>{_pct(row.get('p_net_positive'))}</dd></div>"
-        f"<div><dt>保守概率</dt><dd>{_pct(row.get('p_net_positive_lower'))}</dd></div>"
-        f"<div><dt>买入成交概率</dt><dd>{_pct(row.get('p_entry_fill'))}</dd></div>"
-        f"<div><dt>T+1 可卖概率</dt><dd>{_pct(row.get('p_exit_fill_given_entry'))}</dd></div>"
-        f"<div><dt>完成往返后盈利</dt><dd>{_pct(row.get('p_conditional_net_positive'))}</dd></div>"
-        f"<div><dt>全口径期望净收益</dt><dd>{_pct(row.get('expected_utility_pct'), already_percent=True)}</dd></div>"
-        f"<div><dt>期望收益保守下界</dt><dd>{_pct(row.get('expected_utility_lower_pct'), already_percent=True)}</dd></div>"
-        f"<div><dt>下行 Q10</dt><dd>{_pct(row.get('downside_q10_pct'), already_percent=True)}</dd></div>"
-        f"<div><dt>同槽分位</dt><dd>{_pct(row.get('selection_rank_pct'))}</dd></div>"
-        f"<div><dt>出现次数</dt><dd>{int(row.get('appearance_count') or 1)}</dd></div>"
-        f"<div><dt>参考成交价</dt><dd>{_number(row.get('entry_price'), 2)}</dd></div>"
-        f"<div><dt>入场结算</dt><dd>{_e(_entry_status(row))}</dd></div>"
-        "</dl></article>"
-    )
-
-
-def _attach_locked_candidate_fields(
-    predictions: pd.DataFrame,
-    session: dict[str, Any],
-) -> pd.DataFrame:
-    if predictions.empty:
-        return predictions.copy()
-    locked = {
-        str(candidate.get("ts_code")): candidate
-        for candidate in session.get("candidates", [])
-    }
-    result = predictions.copy()
-    for index, row in result.iterrows():
-        candidate = locked.get(str(row.get("ts_code")))
-        if not candidate:
-            continue
-        for field in (
-            "first_signal_time",
-            "first_signal_price",
-            "last_signal_time",
-            "appearance_count",
-            "status",
-            "selection_rank_pct",
-            "selection_score",
-            "entry_benchmark_slot",
-            "entry_benchmark_status",
-            "entry_price",
-            "entry_fillable",
-        ):
-            result.at[index, field] = candidate.get(field)
-    return result
-
-
-def _session_history_section(frame: pd.DataFrame) -> str:
-    return (
-        '<section class="band"><div class="section-head">'
-        '<div><h2>今日已经出现过</h2>'
-        '<p class="section-note">候选一旦出现即锁定首次时间和价格；后续消失也不会从验证台账中删除。</p></div>'
-        '<span class="tag">逐票等待 T+1 真值</span></div>'
-        + _candidate_table(
-            frame,
-            live=False,
-            empty_message="今天尚未出现过通过全部固定门槛的股票。",
-        )
-        + "</section>"
-    )
-
-
-def _candidate_status(row: dict[str, Any]) -> str:
-    state = str(row.get("candidate_state") or row.get("status") or "")
-    if state == "QUALIFIED":
-        return "正式合格"
-    if state == "SHADOW_QUALIFIED":
-        return "影子合格"
-    return state or "已锁定"
-
-
-def _entry_status(row: dict[str, Any]) -> str:
-    status = str(row.get("entry_benchmark_status") or "")
-    return {
-        "PENDING": "待结算",
-        "SETTLED": "可成交",
-        "NON_FILL": "不可成交",
-    }.get(status, status or "历史口径")
-
-
-def _near_candidates(predictions: pd.DataFrame) -> pd.DataFrame:
-    if predictions is None or predictions.empty or "p_net_positive" not in predictions:
-        return pd.DataFrame()
-    eligible = predictions.loc[
-        predictions.get("execution_eligible", pd.Series(False, index=predictions.index)).fillna(False)
-        & ~predictions.get("passes_policy", pd.Series(False, index=predictions.index)).fillna(False)
-    ].copy()
-    sort_columns = [
-        column
-        for column in (
-            "selection_score",
-            "selection_rank_pct",
-            "p_net_positive",
-        )
-        if column in eligible
-    ]
-    return eligible.sort_values(
-        sort_columns,
-        ascending=False,
-        kind="stable",
-    ).head(20)
-
-
-def _near_table(frame: pd.DataFrame) -> str:
-    if frame.empty:
-        return '<div class="empty">当前没有可解释的近门槛样本。</div>'
-    rows = []
-    for row in frame.to_dict(orient="records"):
-        failed = [
-            label
-            for column, label in (
-                ("passes_entry_fill_probability", "买入成交概率"),
-                ("passes_exit_fill_probability", "T+1 可卖概率"),
-                ("passes_round_trip_fill_probability", "完整成交概率"),
-                ("passes_probability", "概率"),
-                ("passes_probability_lower", "下界"),
-                ("passes_conditional_probability", "成交后盈利概率"),
-                ("passes_severe_loss", "严重亏损风险"),
-                ("passes_expected_utility", "全口径期望净收益"),
-                ("passes_expected_utility_lower", "期望净收益保守下界"),
-                ("passes_downside", "下行风险"),
-                ("passes_selection_rank", "同槽排序"),
-                ("passes_prior_oos_evidence", "此前样本外证据"),
-                ("passes_stability", "稳定性"),
-                ("passes_freshness", "数据时效"),
-            )
-            if not bool(row.get(column))
-        ]
-        rows.append(
-            f"<tr><td>{_e(row.get('name', ''))}<br><span class='foot'>{_e(row.get('ts_code', ''))}</span></td>"
-            f"<td class='num'>{_pct(row.get('p_net_positive'))}</td>"
-            f"<td class='num'>{_pct(row.get('p_net_positive_lower'))}</td>"
-            f"<td>{_e('、'.join(failed) or '执行门槛')}</td></tr>"
-        )
-    return (
-        '<div class="table-wrap"><table><thead><tr><th>股票</th><th>概率</th>'
-        "<th>下界</th><th>未通过原因</th></tr></thead><tbody>"
+        '<div class="table-wrap"><table><thead><tr>'
+        f"<th>{heading}</th><th>股票</th><th>信号</th><th>信号价</th>"
+        "<th>14:35 基准价</th><th>盈利概率下界</th>"
+        "<th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th>"
+        "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
     )
 
 
-def _near_section(frame: pd.DataFrame) -> str:
-    return (
-        '<section class="band"><details class="disclosure"><summary><span>'
-        '<span class="disclosure-title">为什么没有成为候选</span>'
-        '<span class="disclosure-sub">查看接近门槛但未通过的股票及具体原因；这些股票不是候选名单</span>'
-        '</span></summary><div class="disclosure-body">'
-        + _near_table(frame)
-        + "</div></details></section>"
+def _validation_table(
+    records: list[dict[str, Any]],
+    cohort: str,
+) -> str:
+    selected = [
+        row
+        for row in records
+        if str(row.get("candidate_cohort") or "QUALIFIED") == cohort
+    ]
+    selected.sort(
+        key=lambda row: (
+            _compact_date(row.get("trade_date")),
+            str(row.get("ts_code") or ""),
+        ),
+        reverse=True,
     )
-
-
-def _validation_table(records: list[dict[str, Any]]) -> str:
-    if not records:
+    if not selected:
         return (
-            '<div class="empty"><strong>暂无候选需要验证</strong>'
-            "候选出现后，会在下一交易日收盘后自动补齐净收益结果。</div>"
+            '<div class="empty"><strong>暂无验证记录</strong>'
+            "新合同尚未形成该组的可验证样本。</div>"
         )
     rows = []
-    cards = []
-    for row in records[-100:][::-1]:
-        net_return = row.get("net_return_pct")
+    for row in selected[:80]:
+        verified = str(row.get("truth_status") or "") == "verified"
+        status = (
+            '<span class="tag good">已验证</span>'
+            if verified
+            else '<span class="tag">待 T+1 收盘</span>'
+        )
+        outcome = (
+            "盈利"
+            if row.get("net_positive") is True
+            else ("未盈利" if verified else "待验证")
+        )
         rows.append(
-            f"<tr><td>{_e(row.get('trade_date', ''))}</td><td>{_e(row.get('target_trade_date', ''))}</td>"
-            f"<td>{_e(row.get('name', ''))} {_e(row.get('ts_code', ''))}</td>"
-            f"<td>{_e(row.get('first_signal_time', ''))}</td>"
-            f"<td class='num'>{_number(row.get('entry_price'), 2)}</td>"
-            f"<td class='num'>{_number(row.get('t1_close'), 2)}</td>"
-            f"<td>{_e('已验证' if row.get('truth_status') == 'verified' else '待验证')}</td>"
-            f"<td class='num {_return_class(net_return, 0)}'>{_pct(net_return, already_percent=True)}</td></tr>"
+            "<tr>"
+            f"<td>{_e(_display_date(row.get('trade_date')))}</td>"
+            f"<td>{_e(_display_date(row.get('target_trade_date')))}</td>"
+            f"<td><div class='stock'>{_e(row.get('ts_code'))}</div>"
+            f"<div class='stock-name'>{_e(row.get('name'))}</div></td>"
+            f"<td>{_price(row.get('entry_price'))}</td>"
+            f"<td>{_price(row.get('t1_close'))}</td>"
+            f"<td>{_return_pct(row.get('net_return_pct'))}</td>"
+            f"<td>{_e(outcome)}</td><td>{status}</td>"
+            "</tr>"
         )
-        cards.append(_validation_card(row))
     return (
-        '<div class="table-wrap desktop-only"><table><thead><tr><th>计划日</th><th>验证日</th>'
-        "<th>股票</th><th>首次时点</th><th>参考成交价</th><th>T+1 收盘</th><th>状态</th><th>净收益</th></tr></thead><tbody>"
+        '<div class="table-wrap"><table><thead><tr>'
+        "<th>信号日</th><th>验证日</th><th>股票</th><th>入场价</th>"
+        "<th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th>"
+        "</tr></thead><tbody>"
         + "".join(rows)
-        + '</tbody></table></div><div class="mobile-list">'
-        + "".join(cards)
-        + "</div>"
+        + "</tbody></table></div>"
     )
 
 
-def _validation_card(row: dict[str, Any]) -> str:
-    verified = row.get("truth_status") == "verified"
-    net_return = row.get("net_return_pct")
+def _metric_strip(stats: dict[str, Any]) -> str:
     return (
-        '<article class="validation-card">'
-        '<div class="validation-card-head"><div>'
-        f"<strong>{_e(row.get('name', ''))}</strong>"
-        f"<span class='code'>{_e(row.get('ts_code', ''))}</span></div>"
-        f"<span class='tag {'good' if verified else 'warn'}'>{'已验证' if verified else '待验证'}</span></div>"
-        '<div class="card-primary"><div><span>扣费后净收益</span>'
-        f"<strong class='{_return_class(net_return, 0)}'>{_pct(net_return, already_percent=True)}</strong></div>"
-        f"<small>计划 {_e(row.get('trade_date', ''))}<br>验证 {_e(row.get('target_trade_date', ''))}</small></div>"
-        '<dl class="card-stats">'
-        f"<div><dt>首次时点</dt><dd>{_e(row.get('first_signal_time', ''))}</dd></div>"
-        f"<div><dt>参考成交价</dt><dd>{_number(row.get('entry_price'), 2)}</dd></div>"
-        f"<div><dt>T+1 收盘</dt><dd>{_number(row.get('t1_close'), 2)}</dd></div>"
-        "</dl></article>"
-    )
-
-
-def _validation_summary(records: list[dict[str, Any]]) -> str:
-    verified = [
-        record
-        for record in records
-        if record.get("truth_status") == "verified"
-        and record.get("net_return_pct") is not None
-    ]
-    pending = sum(
-        record.get("truth_status") != "verified"
-        for record in records
-    )
-    if not verified:
-        return ""
-    returns = [float(record["net_return_pct"]) for record in verified]
-    wins = sum(value > 0 for value in returns)
-    summary = (
-        '<div class="metrics truth-summary" style="grid-template-columns:repeat(4,1fr)">'
-        + _metric("已验证候选", str(len(verified)))
-        + _metric("净收益为正", f"{wins} / {len(verified)}", "good" if wins else "")
-        + _metric(
-            "候选胜率",
-            _pct(wins / len(verified)),
-            "good" if wins / len(verified) >= 0.50 else "bad",
-        )
+        '<div class="metric-grid">'
+        + _metric("样本", _number(stats["records"]))
+        + _metric("已验证", _number(stats["verified"]))
+        + _metric("覆盖交易日", _number(stats["trading_days"]))
+        + _metric("胜率", _ratio(stats["win_rate"]))
         + _metric(
             "平均净收益",
-            _pct(sum(returns) / len(returns), already_percent=True),
-            _return_class(sum(returns) / len(returns), 0),
+            _signed_pct(stats["mean_net_return_pct"]),
+            _return_class(stats["mean_net_return_pct"]),
         )
         + "</div>"
     )
-    if pending:
-        summary += f"<p class='foot'>另有 {pending} 支待验证。</p>"
-    return summary
 
 
-def _legacy_audit_section(audit: dict[str, Any]) -> str:
-    records = list(audit.get("records") or [])
-    if not records:
-        return ""
-    rows = []
-    cards = []
-    for row in sorted(
-        records,
-        key=lambda item: str(item.get("plan_trade_date") or ""),
-        reverse=True,
-    ):
-        status, tone = _legacy_audit_status(row)
-        rows.append(
-            "<tr>"
-            f"<td>{_format_trade_date(row.get('plan_trade_date'))}</td>"
-            f"<td class='num'>{int(row.get('valid_preclose_snapshot_count') or 0)}</td>"
-            f"<td class='num'>{int(row.get('invalid_late_snapshot_count') or 0)}</td>"
-            f"<td>{_e(row.get('earliest_snapshot_time') or '—')}</td>"
-            f"<td>{_e(row.get('latest_snapshot_time') or '—')}</td>"
-            f"<td class='{tone}'>{_e(status)}</td>"
-            f"<td>{_e(row.get('audit_reason') or '')}</td>"
-            "</tr>"
-        )
-        cards.append(
-            '<article class="validation-card">'
-            '<div class="validation-card-head"><div>'
-            f"<strong>{_format_trade_date(row.get('plan_trade_date'))}</strong>"
-            "<span class='code'>旧系统盘中证据</span></div>"
-            f"<span class='tag {tone}'>{_e(status)}</span></div>"
-            '<dl class="card-stats" style="margin-top:12px">'
-            f"<div><dt>合法盘中快照</dt><dd>{int(row.get('valid_preclose_snapshot_count') or 0)}</dd></div>"
-            f"<div><dt>盘后无效快照</dt><dd>{int(row.get('invalid_late_snapshot_count') or 0)}</dd></div>"
-            "</dl>"
-            f"<p class='foot'>{_e(row.get('audit_reason') or '')}</p>"
-            "</article>"
-        )
-    return (
-        '<section class="band"><details class="disclosure"><summary><span>'
-        '<span class="disclosure-title">7 月 21–24 日旧系统证据回补</span>'
-        '<span class="disclosure-sub">逐日说明当时是否存在 14:20–14:50 合法盘中快照；盘后名单不补造，也不计入正式策略收益</span>'
-        '</span></summary><div class="disclosure-body">'
-        '<div class="table-wrap desktop-only"><table><thead><tr>'
-        "<th>交易日</th><th>合法盘中快照</th><th>盘后无效快照</th>"
-        "<th>最早快照</th><th>最晚快照</th><th>结论</th><th>说明</th>"
-        "</tr></thead><tbody>"
-        + "".join(rows)
-        + '</tbody></table></div><div class="mobile-list">'
-        + "".join(cards)
-        + "</div></div></details></section>"
-    )
-
-
-def _legacy_audit_status(row: dict[str, Any]) -> tuple[str, str]:
-    if int(row.get("valid_preclose_snapshot_count") or 0) > 0:
-        return "有盘中证据，无合格票", "good"
-    return "无合法盘中名单", "warn"
-
-
-def _format_trade_date(value: Any) -> str:
-    text = str(value or "")
-    if len(text) == 8 and text.isdigit():
-        return f"{text[:4]}-{text[4:6]}-{text[6:]}"
-    return _e(text)
-
-
-def _promotion_checks(checks: dict[str, Any]) -> str:
-    if not checks:
-        return '<p class="foot">尚未形成可评估的晋级记录。</p>'
-    labels = {
-        "backtest_gate": "三年回测",
-        "shadow_trading_days": "影子交易日",
-        "shadow_candidate_days": "影子候选日",
-        "shadow_candidates": "影子候选数量",
-        "shadow_win_rate": "影子胜率",
-        "shadow_win_rate_lower": "胜率置信下界",
-        "shadow_clustered_win_rate_lower": "按日胜率下界",
-        "shadow_mean_net_return": "平均净收益",
-        "shadow_clustered_mean_return_lower": "按日收益下界",
-        "shadow_median_net_return": "净收益中位数",
-        "shadow_profit_factor": "盈亏因子",
-        "shadow_entry_fill_rate": "入场可成交率",
-        "shadow_exit_fill_rate": "退出可成交率",
-        "shadow_ece": "概率校准误差",
-        "shadow_50bps_stress": "50bp 压力测试",
-    }
-    return '<div class="gate-list">' + "".join(
-        f"<div class='gate'><span>{_e(labels.get(name, name))}</span><strong class='{'yes' if passed else 'no'}'>{'通过' if passed else '未通过'}</strong></div>"
-        for name, passed in checks.items()
-    ) + "</div>"
-
-
-def _diagnostic_section(backtest: dict[str, Any]) -> str:
-    diagnostics = backtest.get("diagnostics", {})
-    if not diagnostics:
-        return ""
-    quality = diagnostics.get("score_quality", {})
-    probability = quality.get("factorized_positive_probability", {})
-    composite = quality.get("selection_score", {})
-    funnel = diagnostics.get("policy_funnel", [])
-    top_rows = [
+def _cohort_stats(
+    records: list[dict[str, Any]],
+    cohort: str,
+) -> dict[str, Any]:
+    selected = [
         row
-        for row in diagnostics.get("top_n_per_slot", [])
-        if row.get("score")
-        in {"factorized_positive_probability", "selection_score"}
-        and int(row.get("top_n") or 0) in {1, 3, 5}
+        for row in records
+        if str(row.get("candidate_cohort") or "QUALIFIED") == cohort
     ]
-    gate_labels = {
-        "execution": "可成交与流动性",
-        "prior_oos_policy_authorized": "此前样本外政策已授权",
-        "all_candidate_gates": "全部候选门槛",
-        "final_policy": "最终政策",
+    verified = [
+        row
+        for row in selected
+        if str(row.get("truth_status") or "") == "verified"
+    ]
+    returns = pd.to_numeric(
+        pd.Series(
+            [row.get("net_return_pct") for row in verified],
+            dtype="object",
+        ),
+        errors="coerce",
+    ).dropna()
+    wins = sum(row.get("net_positive") is True for row in verified)
+    return {
+        "records": len(selected),
+        "verified": len(verified),
+        "trading_days": len(
+            {
+                _compact_date(row.get("trade_date"))
+                for row in selected
+                if _compact_date(row.get("trade_date"))
+            }
+        ),
+        "candidate_days": len(
+            {
+                _compact_date(row.get("trade_date"))
+                for row in selected
+                if _compact_date(row.get("trade_date"))
+            }
+        ),
+        "win_rate": wins / len(verified) if verified else None,
+        "mean_net_return_pct": (
+            float(returns.mean()) if not returns.empty else None
+        ),
     }
-    score_labels = {
-        "factorized_positive_probability": "全路径净盈利概率",
-        "selection_score": "综合选择分",
-    }
-    funnel_rows = "".join(
-        "<tr>"
-        f"<td>{_e(gate_labels.get(row.get('gate'), row.get('gate', '')))}</td>"
-        f"<td class='num'>{int(row.get('independent_pass_count') or 0):,}</td>"
-        f"<td class='num'>{_pct(row.get('independent_pass_rate'))}</td>"
-        f"<td class='num'>{int(row.get('cumulative_pass_count') or 0):,}</td>"
-        f"<td class='num'>{_pct(row.get('cumulative_pass_rate'))}</td>"
-        "</tr>"
-        for row in funnel
-    )
-    top_table_rows = "".join(
-        "<tr>"
-        f"<td>{_e(score_labels.get(row.get('score'), row.get('score', '')))}</td>"
-        f"<td class='num'>{int(row.get('top_n') or 0)}</td>"
-        f"<td class='num'>{int(row.get('events') or 0):,}</td>"
-        f"<td class='num'>{_pct(row.get('win_rate'))}</td>"
-        f"<td class='num'>{_pct(row.get('win_rate_wilson_lower'))}</td>"
-        f"<td class='num'>{_pct(row.get('mean_net_return_pct'), already_percent=True)}</td>"
-        "</tr>"
-        for row in top_rows
-    )
-    return (
-        '<section class="band"><details class="disclosure"><summary><span>'
-        '<span class="disclosure-title">样本外模型诊断</span>'
-        '<span class="disclosure-sub">排序能力、逐层淘汰漏斗和每时点 Top-N；不会改变固定门槛</span>'
-        '</span></summary><div class="disclosure-body">'
-        '<div class="metrics" style="grid-template-columns:repeat(4,1fr)">'
-        + _metric("概率 ROC AUC", _number(probability.get("roc_auc"), 3))
-        + _metric(
-            "概率-收益秩相关",
-            _number(probability.get("rank_correlation_to_net_return"), 3),
+
+
+def _retrospective_evidence(
+    retrospective: dict[str, Any],
+    config: V3Config,
+) -> str:
+    summary = retrospective.get("summary") or retrospective
+    status = str(summary.get("status") or "").upper()
+    if not summary or status in {"", "PENDING", "NOT_STARTED"}:
+        return (
+            '<p class="evidence-copy">新合同回测尚未形成可确认结果。'
+            "页面不会把 V15 多时点结果冒充为固定 14:30 结果。</p>"
+            '<div class="notice amber">状态：等待严格点时回放与真值计算</div>'
         )
-        + _metric("选择分 ROC AUC", _number(composite.get("roc_auc"), 3))
-        + _metric(
-            "选择分-收益秩相关",
-            _number(composite.get("rank_correlation_to_net_return"), 3),
+    metrics = (
+        summary.get("qualified", {}).get("metrics", {})
+        or summary.get("metrics", {})
+        or summary
+    )
+    events = metrics.get(
+        "events",
+        summary.get("qualified_events"),
+    )
+    days = metrics.get(
+        "trade_days",
+        summary.get("qualified_days"),
+    )
+    win_rate = metrics.get("win_rate")
+    mean_return = metrics.get("mean_net_return_pct")
+    profit_factor = metrics.get("profit_factor")
+    stress_50 = (
+        metrics.get("stress", {})
+        .get("50bps", {})
+        .get("mean_net_return_pct")
+    )
+    monthly = summary.get("monthly", [])
+    monthly_rows = "".join(
+        "<tr>"
+        f"<td>{_e(_month_label(row.get('month')))}</td>"
+        f"<td>{_number(row.get('qualified', {}).get('events'))}</td>"
+        f"<td>{_number(row.get('qualified', {}).get('trade_days'))}</td>"
+        f"<td>{_ratio(row.get('qualified', {}).get('win_rate'))}</td>"
+        f"<td>{_signed_pct(row.get('qualified', {}).get('mean_net_return_pct'))}</td>"
+        f"<td>{_number(row.get('observations', {}).get('events'))}</td>"
+        "</tr>"
+        for row in monthly
+    )
+    monthly_table = (
+        '<div class="table-wrap compact-table"><table><thead><tr>'
+        "<th>月份</th><th>合格样本</th><th>候选日</th><th>胜率</th>"
+        "<th>平均净收益</th><th>观察样本</th></tr></thead><tbody>"
+        + monthly_rows
+        + "</tbody></table></div>"
+        if monthly_rows
+        else ""
+    )
+    gate = summary.get("backtest_gate", {})
+    failed = list(gate.get("failed_gates", []))
+    if status == "INCOMPLETE":
+        notice = (
+            '<div class="notice amber">回测选择已冻结，但仍有 T+1 真值待闭合。'
+            "待真值只补收益，不重选股票、不重训模型。</div>"
+        )
+    elif gate.get("passed"):
+        notice = (
+            '<div class="notice amber">历史门槛已通过，但仍不是盈利保证。'
+            "必须继续完成 150 个交易日的真实影子验证。</div>"
+        )
+    else:
+        notice = (
+            '<div class="notice red">历史生产门槛未全部通过'
+            f"（{len(failed)} 项失败），不得授权正式交易。</div>"
+        )
+    return (
+        '<p class="evidence-copy">只使用当日 14:30 前可见信息，'
+        "按统一 14:35 入场和 T+1 收盘合同重放。</p>"
+        '<div class="evidence-list">'
+        + _evidence_item("合格样本", _number(events))
+        + _evidence_item("候选交易日", _number(days))
+        + _evidence_item("胜率", _ratio(win_rate))
+        + _evidence_item(
+            "平均净收益",
+            _signed_pct(mean_return),
+            _return_class(mean_return),
+        )
+        + _evidence_item("Profit Factor", _number(profit_factor))
+        + _evidence_item(
+            "50bp 压力收益",
+            _signed_pct(stress_50),
+            _return_class(stress_50),
         )
         + "</div>"
-        '<h3 style="margin-top:16px">逐层淘汰漏斗</h3><div class="table-wrap"><table>'
-        "<thead><tr><th>门槛</th><th>单项通过</th><th>单项比例</th>"
-        "<th>累计通过</th><th>累计比例</th></tr></thead><tbody>"
-        + funnel_rows
-        + "</tbody></table></div>"
-        '<h3 style="margin-top:16px">每时点 Top-N 诊断</h3>'
-        '<p class="foot">仅检验排序能力；这些诊断组合没有被用来回填或改写固定策略。</p>'
-        '<div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th>'
-        "<th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th>"
-        "</tr></thead><tbody>"
-        + top_table_rows
-        + "</tbody></table></div></div></details></section>"
+        + monthly_table
+        + notice
     )
 
 
-def _decision_presentation(
+def _research_seed_note(seed: dict[str, Any]) -> str:
+    snapshot = seed.get("evidence_snapshot") or {}
+    challenger = snapshot.get("challenger") or {}
+    if not challenger:
+        return ""
+    return (
+        '<div class="notice amber"><strong>V15 仅作为研究种子：</strong> '
+        f"{_number(challenger.get('events'))} 支 / "
+        f"{_number(challenger.get('trade_days'))} 日，"
+        f"平均净收益 {_signed_pct(challenger.get('mean_net_return_pct'))}。"
+        "V15 使用多个早段时点和每日 Top3，与当前固定 14:30、合格不限数量的合同不同，"
+        "不能直接当作新系统盈利证据。</div>"
+    )
+
+
+def _system_contract(
+    config: V3Config,
+    manifest: dict[str, Any],
+    registry: dict[str, Any],
+    replay: dict[str, Any],
+) -> str:
+    return f"""
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">系统合同</h2>
+          <p class="section-sub">所有时间、价格和统计口径在信号形成前固定</p>
+        </div>
+      </div>
+      <div class="split">
+        <div>
+          <h3 class="evidence-title">执行合同</h3>
+          <p class="evidence-copy">14:30 形成候选；14:35 五分钟收盘价加 {_number(config.execution.entry_slippage_bps)}bp 作为影子入场价；T+1 参与收盘集合竞价卖出；往返成本 {_number(config.execution.round_trip_cost_bps)}bp。</p>
+        </div>
+        <div>
+          <h3 class="evidence-title">统计合同</h3>
+          <p class="evidence-copy">合格候选可以为 0，全部通过者均展示。研究观察固定 {config.strategy.observation_count} 支，只做比较研究。两组共享真值合同但不合并统计，用户实盘选择不进入系统。</p>
+        </div>
+      </div>
+    </section>
+    """
+
+
+def _legacy_note(legacy_audit: dict[str, Any] | None) -> str:
+    if not legacy_audit:
+        return ""
+    return (
+        '<section class="section"><div class="section-head"><div>'
+        '<h2 class="section-title">旧系统历史说明</h2>'
+        '<p class="section-sub">旧版盘中记录保留审计，但不计入固定 14:30 新合同</p>'
+        "</div></div>"
+        '<div class="notice amber">旧系统回补、盘后生成名单以及不同入场合同的记录，'
+        "均不计入 2026 年 8 月起的真实影子统计。</div></section>"
+    )
+
+
+def _current_cohort(
+    session: dict[str, Any],
+    selection: CohortSelection,
+    *,
+    cohort: str,
+) -> list[dict[str, Any]]:
+    key = "candidates" if cohort == "QUALIFIED" else "observations"
+    locked = list(session.get(key, [])) if session else []
+    if locked:
+        return locked
+    frame = (
+        selection.qualified
+        if cohort == "QUALIFIED"
+        else selection.observations
+    )
+    return frame.to_dict(orient="records")
+
+
+def _session_for_date(
+    ledger: dict[str, Any],
+    trade_date: str,
+) -> dict[str, Any]:
+    return next(
+        (
+            session
+            for session in ledger.get("sessions", [])
+            if _compact_date(session.get("trade_date")) == trade_date
+        ),
+        {},
+    )
+
+
+def _decision_copy(
     *,
     phase: str,
     state: str,
+    qualified_count: int,
     live_visible: bool,
-    candidate_count: int,
-    health_status: str,
+    health: str,
 ) -> dict[str, str]:
-    if health_status == "v3_input_not_ready" and phase != "CLOSED":
+    if health not in {"", "ok", "无符合条件股票"}:
         return {
-            "tone": "bad",
-            "title": "暂停使用",
-            "message": "合法行情快照缺失，系统已停止输出候选并等待自动修复。",
+            "kicker": "数据或账本异常",
+            "title": "暂不使用本次名单",
+            "message": "完整性检查未通过。系统不会用缺失数据补足候选或研究观察。",
+            "color": "#c9342f",
         }
-    if live_visible and state != "PRODUCTION":
+    if state in {
+        "MODEL_NOT_READY",
+        "MODEL_ARTIFACT_INVALID",
+        "POLICY_MISMATCH",
+        "MODEL_NOT_DESIGNATED",
+    }:
         return {
-            "tone": "warn",
-            "title": "仅观察，不实盘",
-            "message": (
-                "当前模型尚未通过完整回测与影子验证。页面只记录影子候选，"
-                "不提供实盘买入资格。"
-            ),
-        }
-    if live_visible and candidate_count:
-        return {
-            "tone": "good",
-            "title": f"有 {candidate_count} 支合格候选",
-            "message": "这些股票已通过全部固定门槛；系统列出全部候选，由人工决定是否以及买哪一支。",
-        }
-    if live_visible:
-        return {
-            "tone": "warn",
-            "title": "暂不买入",
-            "message": "当前时点没有股票通过全部门槛。空仓是正式决策，不会为了产生名单而降低标准。",
+            "kicker": "模型尚未就绪",
+            "title": "今天不授权候选",
+            "message": "固定 14:30 新合同仍在建立可部署模型和回测证据，当前不输出伪候选。",
+            "color": "#9a6700",
         }
     if phase == "PRE_SIGNAL":
         return {
-            "tone": "warn",
-            "title": "等待 14:20",
-            "message": "候选窗口尚未开始。14:20 起每 5 分钟更新一次，14:50 后不再新增。",
+            "kicker": "等待决策",
+            "title": "14:30 生成一次名单",
+            "message": "14:00–14:25 只积累因果快照，不提前泄露或反复改写候选。",
+            "color": "#0071e3",
         }
-    if phase == "CLOSED":
+    if not live_visible or phase == "CLOSED":
         return {
-            "tone": "warn",
-            "title": "已收盘，不再买入",
-            "message": "14:50 后禁止新增候选，15:00 后页面只用于查看冻结记录和 T+1 验证结果。",
+            "kicker": "今日决策已结束",
+            "title": "已收盘，不再显示可买名单",
+            "message": "冻结记录仍保留用于 T+1 收盘真值验证；15:00 后禁止新增候选。",
+            "color": "#6e6e73",
+        }
+    if qualified_count:
+        if state == "SHADOW_OBSERVATION":
+            return {
+                "kicker": "研究筛选通过",
+                "title": f"{qualified_count} 支影子合格候选",
+                "message": (
+                    "这些股票通过固定筛选门槛，但新合同尚未通过完整历史与"
+                    "未来影子证据；仅供人工研究判断。"
+                ),
+                "color": "#9a6700",
+            }
+        return {
+            "kicker": "固定门槛已通过",
+            "title": f"{qualified_count} 支合格候选",
+            "message": "系统展示全部合格股票，不替用户决定买哪一支，也不记录用户是否成交。",
+            "color": "#16823b",
         }
     return {
-        "tone": "warn",
-        "title": "暂不操作",
-        "message": "系统正在准备尾盘数据，候选窗口开始前不提供买入名单。",
+        "kicker": "NO SIGNAL",
+        "title": "当前无合格候选",
+        "message": "没有股票同时通过盈利概率、成交、风险、稳定性与数据新鲜度门槛。",
+        "color": "#6e6e73",
     }
 
 
-def _phase_label(phase: str) -> str:
-    return {
-        "PRE_SIGNAL": "等待开窗",
-        "WARMUP": "数据准备",
-        "SIGNAL": "候选窗口",
-        "NO_NEW_SIGNAL": "停止新增",
-        "FREEZE": "冻结候选",
-        "FROZEN": "候选已冻结",
-        "CLOSED": "收盘复盘",
-    }.get(phase, phase or "状态未知")
+def _state_label(state: str) -> str:
+    labels = {
+        "PRODUCTION": "生产授权",
+        "SHADOW": "真实影子验证",
+        "SHADOW_OBSERVATION": "研究影子观察",
+        "MODEL_NOT_READY": "等待模型包",
+        "MODEL_ARTIFACT_INVALID": "模型包异常",
+        "POLICY_MISMATCH": "模型合同不匹配",
+        "MODEL_NOT_DESIGNATED": "模型未指定",
+    }
+    return labels.get(state, state or "未知")
 
 
-def _data_status(
-    manifest: dict[str, Any],
-    phase: str,
-) -> tuple[str, str]:
-    health = str(manifest.get("health_status") or "")
-    if health == "v3_input_not_ready":
-        return "数据异常", "bad"
-    if phase == "CLOSED":
-        return "记录已冻结", ""
-    if health == "ok":
-        return "行情正常", "good"
-    return "准备中", "warn"
+def _data_status(manifest: dict[str, Any]) -> str:
+    health = str(manifest.get("health_status") or "未知")
+    coverage = _float(manifest.get("tail_universe_coverage"))
+    age = _float(manifest.get("market_data_p95_age_seconds"))
+    parts = ["正常" if health in {"ok", "无符合条件股票"} else health]
+    if coverage is not None:
+        parts.append(f"覆盖 {coverage:.1%}")
+    if age is not None:
+        parts.append(f"P95 {age:.0f}秒")
+    return " · ".join(parts)
 
 
-def _next_checkpoint(
-    *,
-    phase: str,
-    signal_slot: str,
-    config: V3Config,
-) -> str:
-    if phase == "CLOSED":
-        return "下一交易日 14:20"
-    if phase in {"PRE_SIGNAL", "WARMUP"}:
-        return "14:20 开始"
-    slots = list(config.strategy.signal_slots)
-    if signal_slot in slots:
-        index = slots.index(signal_slot)
-        if index + 1 < len(slots):
-            return f"{slots[index + 1]} 更新"
-        return f"{config.strategy.candidate_freeze_time} 冻结"
-    return "等待下一时点"
-
-
-def _candidate_empty_message(
-    *,
-    phase: str,
-    state: str,
-    live_visible: bool,
-) -> str:
-    if live_visible and state != "PRODUCTION":
-        return "模型仍处于研究观察状态，不会发布具有实盘资格的候选。"
-    if live_visible:
-        return "本时点没有股票同时通过盈利概率、下行风险、流动性和数据新鲜度门槛。"
-    if phase == "CLOSED":
-        return "今天 14:20–14:50 没有股票通过全部固定门槛。"
-    return "候选窗口尚未开始。"
-
-
-def _research_verdict(state: str, backtest: dict[str, Any]) -> str:
-    if state in {"MODEL_NOT_READY", "MODEL_NOT_DESIGNATED"}:
-        return (
-            "V9 三年滚动样本外研究尚未发布完成；当前没有实盘授权，"
-            "也不会把旧模型结果当作 V9 结论。"
-        )
-    if state == "MODEL_ARTIFACT_INVALID":
-        return (
-            "V9 模型文件校验失败；系统已关闭候选发布，等待重新生成并验证。"
-        )
-    gate_passed = bool(backtest.get("backtest_gate", {}).get("passed"))
-    if state == "PRODUCTION" and gate_passed:
-        return "三年样本外与前瞻影子门槛均已通过，当前模型具有生产资格。"
-    if int(backtest.get("candidate_events") or 0) == 0:
-        return (
-            "回测未通过：三年滚动样本外研究没有找到可在固定成本后稳定盈利、"
-            "并通过独立确认的候选政策。"
-        )
-    return "回测未通过：现有候选的收益、胜率或压力测试尚未达到生产门槛。"
-
-
-def _fact(label: str, value: str, css: str = "") -> str:
+def _status_fact(label: str, value: str, *, small: bool = False) -> str:
+    css = "value small" if small else "value"
     return (
-        "<div class='fact'>"
-        f"<span>{_e(label)}</span><strong class='{css}'>{_e(value)}</strong>"
+        '<div class="status-fact">'
+        f'<div class="label">{_e(label)}</div>'
+        f'<div class="{css}">{_e(value)}</div>'
         "</div>"
     )
 
 
 def _metric(label: str, value: str, css: str = "") -> str:
-    return f"<div class='metric'><span>{_e(label)}</span><strong class='{css}'>{_e(value)}</strong></div>"
-
-
-def _pct(value: Any, *, already_percent: bool = False) -> str:
-    try:
-        numeric = float(value)
-        if not already_percent:
-            numeric *= 100
-        return f"{numeric:+.2f}%" if already_percent else f"{numeric:.2f}%"
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _number(value: Any, digits: int = 2) -> str:
-    try:
-        return f"{float(value):.{digits}f}"
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _return_class(value: Any, threshold: float) -> str:
-    try:
-        return "good" if float(value) >= threshold else "bad"
-    except (TypeError, ValueError):
-        return ""
-
-
-def _inverse_class(value: Any, threshold: float) -> str:
-    try:
-        return "good" if float(value) <= threshold else "bad"
-    except (TypeError, ValueError):
-        return ""
-
-
-def _stress(backtest: dict[str, Any]) -> str:
-    if int(backtest.get("candidate_events") or 0) == 0:
-        return "无候选"
-    passed = backtest.get("stress", {}).get("50bps", {}).get("positive_total_return")
-    return "通过" if passed else "未通过"
-
-
-def _seconds(value: Any) -> str:
-    try:
-        return f"{float(value):.0f} 秒"
-    except (TypeError, ValueError):
-        return "—"
-
-
-def _session_coverage(manifest: dict[str, Any], config: V3Config) -> str:
-    covered = len(manifest.get("covered_slots") or [])
-    total = len(config.strategy.signal_slots)
-    missing = len(manifest.get("missing_slots") or [])
-    integrity = str(manifest.get("session_integrity_status") or "COLLECTING")
-    if integrity == "INCOMPLETE":
-        return f"{covered}/{total} 缺 {missing} 槽"
-    if integrity == "INCOMPLETE_ENTRY":
-        return (
-            f"{covered}/{total} 入场待结算 "
-            f"{int(manifest.get('pending_entry_benchmark_count') or 0)}"
-        )
-    if integrity == "COMPLETE":
-        return f"{covered}/{total} 完整"
-    return f"{covered}/{total} 收集中"
-
-
-def _integrity_class(manifest: dict[str, Any]) -> str:
-    integrity = str(manifest.get("session_integrity_status") or "")
-    if integrity == "COMPLETE":
-        return "good"
-    if integrity in {"INCOMPLETE", "INCOMPLETE_ENTRY"}:
-        return "bad"
-    return ""
-
-
-def _coverage_class(manifest: dict[str, Any], config: V3Config) -> str:
-    try:
-        coverage = float(manifest.get("tail_universe_coverage"))
-    except (TypeError, ValueError):
-        return ""
     return (
-        "good"
-        if coverage >= config.history.minimum_minute_universe_coverage
-        else "bad"
+        '<div class="metric">'
+        f'<div class="label">{_e(label)}</div>'
+        f'<div class="metric-value {css}">{_e(value)}</div>'
+        "</div>"
     )
 
 
-def _age_class(manifest: dict[str, Any], config: V3Config) -> str:
-    try:
-        age = float(manifest.get("market_data_p95_age_seconds"))
-    except (TypeError, ValueError):
-        return ""
+def _evidence_item(label: str, value: str, css: str = "") -> str:
     return (
-        "good"
-        if age <= config.execution.max_market_data_age_seconds
-        else "bad"
+        '<div class="evidence-item">'
+        f'<span class="label">{_e(label)}</span>'
+        f'<strong class="{css}">{_e(value)}</strong>'
+        "</div>"
     )
+
+
+def _compact_date(value: Any) -> str:
+    text = str(value or "").strip().replace("-", "")
+    return text[:8] if len(text) >= 8 and text[:8].isdigit() else ""
+
+
+def _display_date(value: Any) -> str:
+    text = _compact_date(value)
+    return f"{text[:4]}-{text[4:6]}-{text[6:]}" if text else "—"
+
+
+def _display_datetime(value: Any) -> str:
+    text = str(value or "").strip()
+    return text if text else "等待首次更新"
+
+
+def _month_label(value: Any) -> str:
+    text = str(value or "").replace("-", "")
+    return (
+        f"{text[:4]}-{text[4:6]}"
+        if len(text) >= 6 and text[:6].isdigit()
+        else "—"
+    )
+
+
+def _price(value: Any) -> str:
+    parsed = _float(value)
+    return f"{parsed:.2f}" if parsed is not None else "—"
+
+
+def _pct(value: Any) -> str:
+    parsed = _float(value)
+    return f"{parsed * 100:.1f}%" if parsed is not None else "—"
+
+
+def _return_pct(value: Any) -> str:
+    parsed = _float(value)
+    if parsed is None:
+        return "—"
+    css = _return_class(parsed)
+    return f'<span class="{css}">{parsed:+.2f}%</span>'
+
+
+def _signed_pct(value: Any) -> str:
+    parsed = _float(value)
+    return f"{parsed:+.3f}%" if parsed is not None else "—"
+
+
+def _ratio(value: Any) -> str:
+    parsed = _float(value)
+    return f"{parsed:.1%}" if parsed is not None else "—"
+
+
+def _return_class(value: Any) -> str:
+    parsed = _float(value)
+    if parsed is None:
+        return "neutral"
+    if parsed > 0:
+        return "positive"
+    if parsed < 0:
+        return "negative"
+    return "neutral"
+
+
+def _number(value: Any) -> str:
+    parsed = _float(value)
+    if parsed is None:
+        return "—"
+    return f"{int(parsed):,}" if parsed.is_integer() else f"{parsed:,.2f}"
+
+
+def _float(value: Any) -> float | None:
+    try:
+        parsed = float(value)
+        return parsed if pd.notna(parsed) else None
+    except (TypeError, ValueError):
+        return None
 
 
 def _e(value: Any) -> str:
-    if isinstance(value, (dict, list)):
-        value = json.dumps(value, ensure_ascii=False)
-    return html.escape(str(value or ""))
+    return escape(str(value if value is not None else ""))

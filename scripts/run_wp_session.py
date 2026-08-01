@@ -30,7 +30,14 @@ SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
 PREP_START = time(13, 40)
 RUN_START = time(14, 0)
 RUN_END = time(15, 0)
-WARMUP_SLOTS = {"14:00", "14:05", "14:10", "14:15"}
+WARMUP_SLOTS = {
+    "14:00",
+    "14:05",
+    "14:10",
+    "14:15",
+    "14:20",
+    "14:25",
+}
 MAX_SLOT_LATENESS_SECONDS = int(
     os.environ.get("WP_MAX_SLOT_LATENESS_SECONDS", "420")
 )
@@ -118,9 +125,9 @@ def run_once(
     current = now_cn()
     if (
         settlement_slot is None
-        and time(14, 55) <= current.time() < time(15, 0)
+        and time(14, 35) <= current.time() < time(14, 40)
     ):
-        settlement_slot = "14:55"
+        settlement_slot = "14:35"
     live_path = Path("data/v3/latest/wp_v3_live_features.csv")
     if settlement_slot:
         settlement_path, settlement_manifest = capture_entry_settlement_input(
@@ -136,17 +143,18 @@ def run_once(
             settlement_manifest["trade_date"]
         )
         print(
-            "WP V9 entry settlement ready: "
+            "WP V40 entry settlement ready: "
             f"slot={settlement_slot} "
             f"observed={settlement_manifest['observed_symbols']}/"
             f"{settlement_manifest['requested_symbols']}"
         )
     requested_signal = str(signal_slot or "")
     if (
-        "14:20" <= requested_signal <= "14:50"
+        requested_signal == "14:30"
         or (
             not requested_signal
-            and time(14, 20) <= current.time() <= time(14, 52)
+            and settlement_slot is None
+            and time(14, 30) <= current.time() <= time(14, 37)
         )
     ):
         source_path, source_manifest = build_live_input(root=Path.cwd(), env=env)
@@ -154,14 +162,17 @@ def run_once(
         env["WP_EXPECTED_TRADE_DATE"] = str(source_manifest["trade_date"])
         env["WP_V3_SIGNAL_SLOT"] = str(source_manifest["signal_slot"])
         print(
-            "WP V9 causal source ready: "
+            "WP V40 causal source ready: "
             f"{source_path} slot={source_manifest['signal_slot']}"
         )
-    elif current.time() > time(14, 50) and live_path.exists():
+    elif current.time() > time(14, 30) and live_path.exists():
         env["WP_V3_SOURCE_CSV"] = live_path.as_posix()
-        print("WP V9 uses the frozen 14:50 feature snapshot for close-state rendering.")
+        print(
+            "WP V40 reuses the immutable 14:30 feature snapshot for "
+            "settlement and close-state rendering."
+        )
     else:
-        print("::warning::WP V9 live source is absent before the signal window.")
+        print("::warning::WP V40 live source is absent before 14:30.")
     manifest_path = Path("outputs/json/wp_manifest.json")
     manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
@@ -221,7 +232,7 @@ def run_session() -> None:
     failures: list[str] = []
     schedule = [
         datetime.combine(current.date(), time(14, minute), CN_TZ)
-        for minute in (0, 5, 10, 15, 20, 25, 30, 35, 40, 45, 50, 55)
+        for minute in (0, 5, 10, 15, 20, 25, 30, 35, 40)
     ] + [datetime.combine(current.date(), time(15, 0), CN_TZ)]
     for scheduled_at in schedule:
         current = now_cn()
@@ -256,21 +267,16 @@ def run_session() -> None:
                     env=os.environ,
                 )
                 print(
-                    "WP V9 warmup snapshot ready: "
+                    "WP V40 warmup snapshot ready: "
                     f"slot={slot} rows={manifest['row_count']} "
                     f"coverage={manifest['tail_universe_coverage']:.2%}"
                 )
-            elif slot == "14:55":
+            elif slot == "14:30":
+                run_once(slot)
+            elif slot == "14:35":
                 run_once(settlement_slot=slot)
             else:
-                run_once(
-                    slot if slot <= "14:50" else None,
-                    settlement_slot=(
-                        slot
-                        if "14:25" <= slot <= "14:50"
-                        else None
-                    ),
-                )
+                run_once()
         except Exception as error:
             message = f"{scheduled_at:%H:%M} failed: {error}"
             failures.append(message)
@@ -288,7 +294,7 @@ def main() -> None:
         return
     if mode == "auto":
         current = now_cn()
-        if current.time() <= time(14, 57):
+        if current.time() <= time(14, 32):
             run_session()
         else:
             run_once_if_due()
