@@ -1,0 +1,1386 @@
+{
+  "backtest_gate": {
+    "failed_gates": [
+      "complete_evidence",
+      "minimum_candidates",
+      "minimum_win_rate",
+      "minimum_wilson_lower",
+      "minimum_clustered_win_lower",
+      "minimum_mean_net_return",
+      "clustered_mean_lower_nonnegative",
+      "minimum_profit_factor",
+      "50bps_stress_nonnegative"
+    ],
+    "gates": {
+      "50bps_stress_nonnegative": false,
+      "clustered_mean_lower_nonnegative": false,
+      "complete_evidence": false,
+      "minimum_candidates": false,
+      "minimum_clustered_win_lower": false,
+      "minimum_mean_net_return": false,
+      "minimum_profit_factor": false,
+      "minimum_wilson_lower": false,
+      "minimum_win_rate": false
+    },
+    "passed": false,
+    "production_authorized": false,
+    "reason": "150_day_forward_shadow_still_required"
+  },
+  "evidence_contract": {
+    "live_shadow_start_date": "20260803",
+    "retrospective_and_live_statistics_are_separate": true,
+    "retrospective_end_date": "20260731",
+    "retrospective_start_date": "20260501",
+    "user_trade_decisions_are_not_collected": true
+  },
+  "folds": [
+    {
+      "fold": 1,
+      "history_dates": 0,
+      "history_rows": 0,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20221216",
+      "test_rows": 1767,
+      "test_start": "20221020"
+    },
+    {
+      "fold": 2,
+      "history_dates": 42,
+      "history_rows": 1767,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20230222",
+      "test_rows": 1437,
+      "test_start": "20221219"
+    },
+    {
+      "fold": 3,
+      "history_dates": 84,
+      "history_rows": 3204,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20230424",
+      "test_rows": 1770,
+      "test_start": "20230223"
+    },
+    {
+      "fold": 4,
+      "history_dates": 126,
+      "history_rows": 4974,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20230628",
+      "test_rows": 1435,
+      "test_start": "20230425"
+    },
+    {
+      "fold": 5,
+      "history_dates": 168,
+      "history_rows": 6409,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20230825",
+      "test_rows": 1497,
+      "test_start": "20230629"
+    },
+    {
+      "fold": 6,
+      "history_dates": 210,
+      "history_rows": 7906,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20231101",
+      "test_rows": 1563,
+      "test_start": "20230828"
+    },
+    {
+      "fold": 7,
+      "history_dates": 252,
+      "history_rows": 9469,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20231229",
+      "test_rows": 1562,
+      "test_start": "20231102"
+    },
+    {
+      "fold": 8,
+      "history_dates": 294,
+      "history_rows": 11031,
+      "reason": "insufficient_strictly_prior_history",
+      "scored": false,
+      "test_end": "20240307",
+      "test_rows": 1621,
+      "test_start": "20240102"
+    },
+    {
+      "fold": 9,
+      "meta_calibration_end": "20240307",
+      "meta_calibration_start": "20240131",
+      "meta_train_end": "20240126",
+      "meta_train_start": "20230726",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20240307",
+      "risk_calibration_start": "20240102",
+      "risk_train_end": "20231227",
+      "risk_train_start": "20221215",
+      "scored": true,
+      "test_end": "20240513",
+      "test_rows": 1500,
+      "test_start": "20240308"
+    },
+    {
+      "fold": 10,
+      "meta_calibration_end": "20240513",
+      "meta_calibration_start": "20240410",
+      "meta_train_end": "20240403",
+      "meta_train_start": "20230922",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20240513",
+      "risk_calibration_start": "20240308",
+      "risk_train_end": "20240305",
+      "risk_train_start": "20230221",
+      "scored": true,
+      "test_end": "20240711",
+      "test_rows": 1556,
+      "test_start": "20240514"
+    },
+    {
+      "fold": 11,
+      "meta_calibration_end": "20240711",
+      "meta_calibration_start": "20240613",
+      "meta_train_end": "20240607",
+      "meta_train_start": "20231129",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20240711",
+      "risk_calibration_start": "20240514",
+      "risk_train_end": "20240509",
+      "risk_train_start": "20230421",
+      "scored": true,
+      "test_end": "20240909",
+      "test_rows": 1362,
+      "test_start": "20240712"
+    },
+    {
+      "fold": 12,
+      "meta_calibration_end": "20240909",
+      "meta_calibration_start": "20240812",
+      "meta_train_end": "20240807",
+      "meta_train_start": "20240129",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20240909",
+      "risk_calibration_start": "20240712",
+      "risk_train_end": "20240709",
+      "risk_train_start": "20230627",
+      "scored": true,
+      "test_end": "20241115",
+      "test_rows": 1652,
+      "test_start": "20240910"
+    },
+    {
+      "fold": 13,
+      "meta_calibration_end": "20241115",
+      "meta_calibration_start": "20241018",
+      "meta_train_end": "20241015",
+      "meta_train_start": "20240408",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20241115",
+      "risk_calibration_start": "20240910",
+      "risk_train_end": "20240905",
+      "risk_train_start": "20230824",
+      "scored": true,
+      "test_end": "20250115",
+      "test_rows": 1897,
+      "test_start": "20241118"
+    },
+    {
+      "fold": 14,
+      "meta_calibration_end": "20250115",
+      "meta_calibration_start": "20241217",
+      "meta_train_end": "20241212",
+      "meta_train_start": "20240611",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20250115",
+      "risk_calibration_start": "20241118",
+      "risk_train_end": "20241113",
+      "risk_train_start": "20231031",
+      "scored": true,
+      "test_end": "20250324",
+      "test_rows": 1523,
+      "test_start": "20250116"
+    },
+    {
+      "fold": 15,
+      "meta_calibration_end": "20250324",
+      "meta_calibration_start": "20250224",
+      "meta_train_end": "20250219",
+      "meta_train_start": "20240808",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20250324",
+      "risk_calibration_start": "20250116",
+      "risk_train_end": "20250113",
+      "risk_train_start": "20231228",
+      "scored": true,
+      "test_end": "20250527",
+      "test_rows": 1752,
+      "test_start": "20250325"
+    },
+    {
+      "fold": 16,
+      "meta_calibration_end": "20250527",
+      "meta_calibration_start": "20250424",
+      "meta_train_end": "20250421",
+      "meta_train_start": "20241016",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20250527",
+      "risk_calibration_start": "20250325",
+      "risk_train_end": "20250320",
+      "risk_train_start": "20240306",
+      "scored": true,
+      "test_end": "20250725",
+      "test_rows": 1572,
+      "test_start": "20250528"
+    },
+    {
+      "fold": 17,
+      "meta_calibration_end": "20250725",
+      "meta_calibration_start": "20250627",
+      "meta_train_end": "20250624",
+      "meta_train_start": "20241213",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20250725",
+      "risk_calibration_start": "20250528",
+      "risk_train_end": "20250523",
+      "risk_train_start": "20240510",
+      "scored": true,
+      "test_end": "20250923",
+      "test_rows": 1931,
+      "test_start": "20250728"
+    },
+    {
+      "fold": 18,
+      "meta_calibration_end": "20250923",
+      "meta_calibration_start": "20250826",
+      "meta_train_end": "20250821",
+      "meta_train_start": "20250220",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20250923",
+      "risk_calibration_start": "20250728",
+      "risk_train_end": "20250723",
+      "risk_train_start": "20240710",
+      "scored": true,
+      "test_end": "20251128",
+      "test_rows": 1682,
+      "test_start": "20250924"
+    },
+    {
+      "fold": 19,
+      "meta_calibration_end": "20251128",
+      "meta_calibration_start": "20251031",
+      "meta_train_end": "20251028",
+      "meta_train_start": "20250422",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20251128",
+      "risk_calibration_start": "20250924",
+      "risk_train_end": "20250919",
+      "risk_train_start": "20240906",
+      "scored": true,
+      "test_end": "20260129",
+      "test_rows": 1743,
+      "test_start": "20251201"
+    },
+    {
+      "fold": 20,
+      "meta_calibration_end": "20260129",
+      "meta_calibration_start": "20251230",
+      "meta_train_end": "20251225",
+      "meta_train_start": "20250625",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20260129",
+      "risk_calibration_start": "20251201",
+      "risk_train_end": "20251126",
+      "risk_train_start": "20241114",
+      "scored": true,
+      "test_end": "20260408",
+      "test_rows": 1830,
+      "test_start": "20260130"
+    },
+    {
+      "fold": 21,
+      "meta_calibration_end": "20260408",
+      "meta_calibration_start": "20260310",
+      "meta_train_end": "20260305",
+      "meta_train_start": "20250822",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20260408",
+      "risk_calibration_start": "20260130",
+      "risk_train_end": "20260127",
+      "risk_train_start": "20250114",
+      "scored": true,
+      "test_end": "20260610",
+      "test_rows": 1727,
+      "test_start": "20260409"
+    },
+    {
+      "fold": 22,
+      "meta_calibration_end": "20260610",
+      "meta_calibration_start": "20260513",
+      "meta_train_end": "20260508",
+      "meta_train_start": "20251029",
+      "reason": "strictly_prior_meta_and_exit_risk_models",
+      "risk_calibration_end": "20260610",
+      "risk_calibration_start": "20260409",
+      "risk_train_end": "20260403",
+      "risk_train_start": "20250321",
+      "scored": true,
+      "test_end": "20260731",
+      "test_rows": 1641,
+      "test_start": "20260611"
+    }
+  ],
+  "integrity": {
+    "day_audit": [
+      {
+        "observation_count": 5,
+        "observation_pool_count": 29,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 29,
+        "trade_date": "20260506"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 38,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 38,
+        "trade_date": "20260507"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 41,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 41,
+        "trade_date": "20260508"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 40,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 40,
+        "trade_date": "20260511"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 47,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 47,
+        "trade_date": "20260512"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 40,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 40,
+        "trade_date": "20260513"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260514"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 47,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 47,
+        "trade_date": "20260515"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 40,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 40,
+        "trade_date": "20260518"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 38,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 38,
+        "trade_date": "20260519"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 39,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 39,
+        "trade_date": "20260520"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 46,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 46,
+        "trade_date": "20260521"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 32,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 32,
+        "trade_date": "20260522"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 38,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 38,
+        "trade_date": "20260525"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 46,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 46,
+        "trade_date": "20260526"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260527"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 39,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 39,
+        "trade_date": "20260528"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 41,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 41,
+        "trade_date": "20260529"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 38,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 38,
+        "trade_date": "20260601"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 42,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 42,
+        "trade_date": "20260602"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 40,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 40,
+        "trade_date": "20260603"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 46,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 46,
+        "trade_date": "20260604"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 49,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 49,
+        "trade_date": "20260605"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 42,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 42,
+        "trade_date": "20260608"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 39,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 39,
+        "trade_date": "20260609"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 41,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 41,
+        "trade_date": "20260610"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 52,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 52,
+        "trade_date": "20260611"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 47,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 47,
+        "trade_date": "20260612"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 36,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 36,
+        "trade_date": "20260615"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 50,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 50,
+        "trade_date": "20260616"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 47,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 47,
+        "trade_date": "20260617"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260618"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260622"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 49,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 49,
+        "trade_date": "20260623"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 45,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 45,
+        "trade_date": "20260624"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 47,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 47,
+        "trade_date": "20260625"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260626"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 51,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 51,
+        "trade_date": "20260629"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260630"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 39,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 39,
+        "trade_date": "20260701"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 45,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 45,
+        "trade_date": "20260702"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 43,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 43,
+        "trade_date": "20260703"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260706"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 48,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 48,
+        "trade_date": "20260707"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 51,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 51,
+        "trade_date": "20260708"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 42,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 42,
+        "trade_date": "20260709"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 40,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 40,
+        "trade_date": "20260710"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 43,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 43,
+        "trade_date": "20260713"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 44,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 44,
+        "trade_date": "20260714"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 49,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 49,
+        "trade_date": "20260715"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 48,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 48,
+        "trade_date": "20260716"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 48,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 48,
+        "trade_date": "20260717"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 46,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 46,
+        "trade_date": "20260720"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 52,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 52,
+        "trade_date": "20260721"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 43,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 43,
+        "trade_date": "20260722"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 40,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 40,
+        "trade_date": "20260723"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 46,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 46,
+        "trade_date": "20260724"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 45,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 45,
+        "trade_date": "20260727"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 42,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 42,
+        "trade_date": "20260728"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 42,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 42,
+        "trade_date": "20260729"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 49,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 49,
+        "trade_date": "20260730"
+      },
+      {
+        "observation_count": 5,
+        "observation_pool_count": 52,
+        "observation_status": "COMPLETE",
+        "qualified_count": 0,
+        "source_rows": 52,
+        "trade_date": "20260731"
+      }
+    ],
+    "evaluated_trade_days": 62,
+    "observation_complete_days": 62,
+    "observation_incomplete_days": [],
+    "observation_target_per_day": 5,
+    "qualified_observation_overlap": 0
+  },
+  "interpretation": {
+    "conclusion": "INCOMPLETE_EVIDENCE",
+    "profitability_guaranteed": false,
+    "text": "The requested May-July evidence is not complete. No profitability claim is permitted until source coverage, T+1 truth and the five-observation integrity rule are all complete."
+  },
+  "model": {
+    "base_model_fingerprint": "2de82ebed5a7097a6072",
+    "calibration_end": "20260731",
+    "calibration_start": "20260603",
+    "contract_fingerprint": "510557d94da5da82a255",
+    "exit_risk_feature_columns": [
+      "gap_open_pct",
+      "ret_from_prev_close_pct",
+      "ret_from_open_pct",
+      "ret_5m_pct",
+      "ret_10m_pct",
+      "ret_20m_pct",
+      "bar_body_pct",
+      "bar_range_pct",
+      "bar_upper_wick_pct",
+      "bar_lower_wick_pct",
+      "tail_range_10m_pct",
+      "tail_close_position_10m",
+      "tail_return_from_1400_pct",
+      "tail_range_since_1400_pct",
+      "tail_close_position_since_1400",
+      "tail_amount_weighted_price_gap_pct",
+      "tail_realized_volatility_pct",
+      "tail_mean_abs_return_pct",
+      "tail_up_bar_share",
+      "tail_down_bar_share",
+      "tail_directional_efficiency",
+      "tail_trend_slope_pct",
+      "tail_trend_r2",
+      "tail_max_drawdown_pct",
+      "tail_rebound_from_low_pct",
+      "tail_cumulative_amount_log",
+      "tail_cumulative_amount_ratio_20d",
+      "tail_latest_amount_share",
+      "tail_amount_concentration",
+      "slot_amount_log",
+      "slot_amount_ratio_20d",
+      "tail_amount_acceleration",
+      "distance_to_up_limit_pct",
+      "distance_to_down_limit_pct",
+      "prev_day_gap_pct",
+      "prev_day_intraday_return_pct",
+      "prev_day_close_position",
+      "prev_day_upper_wick_pct",
+      "prev_day_lower_wick_pct",
+      "prev_1d_return_pct",
+      "prev_2d_return_pct",
+      "prev_3d_return_pct",
+      "prev_5d_return_pct",
+      "prev_10d_return_pct",
+      "prev_20d_return_pct",
+      "prev_5d_positive_share",
+      "prev_10d_positive_share",
+      "prev_20d_positive_share",
+      "prev_20d_volatility_pct",
+      "prev_20d_downside_volatility_pct",
+      "prev_20d_drawdown_pct",
+      "prev_5d_amplitude_pct",
+      "prev_amount_ratio_20d",
+      "prev_5d_amount_ratio_20d",
+      "prev_20d_amount_log",
+      "prev_turnover_rate",
+      "prev_turnover_ratio_20d",
+      "prev_volume_ratio",
+      "prev_pe_ttm",
+      "prev_pb",
+      "float_mv_log",
+      "total_mv_log",
+      "market_return_pct",
+      "market_breadth",
+      "market_breadth_above_2pct",
+      "market_breadth_above_5pct",
+      "market_return_dispersion_pct",
+      "market_gap_pct",
+      "market_tail_return_pct",
+      "market_tail_breadth",
+      "market_tail_dispersion_pct",
+      "market_prev_5d_return_pct",
+      "market_prev_20d_volatility_pct",
+      "industry_return_pct",
+      "industry_breadth",
+      "industry_tail_return_pct",
+      "industry_tail_breadth",
+      "up_limit_count_log",
+      "down_limit_count_log",
+      "relative_market_return_pct",
+      "relative_industry_return_pct",
+      "tail_relative_market_pct",
+      "tail_relative_industry_pct",
+      "momentum_reversal_5_20",
+      "volatility_adjusted_momentum_5d",
+      "liquidity_acceleration",
+      "tail_volume_price_confirmation",
+      "distance_to_limit_asymmetry",
+      "market_regime_strength",
+      "industry_regime_strength",
+      "relative_strength_alignment",
+      "tail_trend_quality",
+      "tail_reversal_pressure",
+      "tail_breakout_pressure",
+      "overnight_intraday_alignment",
+      "risk_adjusted_tail_return",
+      "market_dispersion_adjusted_return",
+      "industry_dispersion_proxy",
+      "return_cs_rank",
+      "open_return_cs_rank",
+      "tail_return_cs_rank",
+      "tail_efficiency_cs_rank",
+      "tail_price_gap_cs_rank",
+      "slot_amount_ratio_cs_rank",
+      "tail_amount_ratio_cs_rank",
+      "prev_5d_return_cs_rank",
+      "prev_amount_ratio_cs_rank",
+      "turnover_cs_rank",
+      "volatility_cs_rank",
+      "float_mv_cs_rank",
+      "up_limit_distance_cs_rank"
+    ],
+    "feature_version": "wp_v9_causal_features_1",
+    "fingerprint": "e60bb703becc859f189f",
+    "meta_feature_columns": [
+      "ret_from_prev_close_pct",
+      "ret_abs_pct",
+      "p_entry_fill",
+      "p_exit_fill_given_entry",
+      "p_round_trip_fill_lower",
+      "p_net_positive",
+      "p_net_positive_lower",
+      "p_conditional_net_positive",
+      "p_severe_loss",
+      "selection_score",
+      "selection_rank_pct",
+      "expected_utility_pct",
+      "expected_utility_lower_pct",
+      "downside_q10_pct",
+      "probability_model_spread",
+      "fill_probability_model_spread",
+      "selection_rank_spread",
+      "expected_return_model_spread",
+      "probability_uncertainty",
+      "utility_uncertainty_pct",
+      "context_universe_size",
+      "context_return_mean_pct",
+      "context_return_median_pct",
+      "context_return_dispersion_pct",
+      "context_breadth_positive",
+      "context_breadth_above_2pct",
+      "context_breadth_above_5pct",
+      "context_breadth_above_7pct",
+      "context_probability_mean",
+      "context_probability_dispersion",
+      "context_utility_mean_pct",
+      "return_context_relative_pct",
+      "return_context_zscore",
+      "return_rank_pct",
+      "probability_rank_pct",
+      "utility_rank_pct",
+      "selection_rank_recomputed_pct",
+      "severe_quality_rank_pct"
+    ],
+    "model_version": "wpv40-20260731-e60bb703",
+    "policy": {
+      "exit_failure_rank_max": 0.5,
+      "expected_return_min_pct": 0.0,
+      "meta_rank_min": 0.95,
+      "observation_count": 5,
+      "policy_id": "v40-1430-p0.54-e0.00-s0.35-f0.95-r0.95-x0.50-obs5",
+      "probability_min": 0.54,
+      "round_trip_fill_min": 0.95,
+      "severe_loss_max": 0.35,
+      "signal_slot": "14:30"
+    },
+    "policy_fingerprint": "c081a525fd6c767f2c27",
+    "schema_version": "wp_v40_fixed_1430_bundle_2",
+    "strategy_id": "wp_t1_net_profit_v40_1430",
+    "top_per_base_score": 12,
+    "train_end": "20260630",
+    "train_start": "20250516",
+    "trained_at": "2026-08-01T19:43:12.318047+00:00",
+    "training_data_digest": "150e6557d9b93ed433d118ee14d9e7c865cbf2befc20888479daf7d2edcace02",
+    "training_rows": 35977
+  },
+  "monthly": [
+    {
+      "evaluated_trade_days": 18,
+      "month": "202605",
+      "observations": {
+        "day_equal_weight_cumulative_return_pct": -13.612351716677907,
+        "day_equal_weight_mean_net_return_pct": -0.8040509274916978,
+        "day_equal_weight_win_rate": 0.2222222222222222,
+        "entry_fill_rate": 0.9777777777777777,
+        "events": 90,
+        "exit_fill_rate_given_entry": 0.9886363636363636,
+        "maximum_day_equal_weight_drawdown_pct": -13.43579128609752,
+        "mean_net_return_day_clustered_lower_pct": -1.160790836187263,
+        "mean_net_return_day_clustered_upper_pct": -0.49013626790360815,
+        "mean_net_return_pct": -0.8040509274916979,
+        "median_net_return_pct": -0.7108109343271993,
+        "net_return_q10_pct": -3.7683215921971134,
+        "net_return_q90_pct": 2.314895325320305,
+        "profit_factor": 0.40689578439182034,
+        "round_trip_fill_rate": 0.9666666666666667,
+        "stress": {
+          "35bps": {
+            "mean_net_return_pct": -0.8040509274916979,
+            "positive_total_return": false,
+            "win_rate": 0.3111111111111111
+          },
+          "50bps": {
+            "mean_net_return_pct": -0.9507175941583644,
+            "positive_total_return": false,
+            "win_rate": 0.28888888888888886
+          }
+        },
+        "trade_days": 18,
+        "win_rate": 0.3111111111111111,
+        "win_rate_day_clustered_lower": 0.26666666666666666,
+        "win_rate_day_clustered_upper": 0.36666666666666664,
+        "win_rate_wilson_lower": 0.22485854647009126,
+        "win_rate_wilson_upper": 0.4128282454097655,
+        "wins": 28
+      },
+      "qualified": {
+        "day_equal_weight_cumulative_return_pct": null,
+        "day_equal_weight_mean_net_return_pct": null,
+        "day_equal_weight_win_rate": null,
+        "entry_fill_rate": 0.0,
+        "events": 0,
+        "exit_fill_rate_given_entry": 0.0,
+        "maximum_day_equal_weight_drawdown_pct": null,
+        "mean_net_return_day_clustered_lower_pct": null,
+        "mean_net_return_day_clustered_upper_pct": null,
+        "mean_net_return_pct": null,
+        "median_net_return_pct": null,
+        "net_return_q10_pct": null,
+        "net_return_q90_pct": null,
+        "profit_factor": 0.0,
+        "round_trip_fill_rate": 0.0,
+        "stress": {
+          "35bps": {
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          },
+          "50bps": {
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          }
+        },
+        "trade_days": 0,
+        "win_rate": 0.0,
+        "win_rate_day_clustered_lower": 0.0,
+        "win_rate_day_clustered_upper": 0.0,
+        "win_rate_wilson_lower": 0.0,
+        "win_rate_wilson_upper": 0.0,
+        "wins": 0
+      }
+    },
+    {
+      "evaluated_trade_days": 21,
+      "month": "202606",
+      "observations": {
+        "day_equal_weight_cumulative_return_pct": -13.222014187713881,
+        "day_equal_weight_mean_net_return_pct": -0.6568595187641069,
+        "day_equal_weight_win_rate": 0.3333333333333333,
+        "entry_fill_rate": 1.0,
+        "events": 105,
+        "exit_fill_rate_given_entry": 1.0,
+        "maximum_day_equal_weight_drawdown_pct": -13.264762240946293,
+        "mean_net_return_day_clustered_lower_pct": -1.1859974365755077,
+        "mean_net_return_day_clustered_upper_pct": -0.1162333687806244,
+        "mean_net_return_pct": -0.6568595187641069,
+        "median_net_return_pct": -0.871377131444234,
+        "net_return_q10_pct": -3.5792171604429033,
+        "net_return_q90_pct": 2.0514599270843936,
+        "profit_factor": 0.5219212138167793,
+        "round_trip_fill_rate": 1.0,
+        "stress": {
+          "35bps": {
+            "mean_net_return_pct": -0.6568595187641069,
+            "positive_total_return": false,
+            "win_rate": 0.3904761904761905
+          },
+          "50bps": {
+            "mean_net_return_pct": -0.8068595187641069,
+            "positive_total_return": false,
+            "win_rate": 0.3619047619047619
+          }
+        },
+        "trade_days": 21,
+        "win_rate": 0.3904761904761905,
+        "win_rate_day_clustered_lower": 0.29523809523809524,
+        "win_rate_day_clustered_upper": 0.5142857142857142,
+        "win_rate_wilson_lower": 0.3026079173898631,
+        "win_rate_wilson_upper": 0.48607554708032286,
+        "wins": 41
+      },
+      "qualified": {
+        "day_equal_weight_cumulative_return_pct": null,
+        "day_equal_weight_mean_net_return_pct": null,
+        "day_equal_weight_win_rate": null,
+        "entry_fill_rate": 0.0,
+        "events": 0,
+        "exit_fill_rate_given_entry": 0.0,
+        "maximum_day_equal_weight_drawdown_pct": null,
+        "mean_net_return_day_clustered_lower_pct": null,
+        "mean_net_return_day_clustered_upper_pct": null,
+        "mean_net_return_pct": null,
+        "median_net_return_pct": null,
+        "net_return_q10_pct": null,
+        "net_return_q90_pct": null,
+        "profit_factor": 0.0,
+        "round_trip_fill_rate": 0.0,
+        "stress": {
+          "35bps": {
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          },
+          "50bps": {
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          }
+        },
+        "trade_days": 0,
+        "win_rate": 0.0,
+        "win_rate_day_clustered_lower": 0.0,
+        "win_rate_day_clustered_upper": 0.0,
+        "win_rate_wilson_lower": 0.0,
+        "win_rate_wilson_upper": 0.0,
+        "wins": 0
+      }
+    },
+    {
+      "evaluated_trade_days": 23,
+      "month": "202607",
+      "observations": {
+        "day_equal_weight_cumulative_return_pct": 6.590169420561143,
+        "day_equal_weight_mean_net_return_pct": 0.2970714059505381,
+        "day_equal_weight_win_rate": 0.6363636363636364,
+        "entry_fill_rate": 0.990909090909091,
+        "events": 110,
+        "exit_fill_rate_given_entry": 1.0,
+        "maximum_day_equal_weight_drawdown_pct": -3.404099402421068,
+        "mean_net_return_day_clustered_lower_pct": -0.018239250264922974,
+        "mean_net_return_day_clustered_upper_pct": 0.6285764545397811,
+        "mean_net_return_pct": 0.297071405950538,
+        "median_net_return_pct": 0.3650606703687167,
+        "net_return_q10_pct": -1.2301518340844928,
+        "net_return_q90_pct": 2.038483361839982,
+        "profit_factor": 1.6966712545752916,
+        "round_trip_fill_rate": 0.990909090909091,
+        "stress": {
+          "35bps": {
+            "mean_net_return_pct": 0.297071405950538,
+            "positive_total_return": true,
+            "win_rate": 0.6
+          },
+          "50bps": {
+            "mean_net_return_pct": 0.14843504231417445,
+            "positive_total_return": true,
+            "win_rate": 0.5636363636363636
+          }
+        },
+        "trade_days": 22,
+        "win_rate": 0.6,
+        "win_rate_day_clustered_lower": 0.5181818181818182,
+        "win_rate_day_clustered_upper": 0.6909090909090909,
+        "win_rate_wilson_lower": 0.5065704511305059,
+        "win_rate_wilson_upper": 0.6866807618098613,
+        "wins": 66
+      },
+      "qualified": {
+        "day_equal_weight_cumulative_return_pct": null,
+        "day_equal_weight_mean_net_return_pct": null,
+        "day_equal_weight_win_rate": null,
+        "entry_fill_rate": 0.0,
+        "events": 0,
+        "exit_fill_rate_given_entry": 0.0,
+        "maximum_day_equal_weight_drawdown_pct": null,
+        "mean_net_return_day_clustered_lower_pct": null,
+        "mean_net_return_day_clustered_upper_pct": null,
+        "mean_net_return_pct": null,
+        "median_net_return_pct": null,
+        "net_return_q10_pct": null,
+        "net_return_q90_pct": null,
+        "profit_factor": 0.0,
+        "round_trip_fill_rate": 0.0,
+        "stress": {
+          "35bps": {
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          },
+          "50bps": {
+            "mean_net_return_pct": null,
+            "positive_total_return": false,
+            "win_rate": null
+          }
+        },
+        "trade_days": 0,
+        "win_rate": 0.0,
+        "win_rate_day_clustered_lower": 0.0,
+        "win_rate_day_clustered_upper": 0.0,
+        "win_rate_wilson_lower": 0.0,
+        "win_rate_wilson_upper": 0.0,
+        "wins": 0
+      }
+    }
+  ],
+  "objective": "At 14:30 publish every fixed-gate qualified candidate and five separate near-gate research observations, then evaluate the immutable 14:35 entry benchmark against the T+1 close after costs.",
+  "observations": {
+    "metrics": {
+      "day_equal_weight_cumulative_return_pct": -20.09418793106592,
+      "day_equal_weight_mean_net_return_pct": -0.3562523878358191,
+      "day_equal_weight_win_rate": 0.4098360655737705,
+      "entry_fill_rate": 0.9901639344262295,
+      "events": 305,
+      "exit_fill_rate_given_entry": 0.9966887417218543,
+      "maximum_day_equal_weight_drawdown_pct": -25.955892199737352,
+      "mean_net_return_day_clustered_lower_pct": -0.7126512477458506,
+      "mean_net_return_day_clustered_upper_pct": -0.009854949701893436,
+      "mean_net_return_pct": -0.35625238783581914,
+      "median_net_return_pct": -0.1605416652126488,
+      "net_return_q10_pct": -3.1816039238686793,
+      "net_return_q90_pct": 2.1448287601904084,
+      "profit_factor": 0.6530537841595768,
+      "round_trip_fill_rate": 0.9868852459016394,
+      "stress": {
+        "35bps": {
+          "mean_net_return_pct": -0.35625238783581914,
+          "positive_total_return": false,
+          "win_rate": 0.4426229508196721
+        },
+        "50bps": {
+          "mean_net_return_pct": -0.5047769779997536,
+          "positive_total_return": false,
+          "win_rate": 0.4131147540983607
+        }
+      },
+      "trade_days": 61,
+      "win_rate": 0.4426229508196721,
+      "win_rate_day_clustered_lower": 0.36065573770491804,
+      "win_rate_day_clustered_upper": 0.5278688524590164,
+      "win_rate_wilson_lower": 0.38793686882858963,
+      "win_rate_wilson_upper": 0.49873637726457776,
+      "wins": 135
+    }
+  },
+  "policy": {
+    "exit_failure_rank_max": 0.5,
+    "expected_return_min_pct": 0.0,
+    "meta_rank_min": 0.95,
+    "observation_count": 5,
+    "policy_id": "v40-1430-p0.54-e0.00-s0.35-f0.95-r0.95-x0.50-obs5",
+    "probability_min": 0.54,
+    "round_trip_fill_min": 0.95,
+    "severe_loss_max": 0.35,
+    "signal_slot": "14:30"
+  },
+  "policy_change_disclosure": {
+    "changes": [
+      "fixed signal time changed to 14:30 only",
+      "V15 daily top-three cap removed",
+      "all fixed-gate passers form the qualified cohort",
+      "five non-qualified names form a separate research cohort"
+    ],
+    "consequence": "V15 performance cannot be reused as V40 performance; this fixed-14:30 contract requires its own retrospective and forward shadow evidence.",
+    "seed": "V15 forward-risk research"
+  },
+  "production_authorized": false,
+  "qualified": {
+    "days_with_signal": 0,
+    "metrics": {
+      "day_equal_weight_cumulative_return_pct": null,
+      "day_equal_weight_mean_net_return_pct": null,
+      "day_equal_weight_win_rate": null,
+      "entry_fill_rate": 0.0,
+      "events": 0,
+      "exit_fill_rate_given_entry": 0.0,
+      "maximum_day_equal_weight_drawdown_pct": null,
+      "mean_net_return_day_clustered_lower_pct": null,
+      "mean_net_return_day_clustered_upper_pct": null,
+      "mean_net_return_pct": null,
+      "median_net_return_pct": null,
+      "net_return_q10_pct": null,
+      "net_return_q90_pct": null,
+      "profit_factor": 0.0,
+      "round_trip_fill_rate": 0.0,
+      "stress": {
+        "35bps": {
+          "mean_net_return_pct": null,
+          "positive_total_return": false,
+          "win_rate": null
+        },
+        "50bps": {
+          "mean_net_return_pct": null,
+          "positive_total_return": false,
+          "win_rate": null
+        }
+      },
+      "trade_days": 0,
+      "win_rate": 0.0,
+      "win_rate_day_clustered_lower": 0.0,
+      "win_rate_day_clustered_upper": 0.0,
+      "win_rate_wilson_lower": 0.0,
+      "win_rate_wilson_upper": 0.0,
+      "wins": 0
+    },
+    "zero_signal_days": 62
+  },
+  "research_only": true,
+  "schema_version": "wp_v40_fixed_1430_backtest_1",
+  "source": {
+    "expected_trade_days": 62,
+    "first_source_trade_date": "20260506",
+    "fixed_slot_rows_in_requested_range": 2707,
+    "input_rows": 23368,
+    "last_source_trade_date": "20260731",
+    "last_truth_trade_date": "20260730",
+    "missing_source_trade_dates": [],
+    "pruned_frontier_rows": 36020,
+    "scored_oos_rows": 23368,
+    "selection_uses_future_truth": false,
+    "source_range_complete": true,
+    "top_per_base_score": 12,
+    "truth_range_complete": false,
+    "unexpected_source_trade_dates": [],
+    "verified_shard_rows": 215047,
+    "workflow_run_id": "30704037225"
+  },
+  "status": "INCOMPLETE"
+}

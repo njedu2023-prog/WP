@@ -1,246 +1,461 @@
 <!doctype html>
 <html lang="zh-CN">
 <head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WP V9 尾盘候选助手</title>
-<style>
-:root {
-  --ink:#151a20; --muted:#65707c; --line:#d9dee4; --paper:#ffffff;
-  --soft:#f1f4f6; --soft-2:#f7f8fa; --green:#087a43; --green-bg:#e8f5ee;
-  --red:#b42318; --red-bg:#fef0ee; --amber:#8a5300; --amber-bg:#fff4dd;
-  --blue:#175e92; --blue-bg:#eaf3f9; --header:#18212b;
-}
-*{box-sizing:border-box}
-html{scroll-behavior:smooth}
-body{margin:0;background:var(--soft);color:var(--ink);
-font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Microsoft YaHei",sans-serif;
-font-size:14px;letter-spacing:0;line-height:1.55}
-header{background:var(--header);color:#fff;border-bottom:4px solid #2f9e62}
-.header-inner{max-width:1360px;margin:auto;padding:17px 24px;display:flex;gap:28px;
-align-items:center;justify-content:space-between}
-.brand-kicker{color:#88caa6;font-size:12px;font-weight:700;margin-bottom:2px}
-h1{font-size:24px;line-height:1.25;margin:0;font-weight:760}
-.sub{color:#bdc7d0;margin-top:5px}
-.header-meta{text-align:right;min-width:220px}
-.header-meta-row{display:flex;align-items:center;justify-content:flex-end;gap:8px}
-.phase-chip{display:inline-flex;border:1px solid #6d7883;border-radius:4px;padding:3px 7px;
-font-size:12px;color:#e6ebef}
-.header-state{display:block;font-size:16px;margin-top:5px}
-.header-update{display:block;color:#9eabb6;font-size:12px;margin-top:3px}
-main{max-width:1360px;margin:auto;background:var(--paper);min-height:100vh;box-shadow:0 0 0 1px #e6e9ed}
-.decision-band{padding:20px 24px;background:var(--soft-2);border-bottom:1px solid var(--line)}
-.decision-panel{display:grid;grid-template-columns:minmax(320px,1.15fr) minmax(420px,.85fr);
-border:1px solid var(--line);border-left-width:6px;background:#fff}
-.decision-panel.good{border-left-color:var(--green);background:var(--green-bg)}
-.decision-panel.warn{border-left-color:var(--amber);background:var(--amber-bg)}
-.decision-panel.bad{border-left-color:var(--red);background:var(--red-bg)}
-.decision-copy{padding:18px 20px;display:flex;gap:13px;align-items:flex-start}
-.status-dot{width:12px;height:12px;border-radius:50%;background:currentColor;margin-top:7px;flex:0 0 auto}
-.decision-kicker{display:block;color:var(--muted);font-size:12px;font-weight:700;margin-bottom:3px}
-.decision-title{font-size:24px;line-height:1.25;margin:0 0 6px}
-.decision-text{margin:0;color:#3e4852;max-width:720px}
-.decision-facts{display:grid;grid-template-columns:repeat(2,minmax(150px,1fr));border-left:1px solid var(--line)}
-.fact{padding:14px 16px;border-bottom:1px solid var(--line);min-height:76px}
-.fact:nth-child(odd){border-right:1px solid var(--line)}
-.fact:nth-last-child(-n+2){border-bottom:0}
-.fact:last-child:nth-child(odd){grid-column:1/-1;border-right:0}
-.fact span{display:block;color:var(--muted);font-size:12px;margin-bottom:4px}
-.fact strong{font-size:18px;line-height:1.25;font-variant-numeric:tabular-nums}
-.band{padding:22px 24px;border-bottom:1px solid var(--line);scroll-margin-top:12px}
-.primary-band{padding-top:24px;padding-bottom:26px}
-.section-head{display:flex;justify-content:space-between;gap:14px;align-items:flex-start;flex-wrap:wrap}
-h2{font-size:19px;line-height:1.3;margin:0 0 6px}
-h3{font-size:15px;margin:0 0 9px}
-.section-note{margin:0 0 14px;color:var(--muted)}
-.tag{display:inline-flex;align-items:center;border:1px solid var(--line);padding:3px 7px;border-radius:4px;
-font-size:12px;background:#fff;white-space:nowrap}
-.tag.good{border-color:#9bcdb3;background:var(--green-bg);color:var(--green)}
-.tag.warn{border-color:#e3bd75;background:var(--amber-bg);color:var(--amber)}
-.metrics{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));border-top:1px solid var(--line);
-border-left:1px solid var(--line)}
-.metric{padding:14px 16px;border-right:1px solid var(--line);border-bottom:1px solid var(--line);
-min-height:82px;background:#fff}
-.metric span{display:block;color:var(--muted);font-size:12px;margin-bottom:6px}
-.metric strong{font-size:20px;line-height:1.2}
-.good{color:var(--green)} .warn{color:var(--amber)} .bad{color:var(--red)}
-.table-wrap{overflow:auto;border:1px solid var(--line)}
-table{border-collapse:collapse;width:100%;min-width:920px}
-th,td{padding:10px 12px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap}
-th{position:sticky;top:0;background:#f0f2f4;color:#48515b;font-size:12px;z-index:1}
-tbody tr:hover{background:#f7faf8}
-td.num{font-variant-numeric:tabular-nums;text-align:right}
-.empty{padding:28px 18px;border:1px dashed #b8c0c8;background:var(--soft-2);color:#48515b;text-align:center}
-.empty strong{display:block;color:var(--ink);font-size:16px;margin-bottom:4px}
-.mobile-list{display:none}
-.candidate-card,.validation-card{border:1px solid var(--line);border-radius:8px;background:#fff;padding:14px}
-.candidate-card-head,.validation-card-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;
-padding-bottom:10px;border-bottom:1px solid var(--line)}
-.candidate-card-head strong,.validation-card-head strong{font-size:17px}
-.code{display:block;color:var(--muted);font-size:12px;margin-top:1px}
-.card-primary{display:flex;align-items:flex-end;justify-content:space-between;gap:14px;padding:12px 0}
-.card-primary span{display:block;color:var(--muted);font-size:12px}
-.card-primary strong{font-size:24px;font-variant-numeric:tabular-nums}
-.card-primary small{color:var(--muted)}
-.card-stats{display:grid;grid-template-columns:repeat(2,1fr);margin:0;border-top:1px solid var(--line);
-border-left:1px solid var(--line)}
-.card-stats div{padding:9px 10px;border-right:1px solid var(--line);border-bottom:1px solid var(--line)}
-.card-stats dt{color:var(--muted);font-size:12px} .card-stats dd{margin:2px 0 0;font-weight:700}
-.truth-summary{margin:12px 0 14px}
-.two-col{display:grid;grid-template-columns:1.15fr .85fr;gap:24px}
-.gate-list{display:grid;grid-template-columns:repeat(2,minmax(180px,1fr));gap:1px;background:var(--line);
-border:1px solid var(--line)}
-.gate{padding:10px 12px;background:#fff;display:flex;justify-content:space-between;gap:10px}
-.gate .yes{color:var(--green)} .gate .no{color:var(--red)}
-.progress{height:10px;background:#e3e7eb;overflow:hidden;border-radius:4px;margin-top:8px}
-.progress div{height:100%;background:#2f9e62;width:0.0%}
-.research-verdict{padding:12px 14px;margin:4px 0 16px;border-left:4px solid var(--amber);
-background:var(--amber-bg);color:#4d3a19}
-.foot{font-size:12px;color:var(--muted);line-height:1.7}
-.disclosure{border:0}
-.disclosure>summary{cursor:pointer;list-style:none;display:flex;align-items:center;justify-content:space-between;
-gap:16px;padding:2px 0;font-weight:700}
-.disclosure>summary::-webkit-details-marker{display:none}
-.disclosure>summary::after{content:"＋";font-size:20px;color:var(--muted);font-weight:400}
-.disclosure[open]>summary::after{content:"－"}
-.disclosure-title{display:block;font-size:18px;color:var(--ink)}
-.disclosure-sub{display:block;color:var(--muted);font-size:12px;font-weight:400;margin-top:2px}
-.disclosure-body{padding-top:16px}
-.tech-footer{font-size:12px;color:var(--muted);line-height:1.7;background:var(--soft-2)}
-@media(max-width:980px){
-  .header-inner{padding:15px 16px;align-items:flex-start}
-  .decision-band,.band{padding-left:16px;padding-right:16px}
-  .decision-panel{grid-template-columns:1fr}
-  .decision-facts{border-left:0;border-top:1px solid var(--line)}
-  .two-col{grid-template-columns:1fr}
-  .metrics{grid-template-columns:repeat(2,1fr)}
-  .header-meta{min-width:0}
-}
-@media(max-width:720px){
-  body{font-size:14px}
-  .header-inner{display:block}
-  h1{font-size:21px}
-  .sub{font-size:12px}
-  .header-meta{text-align:left;margin-top:12px}
-  .header-meta-row{justify-content:flex-start}
-  .decision-copy{padding:16px}
-  .decision-title{font-size:21px}
-  .decision-facts{grid-template-columns:repeat(2,1fr)}
-  .fact{padding:11px 12px;min-height:68px}
-  .fact strong{font-size:16px}
-  .band{padding-top:19px;padding-bottom:20px}
-  .desktop-only{display:none}
-  .mobile-list{display:grid;gap:10px}
-  .metrics{grid-template-columns:repeat(2,1fr)}
-  .metric{min-height:76px;padding:12px}
-  .metric strong{font-size:17px}
-  .gate-list{grid-template-columns:1fr}
-  .disclosure-title{font-size:16px}
-}
-@media(max-width:420px){
-  .decision-facts,.metrics{grid-template-columns:1fr 1fr}
-  .fact strong{font-size:15px}
-  .card-stats{grid-template-columns:1fr 1fr}
-}
-</style>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <title>WP 尾盘决策台</title>
+  <style>
+    :root {
+      --page: #f5f5f7;
+      --surface: #ffffff;
+      --surface-soft: #fafafa;
+      --text: #1d1d1f;
+      --muted: #6e6e73;
+      --faint: #86868b;
+      --line: #d2d2d7;
+      --line-soft: #e8e8ed;
+      --blue: #0071e3;
+      --green: #16823b;
+      --green-soft: #eff9f2;
+      --amber: #9a6700;
+      --amber-soft: #fff8e8;
+      --red: #c9342f;
+      --red-soft: #fff2f1;
+      --shadow: 0 12px 30px rgba(0, 0, 0, .045);
+    }
+    * { box-sizing: border-box; }
+    html { background: var(--page); }
+    body {
+      margin: 0;
+      color: var(--text);
+      background: var(--page);
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text",
+        "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+      font-size: 15px;
+      line-height: 1.5;
+      letter-spacing: 0;
+      -webkit-font-smoothing: antialiased;
+    }
+    button { font: inherit; letter-spacing: 0; }
+    .topbar {
+      position: sticky;
+      top: 0;
+      z-index: 20;
+      background: rgba(245, 245, 247, .88);
+      border-bottom: 1px solid rgba(210, 210, 215, .85);
+      backdrop-filter: saturate(180%) blur(18px);
+    }
+    .topbar-inner {
+      width: min(1240px, calc(100% - 36px));
+      min-height: 48px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .brand { font-size: 14px; font-weight: 700; }
+    .top-meta {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      color: var(--muted);
+      font-size: 12px;
+      white-space: nowrap;
+    }
+    .page {
+      width: min(1240px, calc(100% - 36px));
+      margin: 0 auto;
+      padding: 28px 0 54px;
+    }
+    .headline {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) auto;
+      align-items: end;
+      gap: 24px;
+      padding: 8px 2px 22px;
+    }
+    h1, h2, h3, p { margin: 0; }
+    h1 {
+      font-size: 30px;
+      line-height: 1.16;
+      font-weight: 720;
+      letter-spacing: 0;
+    }
+    .subtitle {
+      margin-top: 7px;
+      color: var(--muted);
+      font-size: 14px;
+    }
+    .mode {
+      min-width: 180px;
+      text-align: right;
+    }
+    .mode-label { color: var(--muted); font-size: 12px; }
+    .mode-value { margin-top: 2px; font-weight: 680; font-size: 15px; }
+    .status-panel {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) repeat(3, minmax(145px, .55fr));
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .status-main {
+      padding: 23px 24px;
+      border-right: 1px solid var(--line-soft);
+    }
+    .status-kicker {
+      color: #c9342f;
+      font-size: 12px;
+      font-weight: 700;
+    }
+    .status-title {
+      margin-top: 4px;
+      font-size: 23px;
+      line-height: 1.22;
+      font-weight: 730;
+    }
+    .status-copy {
+      max-width: 660px;
+      margin-top: 8px;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .status-fact {
+      padding: 20px 18px;
+      border-right: 1px solid var(--line-soft);
+    }
+    .status-fact:last-child { border-right: 0; }
+    .label { color: var(--muted); font-size: 12px; }
+    .value { margin-top: 4px; font-size: 19px; font-weight: 700; }
+    .value.small { font-size: 15px; line-height: 1.35; }
+    .section {
+      margin-top: 18px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .section-head {
+      min-height: 64px;
+      padding: 16px 20px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 18px;
+      border-bottom: 1px solid var(--line-soft);
+    }
+    .section-title { font-size: 17px; font-weight: 720; }
+    .section-sub { margin-top: 2px; color: var(--muted); font-size: 12px; }
+    .count {
+      min-width: 38px;
+      text-align: right;
+      font-size: 19px;
+      font-weight: 730;
+    }
+    .notice {
+      margin: 16px 20px;
+      padding: 13px 14px;
+      border-left: 3px solid var(--blue);
+      background: #f4f8fd;
+      color: #36536f;
+      font-size: 13px;
+    }
+    .notice.amber {
+      border-left-color: #d6a229;
+      background: var(--amber-soft);
+      color: #6d5213;
+    }
+    .notice.red {
+      border-left-color: var(--red);
+      background: var(--red-soft);
+      color: #7f2a27;
+    }
+    .empty {
+      padding: 34px 20px 38px;
+      text-align: center;
+      color: var(--muted);
+    }
+    .empty strong {
+      display: block;
+      color: var(--text);
+      font-size: 16px;
+      margin-bottom: 5px;
+    }
+    .table-wrap { overflow-x: auto; }
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      min-width: 900px;
+    }
+    th {
+      padding: 11px 14px;
+      color: var(--muted);
+      background: var(--surface-soft);
+      border-bottom: 1px solid var(--line-soft);
+      text-align: left;
+      font-size: 12px;
+      font-weight: 650;
+      white-space: nowrap;
+    }
+    td {
+      padding: 14px;
+      border-bottom: 1px solid var(--line-soft);
+      vertical-align: middle;
+      white-space: nowrap;
+    }
+    tbody tr:last-child td { border-bottom: 0; }
+    tbody tr:hover { background: #fbfbfd; }
+    .stock { font-weight: 700; }
+    .stock-name { color: var(--muted); font-size: 12px; }
+    .positive { color: var(--red); font-weight: 700; }
+    .negative { color: var(--green); font-weight: 700; }
+    .neutral { color: var(--muted); }
+    .tag {
+      display: inline-block;
+      padding: 2px 7px;
+      border: 1px solid var(--line);
+      border-radius: 5px;
+      color: var(--muted);
+      background: var(--surface);
+      font-size: 11px;
+      font-weight: 650;
+    }
+    .tag.good {
+      color: var(--green);
+      border-color: #a8d8b5;
+      background: var(--green-soft);
+    }
+    .tag.warn {
+      color: var(--amber);
+      border-color: #e7ca82;
+      background: var(--amber-soft);
+    }
+    .reason {
+      max-width: 320px;
+      white-space: normal;
+      color: var(--muted);
+      font-size: 12px;
+    }
+    .metric-grid {
+      display: grid;
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+    }
+    .metric {
+      padding: 18px 20px;
+      border-right: 1px solid var(--line-soft);
+    }
+    .metric:last-child { border-right: 0; }
+    .metric-value {
+      margin-top: 3px;
+      font-size: 21px;
+      font-weight: 730;
+    }
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+    }
+    .split > div { padding: 20px; }
+    .split > div:first-child { border-right: 1px solid var(--line-soft); }
+    .evidence-title { font-size: 14px; font-weight: 700; }
+    .evidence-copy { margin-top: 7px; color: var(--muted); font-size: 13px; }
+    .evidence-list {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: 14px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .evidence-item { padding: 12px 12px 0 0; }
+    .evidence-item strong { display: block; margin-top: 2px; }
+    .segment {
+      display: inline-flex;
+      padding: 2px;
+      gap: 2px;
+      background: #ececf0;
+      border-radius: 7px;
+    }
+    .segment button {
+      border: 0;
+      border-radius: 5px;
+      padding: 6px 10px;
+      color: var(--muted);
+      background: transparent;
+      cursor: pointer;
+      font-size: 12px;
+    }
+    .segment button.active {
+      color: var(--text);
+      background: var(--surface);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, .08);
+    }
+    .footer {
+      padding: 24px 4px 0;
+      color: var(--faint);
+      font-size: 12px;
+      text-align: center;
+    }
+    @media (max-width: 900px) {
+      .status-panel { grid-template-columns: 1fr 1fr; }
+      .status-main { grid-column: 1 / -1; border-right: 0; border-bottom: 1px solid var(--line-soft); }
+      .status-fact { border-bottom: 1px solid var(--line-soft); }
+      .status-fact:nth-child(3) { border-right: 0; }
+      .status-fact:last-child { grid-column: 1 / -1; border-bottom: 0; }
+      .metric-grid { grid-template-columns: repeat(2, 1fr); }
+      .metric { border-bottom: 1px solid var(--line-soft); }
+      .metric:nth-child(2n) { border-right: 0; }
+      .split { grid-template-columns: 1fr; }
+      .split > div:first-child { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+    }
+    @media (max-width: 640px) {
+      .topbar-inner, .page { width: min(100% - 24px, 1240px); }
+      .top-meta span:first-child { display: none; }
+      .page { padding-top: 20px; }
+      .headline { grid-template-columns: 1fr; gap: 12px; }
+      h1 { font-size: 25px; }
+      .mode { text-align: left; }
+      .status-panel { grid-template-columns: 1fr; }
+      .status-main, .status-fact {
+        grid-column: auto;
+        border-right: 0;
+        border-bottom: 1px solid var(--line-soft);
+      }
+      .status-fact:last-child { grid-column: auto; }
+      .status-title { font-size: 20px; }
+      .section-head { align-items: flex-start; }
+      .metric-grid { grid-template-columns: 1fr 1fr; }
+      .metric { padding: 15px 14px; }
+      .metric-value { font-size: 18px; }
+      .evidence-list { grid-template-columns: 1fr; }
+      .segment { width: 100%; }
+      .segment button { flex: 1; }
+    }
+  </style>
 </head>
 <body>
-<header><div class="header-inner">
-  <div>
-    <div class="brand-kicker">WP V9 · 可成交概率 × 条件收益</div>
-    <h1>尾盘候选助手</h1>
-    <div class="sub">14:20–14:50 观察全部合格票；没有合格票时明确保持空仓</div>
-  </div>
-  <div class="header-meta">
-    <div class="header-meta-row"><strong>20260730</strong><span class="phase-chip">收盘复盘</span></div>
-    <strong class="header-state warn">影子观察（回测未通过）</strong>
-    <span class="header-update">更新于 2026-07-30 17:37:30</span>
-  </div>
-</div></header>
-<main>
-<section class="decision-band" aria-labelledby="decision-title">
-  <div class="decision-panel warn">
-    <div class="decision-copy">
-      <span class="status-dot warn" aria-hidden="true"></span>
-      <div>
-        <span class="decision-kicker">现在该怎么做</span>
-        <h2 class="decision-title" id="decision-title">已收盘，不再买入</h2>
-        <p class="decision-text">14:50 后禁止新增候选，15:00 后页面只用于查看冻结记录和 T+1 验证结果。</p>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <div class="brand">WP · T+1 尾盘决策</div>
+      <div class="top-meta">
+        <span>固定决策 14:30</span>
+        <span>2026-07-30 17:37:30</span>
       </div>
     </div>
-    <div class="decision-facts" aria-label="当前交易摘要">
-      <div class='fact'><span>现在可用候选</span><strong class=''>0</strong></div>
-      <div class='fact'><span>今日曾出现</span><strong class=''>0</strong></div>
-      <div class='fact'><span>数据状态</span><strong class=''>记录已冻结</strong></div>
-      <div class='fact'><span>待结算入场</span><strong class=''>0</strong></div>
-      <div class='fact'><span>下一节点</span><strong class=''>下一交易日 14:20</strong></div>
-    </div>
-  </div>
-</section>
-<section class="band primary-band" id="candidates">
-  <div class="section-head">
-    <div><h2>今日候选记录</h2><p class="section-note">交易窗口结束后只保留冻结记录，不再新增或替换候选。</p></div>
-    <span class="tag warn">仅研究观察</span>
-  </div>
-  <div class="empty"><strong>当前没有候选</strong>今天 14:20–14:50 没有股票通过全部固定门槛。</div>
-</section>
+  </header>
 
-<section class="band" id="truth">
-  <div class="section-head">
-    <div><h2>T+1 真值结果</h2><p class="section-note">使用信号后下一根 5 分钟线锁定的参考成交价，按下一交易日收盘价并扣除固定成本计算。</p></div>
-    <span class="tag">模型候选，不等于人工成交</span>
-  </div>
-  
-  <div class="empty"><strong>暂无候选需要验证</strong>候选出现后，会在下一交易日收盘后自动补齐净收益结果。</div>
-</section>
+  <main class="page">
+    <section class="headline">
+      <div>
+        <h1>尾盘候选与真实验证</h1>
+        <p class="subtitle">14:30 一次决策 · 14:35 可成交基准 · T+1 收盘退出 · 人工决定是否买入</p>
+      </div>
+      <div class="mode">
+        <div class="mode-label">当前运行状态</div>
+        <div class="mode-value">研究影子观察</div>
+      </div>
+    </section>
 
-<section class="band" id="research">
-  <details class="disclosure">
-    <summary>
-      <span><span class="disclosure-title">模型研究与上线条件</span>
-      <span class="disclosure-sub">三年样本外结果、150 日影子进度和全部晋级门槛</span></span>
-    </summary>
-    <div class="disclosure-body">
-      <div class="research-verdict">回测未通过：三年滚动样本外研究没有找到可在固定成本后稳定盈利、并通过独立确认的候选政策。</div>
-      <div class="two-col">
-        <div><h3>三年样本外证据</h3>
-          <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
-            <div class='metric'><span>候选事件</span><strong class=''>0</strong></div>
-            <div class='metric'><span>候选胜率</span><strong class=''>—</strong></div>
-            <div class='metric'><span>按日聚类 95% 下界</span><strong class=''>—</strong></div>
-            <div class='metric'><span>平均净收益</span><strong class=''>—</strong></div>
-            <div class='metric'><span>Profit Factor</span><strong class=''>—</strong></div>
-            <div class='metric'><span>50bp 压力测试</span><strong class=''>无候选</strong></div>
+    <section class="status-panel">
+      <div class="status-main">
+        <div class="status-kicker">数据或账本异常</div>
+        <div class="status-title">暂不使用本次名单</div>
+        <p class="status-copy">完整性检查未通过。系统不会用缺失数据补足候选或研究观察。</p>
+      </div>
+      <div class="status-fact"><div class="label">合格候选</div><div class="value">已冻结</div></div>
+      <div class="status-fact"><div class="label">研究观察</div><div class="value">历史可查</div></div>
+      <div class="status-fact"><div class="label">数据状态</div><div class="value small">research_ready</div></div>
+    </section>
+
+    
+
+    
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">T+1 真实验证</h2>
+          <p class="section-sub">同一成交合同，合格候选与研究观察分别统计；不记录人工是否买入</p>
+        </div>
+        <div class="segment" role="tablist" aria-label="验证组别">
+          <button class="active" type="button" data-cohort-tab="QUALIFIED">合格候选</button>
+          <button type="button" data-cohort-tab="OBSERVATION">研究观察</button>
+        </div>
+      </div>
+      <div data-cohort-panel="QUALIFIED">
+        <div class="metric-grid"><div class="metric"><div class="label">样本</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">已验证</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">覆盖交易日</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">胜率</div><div class="metric-value ">—</div></div><div class="metric"><div class="label">平均净收益</div><div class="metric-value neutral">—</div></div></div>
+        <div class="empty"><strong>暂无验证记录</strong>新合同尚未形成该组的可验证样本。</div>
+      </div>
+      <div data-cohort-panel="OBSERVATION" hidden>
+        <div class="metric-grid"><div class="metric"><div class="label">样本</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">已验证</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">覆盖交易日</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">胜率</div><div class="metric-value ">—</div></div><div class="metric"><div class="label">平均净收益</div><div class="metric-value neutral">—</div></div></div>
+        <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
+        <div class="empty"><strong>暂无验证记录</strong>新合同尚未形成该组的可验证样本。</div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">证据与上线边界</h2>
+          <p class="section-sub">2026-05-01 - 2026-07-31 回测；2026-08-03 起真实影子统计</p>
+        </div>
+      </div>
+      <div class="split">
+        <div>
+          <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
+          <p class="evidence-copy">只使用当日 14:30 前可见信息，按统一 14:35 入场和 T+1 收盘合同重放。</p><div class="evidence-list"><div class="evidence-item"><span class="label">合格样本</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">候选交易日</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">胜率</span><strong class="">0.0%</strong></div><div class="evidence-item"><span class="label">平均净收益</span><strong class="neutral">—</strong></div><div class="evidence-item"><span class="label">Profit Factor</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">50bp 压力收益</span><strong class="neutral">—</strong></div></div><div class="table-wrap compact-table"><table><thead><tr><th>月份</th><th>合格样本</th><th>候选日</th><th>胜率</th><th>平均净收益</th><th>观察样本</th></tr></thead><tbody><tr><td>2026-05</td><td>0</td><td>0</td><td>0.0%</td><td>—</td><td>90</td></tr><tr><td>2026-06</td><td>0</td><td>0</td><td>0.0%</td><td>—</td><td>105</td></tr><tr><td>2026-07</td><td>0</td><td>0</td><td>0.0%</td><td>—</td><td>110</td></tr></tbody></table></div><div class="notice amber">回测选择已冻结，但仍有 T+1 真值待闭合。待真值只补收益，不重选股票、不重训模型。</div>
+        </div>
+        <div>
+          <h3 class="evidence-title">2026 年 8 月起真实影子运行</h3>
+          <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
+          <div class="evidence-list">
+            <div class="evidence-item"><span class="label">已运行交易日</span><strong class="">0</strong></div>
+            <div class="evidence-item"><span class="label">合格候选日</span><strong class="">0</strong></div>
+            <div class="evidence-item"><span class="label">已验证候选</span><strong class="">0</strong></div>
           </div>
         </div>
-        <div><h3>前瞻影子进度</h3>
-          <strong>0 / 150 个交易日</strong>
-          <div class="progress" aria-label="150 日影子进度"><div></div></div>
-          <p class="foot">只有三年回测和至少 150 个真实交易日的影子验证全部通过，模型才有资格进入生产。策略合同发生实质变化后重新计时。</p>
-          <div class="gate-list"><div class='gate'><span>三年回测</span><strong class='no'>未通过</strong></div><div class='gate'><span>shadow_bound_to_exact_model</span><strong class='yes'>通过</strong></div><div class='gate'><span>影子交易日</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子候选日</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子候选数量</span><strong class='no'>未通过</strong></div><div class='gate'><span>影子胜率</span><strong class='no'>未通过</strong></div><div class='gate'><span>胜率置信下界</span><strong class='no'>未通过</strong></div><div class='gate'><span>按日胜率下界</span><strong class='no'>未通过</strong></div><div class='gate'><span>平均净收益</span><strong class='no'>未通过</strong></div><div class='gate'><span>按日收益下界</span><strong class='no'>未通过</strong></div><div class='gate'><span>净收益中位数</span><strong class='no'>未通过</strong></div><div class='gate'><span>盈亏因子</span><strong class='no'>未通过</strong></div><div class='gate'><span>入场可成交率</span><strong class='no'>未通过</strong></div><div class='gate'><span>退出可成交率</span><strong class='no'>未通过</strong></div><div class='gate'><span>概率校准误差</span><strong class='no'>未通过</strong></div><div class='gate'><span>50bp 压力测试</span><strong class='no'>未通过</strong></div></div>
+      </div>
+      <div class="notice amber"><strong>V15 仅作为研究种子：</strong> 55 支 / 29 日，平均净收益 +0.455%。V15 使用多个早段时点和每日 Top3，与当前固定 14:30、合格不限数量的合同不同，不能直接当作新系统盈利证据。</div>
+    </section>
+
+    
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">系统合同</h2>
+          <p class="section-sub">所有时间、价格和统计口径在信号形成前固定</p>
         </div>
       </div>
-    </div>
-  </details>
-</section>
-<section class="band"><details class="disclosure"><summary><span><span class="disclosure-title">样本外模型诊断</span><span class="disclosure-sub">排序能力、逐层淘汰漏斗和每时点 Top-N；不会改变固定门槛</span></span></summary><div class="disclosure-body"><div class="metrics" style="grid-template-columns:repeat(4,1fr)"><div class='metric'><span>概率 ROC AUC</span><strong class=''>0.605</strong></div><div class='metric'><span>概率-收益秩相关</span><strong class=''>-0.054</strong></div><div class='metric'><span>选择分 ROC AUC</span><strong class=''>0.480</strong></div><div class='metric'><span>选择分-收益秩相关</span><strong class=''>0.073</strong></div></div><h3 style="margin-top:16px">逐层淘汰漏斗</h3><div class="table-wrap"><table><thead><tr><th>门槛</th><th>单项通过</th><th>单项比例</th><th>累计通过</th><th>累计比例</th></tr></thead><tbody><tr><td>可成交与流动性</td><td class='num'>1,551,890</td><td class='num'>100.00%</td><td class='num'>1,551,890</td><td class='num'>100.00%</td></tr><tr><td>此前样本外政策已授权</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>全部候选门槛</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr><tr><td>最终政策</td><td class='num'>0</td><td class='num'>0.00%</td><td class='num'>0</td><td class='num'>0.00%</td></tr></tbody></table></div><h3 style="margin-top:16px">每时点 Top-N 诊断</h3><p class="foot">仅检验排序能力；这些诊断组合没有被用来回填或改写固定策略。</p><div class="table-wrap"><table><thead><tr><th>评分</th><th>Top-N</th><th>事件</th><th>胜率</th><th>Wilson 下界</th><th>平均净收益</th></tr></thead><tbody><tr><td>全路径净盈利概率</td><td class='num'>1</td><td class='num'>2,258</td><td class='num'>40.97%</td><td class='num'>38.95%</td><td class='num'>-0.50%</td></tr><tr><td>全路径净盈利概率</td><td class='num'>3</td><td class='num'>5,888</td><td class='num'>42.10%</td><td class='num'>40.85%</td><td class='num'>-0.35%</td></tr><tr><td>全路径净盈利概率</td><td class='num'>5</td><td class='num'>9,307</td><td class='num'>42.03%</td><td class='num'>41.03%</td><td class='num'>-0.34%</td></tr><tr><td>综合选择分</td><td class='num'>1</td><td class='num'>3,020</td><td class='num'>26.36%</td><td class='num'>24.82%</td><td class='num'>-0.16%</td></tr><tr><td>综合选择分</td><td class='num'>3</td><td class='num'>7,977</td><td class='num'>24.67%</td><td class='num'>23.74%</td><td class='num'>-0.14%</td></tr><tr><td>综合选择分</td><td class='num'>5</td><td class='num'>12,669</td><td class='num'>23.90%</td><td class='num'>23.17%</td><td class='num'>-0.16%</td></tr></tbody></table></div></div></details></section>
-<section class="band"><details class="disclosure"><summary><span><span class="disclosure-title">为什么没有成为候选</span><span class="disclosure-sub">查看接近门槛但未通过的股票及具体原因；这些股票不是候选名单</span></span></summary><div class="disclosure-body"><div class="empty">当前没有可解释的近门槛样本。</div></div></details></section>
-<section class="band">
-  <details class="disclosure">
-    <summary><span><span class="disclosure-title">历史因果回放</span>
-    <span class="disclosure-sub">重建的样本外结果，仅用于研究，不冒充实时信号</span></span></summary>
-    <div class="disclosure-body"><div class="empty"><strong>暂无候选需要验证</strong>候选出现后，会在下一交易日收盘后自动补齐净收益结果。</div></div>
-  </details>
-</section>
-<section class="band">
-  <details class="disclosure">
-    <summary><span><span class="disclosure-title">交易与统计口径</span>
-    <span class="disclosure-sub">查看信号时点、成本、入场价和退出规则</span></span></summary>
-    <div class="disclosure-body foot">信号时点：14:20, 14:25, 14:30, 14:35, 14:40, 14:45, 14:50；参考入场：信号后 5 分钟收盘价再加 10bp；
-    费用及退出影响：25bp；基准全成本：35bp；参考订单：100,000 元；
-    退出：下一 A 股交易日 14:57 提交跌停价限价卖单参加收盘集合竞价；同一股票当日首次通过即锁定信号与后续结算价；人工实际成交与模型候选统计相互独立。</div>
-  </details>
-</section>
-<section class="band tech-footer">报告版本 2026-07-30 17:37:30 · 政策指纹 286ec59d00afd7f8e80d · 模型指纹 16695b7fab38a5428f70</section>
-</main>
-</body></html>
+      <div class="split">
+        <div>
+          <h3 class="evidence-title">执行合同</h3>
+          <p class="evidence-copy">14:30 形成候选；14:35 五分钟收盘价加 10bp 作为影子入场价；T+1 参与收盘集合竞价卖出；往返成本 25bp。</p>
+        </div>
+        <div>
+          <h3 class="evidence-title">统计合同</h3>
+          <p class="evidence-copy">合格候选可以为 0，全部通过者均展示。研究观察固定 5 支，只做比较研究。两组共享真值合同但不合并统计，用户实盘选择不进入系统。</p>
+        </div>
+      </div>
+    </section>
+    
+    <section class="section"><div class="section-head"><div><h2 class="section-title">旧系统历史说明</h2><p class="section-sub">旧版盘中记录保留审计，但不计入固定 14:30 新合同</p></div></div><div class="notice amber">旧系统回补、盘后生成名单以及不同入场合同的记录，均不计入 2026 年 8 月起的真实影子统计。</div></section>
+
+    <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
+  </main>
+  <script>
+    document.querySelectorAll('[data-cohort-tab]').forEach(function (button) {
+      button.addEventListener('click', function () {
+        var cohort = button.getAttribute('data-cohort-tab');
+        document.querySelectorAll('[data-cohort-tab]').forEach(function (item) {
+          item.classList.toggle('active', item === button);
+        });
+        document.querySelectorAll('[data-cohort-panel]').forEach(function (panel) {
+          panel.hidden = panel.getAttribute('data-cohort-panel') !== cohort;
+        });
+      });
+    });
+  </script>
+</body>
+</html>
