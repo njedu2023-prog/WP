@@ -270,6 +270,7 @@ def test_audit_accepts_both_complete_source_families() -> None:
         mappings,
         target_dates=DATES,
         family_query_failures={"futures": 0, "options": 0},
+        expected_previous_dates=PREVIOUS,
     )
     assert audit["futures"]["passed"]
     assert audit["options"]["passed"]
@@ -293,6 +294,7 @@ def test_audit_can_admit_futures_when_options_permission_fails() -> None:
         mappings,
         target_dates=DATES,
         family_query_failures={"futures": 0, "options": 1},
+        expected_previous_dates=PREVIOUS,
     )
     assert audit["futures"]["passed"]
     assert not audit["options"]["passed"]
@@ -318,6 +320,32 @@ def test_audit_rejects_outcome_contamination() -> None:
         mappings,
         target_dates=DATES,
         family_query_failures={"futures": 0, "options": 0},
+        expected_previous_dates=PREVIOUS,
     )
     assert not audit["full_backfill_authorized"]
     assert audit["forbidden_columns"] == ["target_net_return"]
+
+
+def test_audit_rejects_non_adjacent_previous_trade_date() -> None:
+    mappings, futures, indices, basics, options, funds = _frames()
+    features = build_derivative_features(
+        DATES,
+        PREVIOUS,
+        mappings,
+        futures,
+        indices,
+        basics,
+        options,
+        funds,
+    )
+    wrong = dict(PREVIOUS)
+    wrong[DATES[0]] = "20230823"
+    audit = audit_probe_contract(
+        features,
+        mappings,
+        target_dates=DATES,
+        family_query_failures={"futures": 0, "options": 0},
+        expected_previous_dates=wrong,
+    )
+    assert not audit["previous_trade_dates_exact"]
+    assert not audit["full_backfill_authorized"]

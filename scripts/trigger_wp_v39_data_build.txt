@@ -1,0 +1,5 @@
+protocol=wp_v39_tminus1_derivatives_data_1
+probe_run_id=30686915899
+probe_artifact_id=8814261676
+requested_at=2026-08-01T06:05:00Z
+reason=build_authorized_three_year_outcome_blind_derivatives_data

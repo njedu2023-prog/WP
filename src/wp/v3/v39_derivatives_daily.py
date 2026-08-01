@@ -336,6 +336,7 @@ def audit_probe_contract(
     *,
     target_dates: Iterable[str],
     family_query_failures: dict[str, int],
+    expected_previous_dates: dict[str, str] | None = None,
 ) -> dict[str, Any]:
     dates = tuple(str(value) for value in target_dates)
     normalized_mapping = normalize_mapping(mappings)
@@ -349,6 +350,23 @@ def audit_probe_contract(
         len(features)
         and features["v39_tminus1_causal"].fillna(False).astype(bool).all()
     )
+    previous_date_exact = True
+    if expected_previous_dates is not None:
+        actual_previous = dict(
+            zip(
+                features["trade_date"].astype(str),
+                features["source_trade_date"].astype(str),
+                strict=False,
+            )
+        )
+        previous_date_exact = bool(
+            len(actual_previous) == len(dates)
+            and all(
+                actual_previous.get(date)
+                == str(expected_previous_dates.get(date, ""))
+                for date in dates
+            )
+        )
     forbidden = sorted(
         column
         for column in features.columns
@@ -375,6 +393,7 @@ def audit_probe_contract(
     futures_passed = bool(
         identity_exact
         and causal
+        and previous_date_exact
         and not forbidden
         and int(family_query_failures.get("futures", 0)) == 0
         and len(normalized_mapping) == expected_mapping
@@ -386,6 +405,7 @@ def audit_probe_contract(
     options_passed = bool(
         identity_exact
         and causal
+        and previous_date_exact
         and not forbidden
         and int(family_query_failures.get("options", 0)) == 0
         and option_complete_rate == 1.0
@@ -406,6 +426,7 @@ def audit_probe_contract(
         "feature_rows": int(len(features)),
         "identity_exact": identity_exact,
         "causal_tminus1_dates": causal,
+        "previous_trade_dates_exact": previous_date_exact,
         "forbidden_columns": forbidden,
         "mapping_rows": int(len(normalized_mapping)),
         "expected_mapping_rows": expected_mapping,

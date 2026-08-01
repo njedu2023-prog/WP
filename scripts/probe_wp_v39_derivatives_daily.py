@@ -238,6 +238,7 @@ def main() -> int:
         mappings,
         target_dates=PROBE_DATES,
         family_query_failures=family_failures,
+        expected_previous_dates=previous_dates,
     )
 
     artifact_paths = {
