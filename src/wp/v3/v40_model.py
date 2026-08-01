@@ -27,10 +27,12 @@ from .v40 import (
 )
 
 
-V40_MODEL_SCHEMA_VERSION = "wp_v40_fixed_1430_bundle_1"
+V40_MODEL_SCHEMA_VERSION = "wp_v40_fixed_1430_bundle_2"
 META_TRAIN_DAYS = 126
 META_CALIBRATION_DAYS = 21
-RISK_TRAIN_DAYS = 126
+# Exit failures are rare. Keep one full trading year so every fitted risk
+# model clears the shared 5,000-row minimum without weakening that standard.
+RISK_TRAIN_DAYS = 252
 RISK_CALIBRATION_DAYS = 42
 PURGE_DAYS = 2
 

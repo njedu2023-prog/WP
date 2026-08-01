@@ -4,6 +4,14 @@ import pandas as pd
 
 from wp.v3.cohorts import select_live_cohorts
 from wp.v3.contracts import V3Config
+from wp.v3.v40_model import (
+    META_CALIBRATION_DAYS,
+    META_TRAIN_DAYS,
+    PURGE_DAYS,
+    RISK_CALIBRATION_DAYS,
+    RISK_TRAIN_DAYS,
+    V40_MODEL_SCHEMA_VERSION,
+)
 from wp.v3.v40 import (
     V40Policy,
     attach_v40_policy_gates,
@@ -69,6 +77,15 @@ def two_day_frame() -> pd.DataFrame:
             )
         rows.append(row(date, f"LATE{day_index}", slot="14:35"))
     return pd.DataFrame(rows)
+
+
+def test_v40_uses_a_full_year_for_rare_exit_risk_only() -> None:
+    assert V40_MODEL_SCHEMA_VERSION == "wp_v40_fixed_1430_bundle_2"
+    assert META_TRAIN_DAYS == 126
+    assert META_CALIBRATION_DAYS == 21
+    assert RISK_TRAIN_DAYS == 252
+    assert RISK_CALIBRATION_DAYS == 42
+    assert PURGE_DAYS == 2
 
 
 def test_v40_has_all_passers_and_exactly_five_separate_observations() -> None:
