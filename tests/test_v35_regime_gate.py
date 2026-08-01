@@ -4,6 +4,10 @@ import numpy as np
 import pandas as pd
 
 from wp.v3.v35_regime_gate import (
+    MINIMUM_CALIBRATION_ROWS,
+    MINIMUM_TRAIN_ROWS,
+    MODEL_CALIBRATION_DAYS,
+    MODEL_TRAIN_DAYS,
     PATH_MEDIAN_BASE_FEATURES,
     V35_REGIME_FEATURES,
     FrozenRegimePolicy,
@@ -16,6 +20,11 @@ from wp.v3.v35_regime_gate import (
     select_regime_candidates,
     validate_feature_contract,
 )
+
+
+def test_minimum_rows_follow_frozen_day_windows() -> None:
+    assert MINIMUM_TRAIN_ROWS == MODEL_TRAIN_DAYS
+    assert MINIMUM_CALIBRATION_ROWS == MODEL_CALIBRATION_DAYS
 
 
 def test_regime_features_are_outcome_blind() -> None:

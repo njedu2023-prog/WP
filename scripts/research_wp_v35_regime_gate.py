@@ -373,28 +373,47 @@ def main() -> int:
         data_integrity=data_integrity,
     )
 
-    final_bundle, final_policy, final_model = fit_final_model(
-        slots,
-        calendar_dates=full_calendar,
-        random_seed=config.model.random_seed,
-        policy_spec=policy_spec,
-    )
-    bundle_path = output / "wp_v35_frozen_research_bundle.joblib"
-    joblib.dump(
-        {
-            "schema_version": SCHEMA_VERSION,
-            "research_only": True,
-            "production_authorized": False,
-            "created_at": datetime.now(timezone.utc).isoformat(),
-            "regime_license": final_bundle,
-            "policy": final_policy,
-            "source": source,
-            "v24_data_manifest": v24_manifest,
-            "v34_data_manifest": path_manifest,
-        },
-        bundle_path,
-        compress=3,
-    )
+    final_model: dict[str, Any] | None = None
+    final_policy: FrozenRegimePolicy | None = None
+    bundle_path: Path | None = None
+    final_model_error: str | None = None
+    if readiness["all_historical_gates_passed"]:
+        try:
+            final_bundle, final_policy, final_model = fit_final_model(
+                slots,
+                calendar_dates=full_calendar,
+                random_seed=config.model.random_seed,
+                policy_spec=policy_spec,
+            )
+        except ValueError as error:
+            final_model_error = str(error)
+            data_integrity = False
+            readiness = v35_research_readiness(
+                nested_metrics,
+                yearly=yearly,
+                temporal_integrity=temporal_integrity,
+                source_integrity=bool(
+                    source["source_integrity"] and feature_integrity
+                ),
+                data_integrity=False,
+            )
+        else:
+            bundle_path = output / "wp_v35_frozen_research_bundle.joblib"
+            joblib.dump(
+                {
+                    "schema_version": SCHEMA_VERSION,
+                    "research_only": True,
+                    "production_authorized": False,
+                    "created_at": datetime.now(timezone.utc).isoformat(),
+                    "regime_license": final_bundle,
+                    "policy": final_policy,
+                    "source": source,
+                    "v24_data_manifest": v24_manifest,
+                    "v34_data_manifest": path_manifest,
+                },
+                bundle_path,
+                compress=3,
+            )
 
     summary = {
         "schema_version": SCHEMA_VERSION,
@@ -474,8 +493,15 @@ def main() -> int:
         "data_integrity": data_integrity,
         "research_readiness": readiness,
         "final_model": final_model,
-        "final_policy": final_policy.as_dict(),
-        "frozen_bundle": artifact(bundle_path.resolve()),
+        "final_model_error": final_model_error,
+        "final_policy": (
+            final_policy.as_dict() if final_policy is not None else None
+        ),
+        "frozen_bundle": (
+            artifact(bundle_path.resolve())
+            if bundle_path is not None
+            else None
+        ),
     }
     atomic_write_json(output / "wp_v35_research_summary.json", summary)
     atomic_write_csv(
@@ -519,7 +545,12 @@ def main() -> int:
                     "selected_outcome_audit": outcome_audit,
                     "yearly": yearly,
                     "research_readiness": readiness,
-                    "final_policy": final_policy.as_dict(),
+                    "final_model_error": final_model_error,
+                    "final_policy": (
+                        final_policy.as_dict()
+                        if final_policy is not None
+                        else None
+                    ),
                 }
             ),
             ensure_ascii=False,

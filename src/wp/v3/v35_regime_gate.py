@@ -21,8 +21,10 @@ SCHEMA_VERSION = "wp_v35_full_session_regime_license_1"
 MODEL_TRAIN_DAYS = 252
 MODEL_CALIBRATION_DAYS = 42
 MODEL_PURGE_DAYS = 2
-MINIMUM_TRAIN_ROWS = 1_000
-MINIMUM_CALIBRATION_ROWS = 200
+# The frozen protocol defines complete trading-day windows. Requiring more
+# than one eligible slot per day adds an undocumented availability gate.
+MINIMUM_TRAIN_ROWS = MODEL_TRAIN_DAYS
+MINIMUM_CALIBRATION_ROWS = MODEL_CALIBRATION_DAYS
 
 FIXED_TARGET_CANDIDATE_DAY_RATE = 0.20
 FIXED_BASKET_SIZE = 3
