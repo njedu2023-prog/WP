@@ -1,0 +1,3 @@
+protocol=wp_v39_tminus1_derivatives_probe_1
+requested_at=2026-08-01T05:55:18Z
+reason=outcome_blind_tminus1_derivatives_daily_feasibility
