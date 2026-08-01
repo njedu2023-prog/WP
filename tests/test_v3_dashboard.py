@@ -47,6 +47,7 @@ def render(
     predictions: pd.DataFrame | None = None,
     ledger: dict | None = None,
     state: str = "SHADOW",
+    health_status: str = "ok",
     retrospective: dict | None = None,
     research_seed: dict | None = None,
 ) -> str:
@@ -56,7 +57,7 @@ def render(
             "source_trade_date": "20260803",
             "signal_slot": "14:30",
             "session_phase": phase,
-            "health_status": "ok",
+            "health_status": health_status,
             "live_display_allowed": phase != "CLOSED",
             "v3_state": state,
             "observation_selection_status": "COMPLETE",
@@ -97,6 +98,21 @@ def test_closed_dashboard_has_no_actionable_list(tmp_path) -> None:
     assert "<h2 class=\"section-title\">合格候选</h2>" not in text
     assert "<h2 class=\"section-title\">研究观察</h2>" not in text
     assert "T+1 真实验证" in text
+
+
+def test_research_ready_is_not_reported_as_integrity_failure(tmp_path) -> None:
+    path = tmp_path / "latest.html"
+    text = render(
+        path,
+        phase="CLOSED",
+        state="SHADOW_OBSERVATION",
+        health_status="research_ready",
+    )
+
+    assert "数据或账本异常" not in text
+    assert "完整性检查未通过" not in text
+    assert "已收盘，不再显示可买名单" in text
+    assert "研究回测就绪" in text
 
 
 def test_live_dashboard_separates_all_qualified_and_five_observations(
