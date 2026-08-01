@@ -57,10 +57,6 @@ def scored_rows() -> pd.DataFrame:
     frame["v33_ecology_active_before_signal"] = 1.0
     frame["p_round_trip_fill_lower"] = 0.99
     frame["p_severe_loss"] = 0.10
-    frame["v23_positive_model_spread"] = 0.10
-    frame["v23_margin_model_spread"] = 0.10
-    frame["v23_severe_model_spread"] = 0.10
-    frame["v23_expected_return_model_spread_pct"] = 0.50
     frame["v33_p_positive"] = 0.60
     frame["v33_expected_net_return_pct"] = 0.20
     frame["v33_p_severe_loss"] = 0.10
@@ -116,13 +112,13 @@ def test_policy_eligibility_requires_absolute_edge() -> None:
     assert eligible.empty
 
 
-def test_policy_rejects_missing_freshness_and_unstable_source() -> None:
+def test_policy_rejects_bad_freshness_and_source_risk() -> None:
     frame = scored_rows()
     frame.loc[0, "data_age_seconds"] = np.nan
     frame.loc[1, "data_age_seconds"] = -1.0
-    frame.loc[2, "v23_positive_model_spread"] = 0.41
-    frame.loc[3, "v23_expected_return_model_spread_pct"] = 5.01
-    frame.loc[4, "v23_severe_model_spread"] = 0.41
+    frame.loc[2, "p_round_trip_fill_lower"] = 0.94
+    frame.loc[3, "p_severe_loss"] = 0.46
+    frame.loc[4, "data_age_seconds"] = 421.0
 
     eligible = policy_eligible_rows(frame)
 

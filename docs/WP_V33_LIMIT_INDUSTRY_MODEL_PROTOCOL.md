@@ -97,8 +97,6 @@ Before the calibration-derived score threshold, every row must pass:
 - `p_severe_loss <= 0.35`;
 - `pairwise_score >= 0.50`;
 - the fixed fill and source severe-loss gates;
-- all prior positive, margin, severe-loss, and expected-return model
-  disagreement gates;
 - a present, nonnegative data age no greater than 420 seconds;
 - the fixed point-in-time and legal-slot gates.
 

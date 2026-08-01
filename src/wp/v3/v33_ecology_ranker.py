@@ -38,8 +38,6 @@ FIXED_TARGET_CANDIDATE_DAY_RATE = 0.25
 FIXED_MAX_CANDIDATES_PER_DAY: int | None = None
 ROUND_TRIP_FILL_MIN = 0.95
 SOURCE_SEVERE_LOSS_MAX = 0.45
-SOURCE_PROBABILITY_SPREAD_MAX = 0.40
-SOURCE_RETURN_SPREAD_MAX_PCT = 5.0
 MAX_DATA_AGE_SECONDS = 420.0
 
 POSITIVE_PROBABILITY_MIN = 0.50
@@ -81,12 +79,6 @@ class EcologyPolicySpec:
             "max_candidates_per_day": self.max_candidates_per_day,
             "round_trip_fill_min": ROUND_TRIP_FILL_MIN,
             "source_severe_loss_max": SOURCE_SEVERE_LOSS_MAX,
-            "source_probability_spread_max": (
-                SOURCE_PROBABILITY_SPREAD_MAX
-            ),
-            "source_return_spread_max_pct": (
-                SOURCE_RETURN_SPREAD_MAX_PCT
-            ),
             "positive_probability_min": POSITIVE_PROBABILITY_MIN,
             "expected_net_return_min_pct": (
                 EXPECTED_NET_RETURN_MIN_PCT
@@ -496,10 +488,6 @@ def policy_eligible_rows(scored: pd.DataFrame) -> pd.DataFrame:
         "v33_ecology_active_before_signal",
         "p_round_trip_fill_lower",
         "p_severe_loss",
-        "v23_positive_model_spread",
-        "v23_margin_model_spread",
-        "v23_severe_model_spread",
-        "v23_expected_return_model_spread_pct",
         "data_age_seconds",
         "v33_p_positive",
         "v33_expected_net_return_pct",
@@ -531,19 +519,6 @@ def policy_eligible_rows(scored: pd.DataFrame) -> pd.DataFrame:
         & _numeric(scored, "p_severe_loss").le(
             SOURCE_SEVERE_LOSS_MAX
         )
-        & _numeric(scored, "v23_positive_model_spread").le(
-            SOURCE_PROBABILITY_SPREAD_MAX
-        )
-        & _numeric(scored, "v23_margin_model_spread").le(
-            SOURCE_PROBABILITY_SPREAD_MAX
-        )
-        & _numeric(scored, "v23_severe_model_spread").le(
-            SOURCE_PROBABILITY_SPREAD_MAX
-        )
-        & _numeric(
-            scored,
-            "v23_expected_return_model_spread_pct",
-        ).le(SOURCE_RETURN_SPREAD_MAX_PCT)
         & _numeric(scored, "v33_p_positive").ge(
             POSITIVE_PROBABILITY_MIN
         )

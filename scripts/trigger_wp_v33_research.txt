@@ -2,5 +2,5 @@ source_run_id=30600193544
 v24_data_run_id=30635569735
 v33_data_run_id=30671468932
 protocol=WP_V33_LIMIT_INDUSTRY_MODEL_PROTOCOL
-reason=Run single preregistered nested-OOS V33 ecology model
-triggered_at_utc=2026-08-01T00:12:53Z
+reason=Recover V33 source contract before first valid outer result
+triggered_at_utc=2026-08-01T00:21:17Z
