@@ -1,0 +1,164 @@
+name: Research WP V36 Post Alert Entry Confirmation
+
+on:
+  workflow_dispatch:
+    inputs:
+      source_run_id:
+        description: Completed V19 run containing immutable V9 OOS shards
+        required: true
+        type: string
+      v24_data_run_id:
+        description: Completed immutable V24 point-in-time data run
+        required: true
+        type: string
+      v34_data_run_id:
+        description: Completed immutable V34 one-minute data run
+        required: true
+        type: string
+  push:
+    branches: [main]
+    paths:
+      - scripts/trigger_wp_v36_research.txt
+
+permissions:
+  actions: read
+  contents: read
+
+concurrency:
+  group: wp-v36-post-alert-confirmation-research-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  research:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v5
+      - name: Resolve immutable source runs
+        id: source
+        shell: bash
+        env:
+          DISPATCH_SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          DISPATCH_V24_DATA_RUN_ID: ${{ inputs.v24_data_run_id }}
+          DISPATCH_V34_DATA_RUN_ID: ${{ inputs.v34_data_run_id }}
+        run: |
+          set -euo pipefail
+          source_run_id="${DISPATCH_SOURCE_RUN_ID:-}"
+          v24_data_run_id="${DISPATCH_V24_DATA_RUN_ID:-}"
+          v34_data_run_id="${DISPATCH_V34_DATA_RUN_ID:-}"
+          if [[ -z "$source_run_id" ]]; then
+            source_run_id="$(
+              sed -n 's/^source_run_id=//p' \
+                scripts/trigger_wp_v36_research.txt |
+                tail -n 1
+            )"
+          fi
+          if [[ -z "$v24_data_run_id" ]]; then
+            v24_data_run_id="$(
+              sed -n 's/^v24_data_run_id=//p' \
+                scripts/trigger_wp_v36_research.txt |
+                tail -n 1
+            )"
+          fi
+          if [[ -z "$v34_data_run_id" ]]; then
+            v34_data_run_id="$(
+              sed -n 's/^v34_data_run_id=//p' \
+                scripts/trigger_wp_v36_research.txt |
+                tail -n 1
+            )"
+          fi
+          for value in \
+            "$source_run_id" \
+            "$v24_data_run_id" \
+            "$v34_data_run_id"; do
+            if [[ ! "$value" =~ ^[0-9]+$ ]]; then
+              echo "Invalid immutable source run: $value" >&2
+              exit 1
+            fi
+          done
+          echo "run_id=$source_run_id" >> "$GITHUB_OUTPUT"
+          echo "v24_data_run_id=$v24_data_run_id" >> "$GITHUB_OUTPUT"
+          echo "v34_data_run_id=$v34_data_run_id" >> "$GITHUB_OUTPUT"
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.lock
+      - name: Install locked dependencies
+        run: pip install -r requirements.lock
+      - name: Restore immutable V9 research contract
+        uses: actions/cache/restore@v4
+        with:
+          path: artifacts/wp_v3_history
+          key: wp-v19-panel-20210726-20260724-20230727-20260724-r15-${{ steps.source.outputs.run_id }}
+          fail-on-cache-miss: true
+      - name: Download immutable full-universe V9 OOS shards
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v19-v9-fold-*
+          path: artifacts/wp_v36_source
+          merge-multiple: false
+          run-id: ${{ steps.source.outputs.run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download immutable V24 point-in-time dataset
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v24-point-in-time-data-*
+          path: artifacts/wp_v24_data
+          merge-multiple: false
+          run-id: ${{ steps.source.outputs.v24_data_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Download immutable V34 one-minute dataset
+        uses: actions/download-artifact@v5
+        with:
+          pattern: wp-v34-intraday-path-data-*
+          path: artifacts/wp_v34_data
+          merge-multiple: false
+          run-id: ${{ steps.source.outputs.v34_data_run_id }}
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+      - name: Verify preregistered V36 contracts
+        run: >-
+          python -m pytest
+          tests/test_v36_entry_confirmation.py
+          tests/test_v34_intraday_path.py
+          tests/test_v34_intraday_path_data.py
+          tests/test_v24_cross_section.py
+          tests/test_v23_microstructure.py
+          tests/test_v3_contracts.py
+          -q
+        env:
+          PYTHONPATH: src:scripts
+          LOKY_MAX_CPU_COUNT: "4"
+      - name: Run nested V36 post-alert confirmation research
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -u scripts/research_wp_v36_entry_confirmation.py \
+            --config artifacts/wp_v3_history/wp_v9_resolved_config.yml \
+            --shard-dir artifacts/wp_v36_source \
+            --v24-data-dir artifacts/wp_v24_data \
+            --v34-data-dir artifacts/wp_v34_data \
+            --v34-data-run-id "${{ steps.source.outputs.v34_data_run_id }}" \
+            --output-dir artifacts/wp_v36_research \
+            --bootstrap-samples 1000 &
+          research_pid=$!
+          while kill -0 "$research_pid" 2>/dev/null; do
+            echo "[wp-v36] research heartbeat $(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            sleep 120
+          done
+          wait "$research_pid"
+        env:
+          PYTHONPATH: src:scripts
+          PYTHONUNBUFFERED: "1"
+          LOKY_MAX_CPU_COUNT: "4"
+          OMP_NUM_THREADS: "2"
+          OPENBLAS_NUM_THREADS: "2"
+          MKL_NUM_THREADS: "2"
+      - name: Upload immutable V36 research evidence
+        if: always()
+        uses: actions/upload-artifact@v5
+        with:
+          name: wp-v36-post-alert-confirmation-research-${{ github.run_id }}
+          path: artifacts/wp_v36_research
+          retention-days: 90
+          if-no-files-found: warn
