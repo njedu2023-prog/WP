@@ -10,6 +10,7 @@ from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import tushare as ts
+from wp.v3.ledger import load_shadow_ledger
 
 try:
     from build_wp_v3_live_input import (
@@ -113,6 +114,20 @@ def output_commit_paths() -> list[str]:
     return paths
 
 
+def _has_fixed_signal_session(trade_date: str) -> bool:
+    ledger = load_shadow_ledger(
+        Path("outputs/json/wp_v3_candidate_ledger.json")
+    )
+    return any(
+        str(session.get("trade_date") or "") == trade_date
+        and "14:30" in {
+            str(slot)
+            for slot in session.get("covered_slots", [])
+        }
+        for session in ledger.get("sessions", [])
+    )
+
+
 def run_once(
     signal_slot: str | None = None,
     *,
@@ -129,6 +144,33 @@ def run_once(
     ):
         settlement_slot = "14:35"
     live_path = Path("data/v3/latest/wp_v3_live_features.csv")
+    manifest_path = Path("outputs/json/wp_manifest.json")
+    manifest_before = (
+        manifest_path.read_bytes() if manifest_path.exists() else None
+    )
+    trade_date = current.strftime("%Y%m%d")
+    if settlement_slot and (
+        not live_path.exists()
+        or not _has_fixed_signal_session(trade_date)
+    ):
+        env["WP_V3_SIGNAL_SLOT"] = "14:30"
+        source_path, source_manifest = build_live_input(
+            root=Path.cwd(),
+            env=env,
+        )
+        env["WP_V3_SOURCE_CSV"] = source_path.as_posix()
+        env["WP_EXPECTED_TRADE_DATE"] = str(
+            source_manifest["trade_date"]
+        )
+        print(
+            "WP V40 late recovery rebuilt the immutable 14:30 "
+            "snapshot before entry settlement."
+        )
+        subprocess.run(
+            [sys.executable, "-m", "wp.main"],
+            check=True,
+            env=env,
+        )
     if settlement_slot:
         settlement_path, settlement_manifest = capture_entry_settlement_input(
             settlement_slot=settlement_slot,
@@ -173,8 +215,6 @@ def run_once(
         )
     else:
         print("::warning::WP V40 live source is absent before 14:30.")
-    manifest_path = Path("outputs/json/wp_manifest.json")
-    manifest_before = manifest_path.read_bytes() if manifest_path.exists() else None
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
     manifest_after = manifest_path.read_bytes() if manifest_path.exists() else None
     if manifest_before == manifest_after:
