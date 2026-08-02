@@ -366,6 +366,11 @@ def render_v3_dashboard(
       padding-top: 18px;
       border-top: 1px solid var(--line-soft);
     }}
+    .retrospective-switch {{
+      display: flex;
+      justify-content: flex-end;
+      margin-top: 14px;
+    }}
     .cohort-heading {{
       display: flex;
       align-items: flex-start;
@@ -500,22 +505,22 @@ def render_v3_dashboard(
         show=not live_visible,
     )}
 
-    <section class="section">
+    <section class="section" data-tab-group>
       <div class="section-head">
         <div>
           <h2 class="section-title">2026 年 8 月起 T+1 真实验证</h2>
           <p class="section-sub">这里只统计 8 月 3 日起盘中实时形成的影子记录，不记录人工是否买入；5–7 月历史回测见下方</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
-          <button class="active" type="button" data-cohort-tab="QUALIFIED">合格候选</button>
-          <button type="button" data-cohort-tab="OBSERVATION">研究观察</button>
+          <button class="active" type="button" role="tab" aria-selected="true" data-tab="QUALIFIED">合格</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="OBSERVATION">观察</button>
         </div>
       </div>
-      <div data-cohort-panel="QUALIFIED">
+      <div role="tabpanel" data-tab-panel="QUALIFIED">
         {_metric_strip(qualified_stats)}
         {_validation_table(records, "QUALIFIED")}
       </div>
-      <div data-cohort-panel="OBSERVATION" hidden>
+      <div role="tabpanel" data-tab-panel="OBSERVATION" hidden>
         {_metric_strip(observation_stats)}
         <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
         {_validation_table(records, "OBSERVATION")}
@@ -553,14 +558,20 @@ def render_v3_dashboard(
     <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
   </main>
   <script>
-    document.querySelectorAll('[data-cohort-tab]').forEach(function (button) {{
-      button.addEventListener('click', function () {{
-        var cohort = button.getAttribute('data-cohort-tab');
-        document.querySelectorAll('[data-cohort-tab]').forEach(function (item) {{
-          item.classList.toggle('active', item === button);
-        }});
-        document.querySelectorAll('[data-cohort-panel]').forEach(function (panel) {{
-          panel.hidden = panel.getAttribute('data-cohort-panel') !== cohort;
+    document.querySelectorAll('[data-tab-group]').forEach(function (group) {{
+      var buttons = group.querySelectorAll('[data-tab]');
+      var panels = group.querySelectorAll('[data-tab-panel]');
+      buttons.forEach(function (button) {{
+        button.addEventListener('click', function () {{
+          var target = button.getAttribute('data-tab');
+          buttons.forEach(function (item) {{
+            var selected = item === button;
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-selected', selected ? 'true' : 'false');
+          }});
+          panels.forEach(function (panel) {{
+            panel.hidden = panel.getAttribute('data-tab-panel') !== target;
+          }});
         }});
       }});
     }});
@@ -896,9 +907,18 @@ def _retrospective_evidence(
     return (
         '<p class="evidence-copy">只使用当日 14:30 前可见信息，'
         "按统一 14:35 入场和 T+1 收盘合同重放。</p>"
+        + '<div class="retrospective-tabs" data-tab-group>'
+        '<div class="retrospective-switch">'
+        '<div class="segment" role="tablist" aria-label="回测组别">'
+        '<button type="button" role="tab" aria-selected="false" '
+        'data-tab="QUALIFIED">合格</button>'
+        '<button class="active" type="button" role="tab" aria-selected="true" '
+        'data-tab="OBSERVATION">观察</button>'
+        "</div></div>"
+        '<div role="tabpanel" data-tab-panel="QUALIFIED" hidden>'
         + zero_qualified_note
         + _retrospective_cohort(
-            title="合格候选",
+            title="合格",
             badge="决策组",
             description=(
                 "必须同时通过盈利概率、成交、风险和稳定性固定门槛；"
@@ -909,8 +929,10 @@ def _retrospective_evidence(
             cohort_key="qualified",
             covered_days=covered_days,
         )
+        + "</div>"
+        '<div role="tabpanel" data-tab-panel="OBSERVATION">'
         + _retrospective_cohort(
-            title="研究观察",
+            title="观察",
             badge="比较组",
             description=(
                 f"每个覆盖交易日固定选择 {config.strategy.observation_count} 支"
@@ -921,6 +943,7 @@ def _retrospective_evidence(
             cohort_key="observations",
             covered_days=covered_days,
         )
+        + "</div></div>"
         + notice
     )
 
