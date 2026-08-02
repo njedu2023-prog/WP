@@ -360,6 +360,33 @@ def render_v3_dashboard(
     }}
     .evidence-item {{ padding: 12px 12px 0 0; }}
     .evidence-item strong {{ display: block; margin-top: 2px; }}
+    .evidence-main {{ padding: 20px; }}
+    .retrospective-cohort {{
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line-soft);
+    }}
+    .cohort-heading {{
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    .cohort-heading .evidence-copy {{ max-width: 760px; }}
+    .compact-table {{
+      margin-top: 15px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+    }}
+    .compact-table table {{ min-width: 820px; }}
+    .evidence-shadow {{
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr);
+      gap: 28px;
+      padding: 20px;
+      border-top: 1px solid var(--line-soft);
+    }}
+    .evidence-shadow .evidence-list {{ margin-top: 0; }}
     .segment {{
       display: inline-flex;
       padding: 2px;
@@ -398,6 +425,7 @@ def render_v3_dashboard(
       .metric:nth-child(2n) {{ border-right: 0; }}
       .split {{ grid-template-columns: 1fr; }}
       .split > div:first-child {{ border-right: 0; border-bottom: 1px solid var(--line-soft); }}
+      .evidence-shadow {{ grid-template-columns: 1fr; }}
     }}
     @media (max-width: 640px) {{
       .topbar-inner, .page {{ width: min(100% - 24px, 1240px); }}
@@ -475,8 +503,8 @@ def render_v3_dashboard(
     <section class="section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">T+1 真实验证</h2>
-          <p class="section-sub">同一成交合同，合格候选与研究观察分别统计；不记录人工是否买入</p>
+          <h2 class="section-title">2026 年 8 月起 T+1 真实验证</h2>
+          <p class="section-sub">这里只统计 8 月 3 日起盘中实时形成的影子记录，不记录人工是否买入；5–7 月历史回测见下方</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
           <button class="active" type="button" data-cohort-tab="QUALIFIED">合格候选</button>
@@ -501,19 +529,19 @@ def render_v3_dashboard(
           <p class="section-sub">{_e(evidence_contract)}</p>
         </div>
       </div>
-      <div class="split">
-        <div>
-          <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
-          {_retrospective_evidence(retrospective, config)}
-        </div>
+      <div class="evidence-main">
+        <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
+        {_retrospective_evidence(retrospective, config)}
+      </div>
+      <div class="evidence-shadow">
         <div>
           <h3 class="evidence-title">2026 年 8 月起真实影子运行</h3>
           <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
-          <div class="evidence-list">
-            {_evidence_item("已运行交易日", _number(qualified_shadow_stats["trading_days"]))}
-            {_evidence_item("合格候选日", _number(qualified_shadow_stats["candidate_days"]))}
-            {_evidence_item("已验证候选", _number(qualified_shadow_stats["verified"]))}
-          </div>
+        </div>
+        <div class="evidence-list">
+          {_evidence_item("已运行交易日", _number(qualified_shadow_stats["trading_days"]))}
+          {_evidence_item("合格候选日", _number(qualified_shadow_stats["candidate_days"]))}
+          {_evidence_item("已验证候选", _number(qualified_shadow_stats["verified"]))}
         </div>
       </div>
       {_research_seed_note(research_seed)}
@@ -819,47 +847,27 @@ def _retrospective_evidence(
             "页面不会把 V15 多时点结果冒充为固定 14:30 结果。</p>"
             '<div class="notice amber">状态：等待严格点时回放与真值计算</div>'
         )
-    metrics = (
+    qualified_metrics = (
         summary.get("qualified", {}).get("metrics", {})
         or summary.get("metrics", {})
         or summary
     )
-    events = metrics.get(
-        "events",
-        summary.get("qualified_events"),
-    )
-    days = metrics.get(
-        "trade_days",
-        summary.get("qualified_days"),
-    )
-    win_rate = metrics.get("win_rate")
-    mean_return = metrics.get("mean_net_return_pct")
-    profit_factor = metrics.get("profit_factor")
-    stress_50 = (
-        metrics.get("stress", {})
-        .get("50bps", {})
-        .get("mean_net_return_pct")
+    observation_metrics = (
+        summary.get("observations", {}).get("metrics", {}) or {}
     )
     monthly = summary.get("monthly", [])
-    monthly_rows = "".join(
-        "<tr>"
-        f"<td>{_e(_month_label(row.get('month')))}</td>"
-        f"<td>{_number(row.get('qualified', {}).get('events'))}</td>"
-        f"<td>{_number(row.get('qualified', {}).get('trade_days'))}</td>"
-        f"<td>{_ratio(row.get('qualified', {}).get('win_rate'))}</td>"
-        f"<td>{_signed_pct(row.get('qualified', {}).get('mean_net_return_pct'))}</td>"
-        f"<td>{_number(row.get('observations', {}).get('events'))}</td>"
-        "</tr>"
-        for row in monthly
+    covered_days = (
+        summary.get("source", {}).get("expected_trade_days")
+        or summary.get("integrity", {}).get("evaluated_trade_days")
+        or sum(
+            int(_float(row.get("evaluated_trade_days")) or 0)
+            for row in monthly
+        )
     )
-    monthly_table = (
-        '<div class="table-wrap compact-table"><table><thead><tr>'
-        "<th>月份</th><th>合格样本</th><th>候选日</th><th>胜率</th>"
-        "<th>平均净收益</th><th>观察样本</th></tr></thead><tbody>"
-        + monthly_rows
-        + "</tbody></table></div>"
-        if monthly_rows
-        else ""
+    qualified_events = (
+        qualified_metrics.get("events")
+        if qualified_metrics.get("events") is not None
+        else summary.get("qualified_events")
     )
     gate = summary.get("backtest_gate", {})
     failed = list(gate.get("failed_gates", []))
@@ -878,12 +886,85 @@ def _retrospective_evidence(
             '<div class="notice red">历史生产门槛未全部通过'
             f"（{len(failed)} 项失败），不得授权正式交易。</div>"
         )
+    zero_qualified_note = ""
+    if (_float(qualified_events) or 0.0) == 0.0 and covered_days:
+        zero_qualified_note = (
+            '<div class="notice">合格样本为 0 不是数据缺失：'
+            f"{_number(covered_days)} 个覆盖交易日内，没有股票同时通过全部固定门槛。"
+            "研究观察有独立样本和收益统计，见下方。</div>"
+        )
     return (
         '<p class="evidence-copy">只使用当日 14:30 前可见信息，'
         "按统一 14:35 入场和 T+1 收盘合同重放。</p>"
+        + zero_qualified_note
+        + _retrospective_cohort(
+            title="合格候选",
+            badge="决策组",
+            description=(
+                "必须同时通过盈利概率、成交、风险和稳定性固定门槛；"
+                "数量可以为 0。"
+            ),
+            metrics=qualified_metrics,
+            monthly=monthly,
+            cohort_key="qualified",
+            covered_days=covered_days,
+        )
+        + _retrospective_cohort(
+            title="研究观察",
+            badge="比较组",
+            description=(
+                f"每个覆盖交易日固定选择 {config.strategy.observation_count} 支"
+                "最接近门槛的非合格股票；用于研究，不是买入建议。"
+            ),
+            metrics=observation_metrics,
+            monthly=monthly,
+            cohort_key="observations",
+            covered_days=covered_days,
+        )
+        + notice
+    )
+
+
+def _retrospective_cohort(
+    *,
+    title: str,
+    badge: str,
+    description: str,
+    metrics: dict[str, Any],
+    monthly: list[dict[str, Any]],
+    cohort_key: str,
+    covered_days: Any,
+) -> str:
+    events = metrics.get("events")
+    trade_days = metrics.get("trade_days")
+    has_events = (_float(events) or 0.0) > 0.0
+    win_rate = metrics.get("win_rate") if has_events else None
+    mean_return = (
+        metrics.get("mean_net_return_pct") if has_events else None
+    )
+    profit_factor = metrics.get("profit_factor") if has_events else None
+    stress_50 = (
+        metrics.get("stress", {})
+        .get("50bps", {})
+        .get("mean_net_return_pct")
+        if has_events
+        else None
+    )
+    day_coverage = (
+        f"{_number(trade_days)} / {_number(covered_days)}"
+        if covered_days is not None
+        else _number(trade_days)
+    )
+    badge_css = "good" if cohort_key == "qualified" else "warn"
+    return (
+        '<div class="retrospective-cohort">'
+        '<div class="cohort-heading"><div>'
+        f'<h3 class="evidence-title">{_e(title)}</h3>'
+        f'<p class="evidence-copy">{_e(description)}</p>'
+        f'</div><span class="tag {badge_css}">{_e(badge)}</span></div>'
         '<div class="evidence-list">'
-        + _evidence_item("合格样本", _number(events))
-        + _evidence_item("候选交易日", _number(days))
+        + _evidence_item("样本", _number(events))
+        + _evidence_item("统计日 / 覆盖日", day_coverage)
         + _evidence_item("胜率", _ratio(win_rate))
         + _evidence_item(
             "平均净收益",
@@ -897,8 +978,56 @@ def _retrospective_evidence(
             _return_class(stress_50),
         )
         + "</div>"
-        + monthly_table
-        + notice
+        + _retrospective_monthly_table(monthly, cohort_key)
+        + "</div>"
+    )
+
+
+def _retrospective_monthly_table(
+    monthly: list[dict[str, Any]],
+    cohort_key: str,
+) -> str:
+    rows = []
+    for row in monthly:
+        metrics = row.get(cohort_key, {}) or {}
+        events = metrics.get("events")
+        has_events = (_float(events) or 0.0) > 0.0
+        covered_days = row.get("evaluated_trade_days")
+        trade_days = metrics.get("trade_days")
+        stress_50 = (
+            metrics.get("stress", {})
+            .get("50bps", {})
+            .get("mean_net_return_pct")
+            if has_events
+            else None
+        )
+        day_coverage = (
+            f"{_number(trade_days)} / {_number(covered_days)}"
+            if covered_days is not None
+            else _number(trade_days)
+        )
+        rows.append(
+            "<tr>"
+            f"<td>{_e(_month_label(row.get('month')))}</td>"
+            f"<td>{_number(events)}</td>"
+            f"<td>{day_coverage}</td>"
+            f"<td>{_ratio(metrics.get('win_rate') if has_events else None)}</td>"
+            "<td>"
+            f"{_signed_pct(metrics.get('mean_net_return_pct') if has_events else None)}"
+            "</td>"
+            f"<td>{_number(metrics.get('profit_factor') if has_events else None)}</td>"
+            f"<td>{_signed_pct(stress_50)}</td>"
+            "</tr>"
+        )
+    if not rows:
+        return ""
+    return (
+        '<div class="table-wrap compact-table"><table><thead><tr>'
+        "<th>月份</th><th>样本</th><th>统计日 / 覆盖日</th><th>胜率</th>"
+        "<th>平均净收益</th><th>Profit Factor</th><th>50bp 压力收益</th>"
+        "</tr></thead><tbody>"
+        + "".join(rows)
+        + "</tbody></table></div>"
     )
 
 
