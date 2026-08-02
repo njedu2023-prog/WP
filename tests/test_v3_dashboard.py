@@ -279,6 +279,34 @@ def test_dashboard_shows_full_retrospective_observation_metrics(
     assert "-0.804%" in text
 
 
+def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
+    path = tmp_path / "latest.html"
+    text = render(
+        path,
+        phase="CLOSED",
+        retrospective={
+            "status": "COMPLETE",
+            "source": {"expected_trade_days": 2},
+            "qualified": {"metrics": {"events": 0, "trade_days": 0}},
+            "observations": {"metrics": {"events": 10, "trade_days": 2}},
+        },
+    )
+
+    assert '<section class="section" data-tab-group>' in text
+    assert '<div class="retrospective-tabs" data-tab-group>' in text
+    assert text.count('data-tab="QUALIFIED">合格</button>') == 2
+    assert text.count('data-tab="OBSERVATION">观察</button>') == 2
+    assert (
+        '<div role="tabpanel" data-tab-panel="QUALIFIED" hidden>'
+        in text
+    )
+    assert '<div role="tabpanel" data-tab-panel="OBSERVATION">' in text
+    assert "group.querySelectorAll('[data-tab]')" in text
+    assert "group.querySelectorAll('[data-tab-panel]')" in text
+    assert "data-cohort-tab" not in text
+    assert "data-cohort-panel" not in text
+
+
 def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
     path = tmp_path / "latest.html"
     text = render(
