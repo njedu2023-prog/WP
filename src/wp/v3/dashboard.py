@@ -360,6 +360,32 @@ def render_v3_dashboard(
     .evidence-item {{ padding: 12px 12px 0 0; }}
     .evidence-item strong {{ display: block; margin-top: 2px; }}
     .evidence-main {{ padding: 20px; }}
+    .collapsible-head {{
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+    }}
+    .collapse-toggle {{
+      width: 30px;
+      height: 30px;
+      flex: 0 0 30px;
+      display: inline-grid;
+      place-items: center;
+      padding: 0;
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      color: var(--text);
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 20px;
+      line-height: 1;
+    }}
+    .collapse-toggle:hover {{ background: var(--surface-soft); }}
+    .collapse-toggle:focus-visible {{
+      outline: 2px solid var(--blue);
+      outline-offset: 2px;
+    }}
     .retrospective-cohort {{
       margin-top: 18px;
       padding-top: 18px;
@@ -533,8 +559,20 @@ def render_v3_dashboard(
         </div>
       </div>
       <div class="evidence-main">
-        <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
-        {_retrospective_evidence(retrospective, config)}
+        <div class="collapsible-head">
+          <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
+          <button class="collapse-toggle" type="button"
+                  data-collapse-toggle
+                  aria-controls="retrospective-backtest-content"
+                  aria-expanded="false"
+                  aria-label="展开 2026 年 5–7 月新合同回测"
+                  title="展开回测详情">
+            <span aria-hidden="true" data-collapse-icon>+</span>
+          </button>
+        </div>
+        <div id="retrospective-backtest-content" data-collapse-panel hidden>
+          {_retrospective_evidence(retrospective, config)}
+        </div>
       </div>
       <div class="evidence-shadow">
         <div>
@@ -571,6 +609,22 @@ def render_v3_dashboard(
             panel.hidden = panel.getAttribute('data-tab-panel') !== target;
           }});
         }});
+      }});
+    }});
+    document.querySelectorAll('[data-collapse-toggle]').forEach(function (button) {{
+      var panel = document.getElementById(button.getAttribute('aria-controls'));
+      if (!panel) return;
+      button.addEventListener('click', function () {{
+        var expanded = button.getAttribute('aria-expanded') !== 'true';
+        button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
+        button.setAttribute(
+          'aria-label',
+          (expanded ? '收起 ' : '展开 ') + '2026 年 5–7 月新合同回测'
+        );
+        button.setAttribute('title', expanded ? '收起回测详情' : '展开回测详情');
+        panel.hidden = !expanded;
+        var icon = button.querySelector('[data-collapse-icon]');
+        if (icon) icon.textContent = expanded ? '−' : '+';
       }});
     }});
   </script>
