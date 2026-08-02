@@ -94,7 +94,10 @@ def test_closed_dashboard_has_no_actionable_list(tmp_path) -> None:
     )
 
     assert "已收盘，不再显示可买名单" in text
-    assert "15:00 后禁止新增候选" in text
+    assert "尾盘候选与真实验证" not in text
+    assert "14:30 一次决策 · 14:35 可成交基准" not in text
+    assert "冻结记录仍保留用于 T+1 收盘真值验证" not in text
+    assert "15:00 后禁止新增候选" not in text
     assert "<h2 class=\"section-title\">合格候选</h2>" not in text
     assert "<h2 class=\"section-title\">研究观察</h2>" not in text
     assert "T+1 真实验证" in text
@@ -113,6 +116,8 @@ def test_research_ready_is_not_reported_as_integrity_failure(tmp_path) -> None:
     assert "完整性检查未通过" not in text
     assert "已收盘，不再显示可买名单" in text
     assert "研究回测就绪" in text
+    assert "影子观察" in text
+    assert "研究影子观察" not in text
 
 
 def test_live_dashboard_separates_all_qualified_and_five_observations(
@@ -154,7 +159,7 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
     assert "固定展示 5 支最接近门槛" in text
     assert "2 支合格候选" in text
     assert "5 / 5" in text
-    assert "人工决定是否买入" in text
+    assert "不记录人工是否买入" in text
     assert "不记录人工是否买入" in text
 
 
@@ -262,7 +267,8 @@ def test_dashboard_shows_full_retrospective_observation_metrics(
         },
     )
 
-    assert "2026 年 8 月起 T+1 真实验证" in text
+    assert '<h2 class="section-title">T+1 真实验证</h2>' in text
+    assert "2026 年 8 月起 T+1 真实验证" not in text
     assert "这里只统计 8 月 3 日起盘中实时形成的影子记录" in text
     assert "合格样本为 0 不是数据缺失" in text
     assert "62 个覆盖交易日内" in text
