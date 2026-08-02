@@ -305,6 +305,12 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
     assert "group.querySelectorAll('[data-tab-panel]')" in text
     assert "data-cohort-tab" not in text
     assert "data-cohort-panel" not in text
+    assert ".status-title {\n      margin-top: 4px;\n      font-size: 15px;" in text
+    assert (
+        ".value { margin-top: 4px; font-size: 15px; font-weight: 700; }"
+        in text
+    )
+    assert ".value.small" not in text
 
 
 def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
