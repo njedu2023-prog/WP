@@ -203,7 +203,7 @@ def render_v3_dashboard(
     }}
     .status-title {{
       margin-top: 4px;
-      font-size: 23px;
+      font-size: 15px;
       line-height: 1.22;
       font-weight: 730;
     }}
@@ -219,8 +219,7 @@ def render_v3_dashboard(
     }}
     .status-fact:last-child {{ border-right: 0; }}
     .label {{ color: var(--muted); font-size: 12px; }}
-    .value {{ margin-top: 4px; font-size: 19px; font-weight: 700; }}
-    .value.small {{ font-size: 15px; line-height: 1.35; }}
+    .value {{ margin-top: 4px; font-size: 15px; font-weight: 700; }}
     .section {{
       margin-top: 18px;
       background: var(--surface);
@@ -446,7 +445,6 @@ def render_v3_dashboard(
         border-bottom: 1px solid var(--line-soft);
       }}
       .status-fact:last-child {{ grid-column: auto; }}
-      .status-title {{ font-size: 20px; }}
       .section-head {{ align-items: flex-start; }}
       .metric-grid {{ grid-template-columns: 1fr 1fr; }}
       .metric {{ padding: 15px 14px; }}
@@ -488,7 +486,7 @@ def render_v3_dashboard(
       </div>
       {_status_fact("合格候选", str(len(qualified)) if live_visible else "已冻结")}
       {_status_fact("研究观察", f"{len(observations)} / {config.strategy.observation_count}" if live_visible else "历史可查")}
-      {_status_fact("数据状态", _data_status(manifest), small=True)}
+      {_status_fact("数据状态", _data_status(manifest))}
     </section>
 
     {_live_sections(
@@ -1238,12 +1236,11 @@ def _data_status(manifest: dict[str, Any]) -> str:
     return " · ".join(parts)
 
 
-def _status_fact(label: str, value: str, *, small: bool = False) -> str:
-    css = "value small" if small else "value"
+def _status_fact(label: str, value: str) -> str:
     return (
         '<div class="status-fact">'
         f'<div class="label">{_e(label)}</div>'
-        f'<div class="{css}">{_e(value)}</div>'
+        f'<div class="value">{_e(value)}</div>'
         "</div>"
     )
 
