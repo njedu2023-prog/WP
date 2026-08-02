@@ -313,6 +313,32 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
     assert ".value.small" not in text
 
 
+def test_retrospective_backtest_is_collapsed_by_default(tmp_path) -> None:
+    path = tmp_path / "latest.html"
+    text = render(
+        path,
+        phase="CLOSED",
+        retrospective={
+            "status": "COMPLETE",
+            "qualified": {"metrics": {"events": 0, "trade_days": 0}},
+            "observations": {"metrics": {"events": 5, "trade_days": 1}},
+        },
+    )
+
+    assert 'class="collapse-toggle"' in text
+    assert 'aria-expanded="false"' in text
+    assert 'aria-controls="retrospective-backtest-content"' in text
+    assert '<span aria-hidden="true" data-collapse-icon>+</span>' in text
+    assert (
+        '<div id="retrospective-backtest-content" '
+        "data-collapse-panel hidden>"
+        in text
+    )
+    assert "panel.hidden = !expanded" in text
+    assert "expanded ? '−' : '+'" in text
+    assert "border-radius: 50%" in text
+
+
 def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
     path = tmp_path / "latest.html"
     text = render(
