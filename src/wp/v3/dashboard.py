@@ -159,24 +159,12 @@ def render_v3_dashboard(
       padding: 28px 0 54px;
     }}
     .headline {{
-      display: grid;
-      grid-template-columns: minmax(0, 1fr) auto;
-      align-items: end;
-      gap: 24px;
-      padding: 8px 2px 22px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding: 4px 2px 14px;
     }}
-    h1, h2, h3, p {{ margin: 0; }}
-    h1 {{
-      font-size: 30px;
-      line-height: 1.16;
-      font-weight: 720;
-      letter-spacing: 0;
-    }}
-    .subtitle {{
-      margin-top: 7px;
-      color: var(--muted);
-      font-size: 14px;
-    }}
+    h2, h3, p {{ margin: 0; }}
     .mode {{
       min-width: 180px;
       text-align: right;
@@ -461,9 +449,6 @@ def render_v3_dashboard(
       .topbar-inner, .page {{ width: min(100% - 24px, 1240px); }}
       .top-meta span:first-child {{ display: none; }}
       .page {{ padding-top: 20px; }}
-      .headline {{ grid-template-columns: 1fr; gap: 12px; }}
-      h1 {{ font-size: 25px; }}
-      .mode {{ text-align: left; }}
       .status-panel {{ grid-template-columns: 1fr; }}
       .status-main, .status-fact {{
         grid-column: auto;
@@ -494,10 +479,6 @@ def render_v3_dashboard(
 
   <main class="page">
     <section class="headline">
-      <div>
-        <h1>尾盘候选与真实验证</h1>
-        <p class="subtitle">14:30 一次决策 · 14:35 可成交基准 · T+1 收盘退出 · 人工决定是否买入</p>
-      </div>
       <div class="mode">
         <div class="mode-label">当前运行状态</div>
         <div class="mode-value">{_e(_state_label(state))}</div>
@@ -508,7 +489,7 @@ def render_v3_dashboard(
       <div class="status-main">
         <div class="status-kicker">{_e(decision["kicker"])}</div>
         <div class="status-title">{_e(decision["title"])}</div>
-        <p class="status-copy">{_e(decision["message"])}</p>
+        {_status_message(decision["message"])}
       </div>
       {_status_fact("合格候选", str(len(qualified)) if live_visible else "已冻结")}
       {_status_fact("研究观察", f"{len(observations)} / {config.strategy.observation_count}" if live_visible else "历史可查")}
@@ -532,7 +513,7 @@ def render_v3_dashboard(
     <section class="section" data-tab-group>
       <div class="section-head">
         <div>
-          <h2 class="section-title">2026 年 8 月起 T+1 真实验证</h2>
+          <h2 class="section-title">T+1 真实验证</h2>
           <p class="section-sub">这里只统计 8 月 3 日起盘中实时形成的影子记录，不记录人工是否买入；5–7 月历史回测见下方</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
@@ -1232,7 +1213,7 @@ def _decision_copy(
         return {
             "kicker": "今日决策已结束",
             "title": "已收盘，不再显示可买名单",
-            "message": "冻结记录仍保留用于 T+1 收盘真值验证；15:00 后禁止新增候选。",
+            "message": "",
             "color": "#6e6e73",
         }
     if qualified_count:
@@ -1264,7 +1245,7 @@ def _state_label(state: str) -> str:
     labels = {
         "PRODUCTION": "生产授权",
         "SHADOW": "真实影子验证",
-        "SHADOW_OBSERVATION": "研究影子观察",
+        "SHADOW_OBSERVATION": "影子观察",
         "MODEL_NOT_READY": "等待模型包",
         "MODEL_ARTIFACT_INVALID": "模型包异常",
         "POLICY_MISMATCH": "模型合同不匹配",
@@ -1297,6 +1278,11 @@ def _status_fact(label: str, value: str) -> str:
         f'<div class="value">{_e(value)}</div>'
         "</div>"
     )
+
+
+def _status_message(message: Any) -> str:
+    text = str(message or "").strip()
+    return f'<p class="status-copy">{_e(text)}</p>' if text else ""
 
 
 def _metric(label: str, value: str, css: str = "") -> str:
