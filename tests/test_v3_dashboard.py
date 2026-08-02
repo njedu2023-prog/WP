@@ -207,6 +207,78 @@ def test_dashboard_keeps_retrospective_and_live_evidence_separate(
     assert "20" in text
 
 
+def test_dashboard_shows_full_retrospective_observation_metrics(
+    tmp_path,
+) -> None:
+    path = tmp_path / "latest.html"
+    text = render(
+        path,
+        phase="CLOSED",
+        retrospective={
+            "status": "INCOMPLETE",
+            "source": {"expected_trade_days": 62},
+            "qualified": {
+                "metrics": {
+                    "events": 0,
+                    "trade_days": 0,
+                    "win_rate": 0.0,
+                    "mean_net_return_pct": None,
+                    "profit_factor": 0.0,
+                }
+            },
+            "observations": {
+                "metrics": {
+                    "events": 305,
+                    "trade_days": 61,
+                    "win_rate": 0.44262295,
+                    "mean_net_return_pct": -0.356252,
+                    "profit_factor": 0.653054,
+                    "stress": {
+                        "50bps": {
+                            "mean_net_return_pct": -0.504777,
+                        }
+                    },
+                }
+            },
+            "monthly": [
+                {
+                    "month": "202605",
+                    "evaluated_trade_days": 18,
+                    "qualified": {"events": 0, "trade_days": 0},
+                    "observations": {
+                        "events": 90,
+                        "trade_days": 18,
+                        "win_rate": 0.311111,
+                        "mean_net_return_pct": -0.804051,
+                        "profit_factor": 0.406896,
+                        "stress": {
+                            "50bps": {
+                                "mean_net_return_pct": -0.950718,
+                            }
+                        },
+                    },
+                }
+            ],
+        },
+    )
+
+    assert "2026 年 8 月起 T+1 真实验证" in text
+    assert "这里只统计 8 月 3 日起盘中实时形成的影子记录" in text
+    assert "合格样本为 0 不是数据缺失" in text
+    assert "62 个覆盖交易日内" in text
+    assert "研究观察" in text
+    assert "305" in text
+    assert "61 / 62" in text
+    assert "44.3%" in text
+    assert "-0.356%" in text
+    assert "0.65" in text
+    assert "-0.505%" in text
+    assert "90" in text
+    assert "18 / 18" in text
+    assert "31.1%" in text
+    assert "-0.804%" in text
+
+
 def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
     path = tmp_path / "latest.html"
     text = render(
