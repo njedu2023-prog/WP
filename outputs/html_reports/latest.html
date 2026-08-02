@@ -271,6 +271,33 @@
     }
     .evidence-item { padding: 12px 12px 0 0; }
     .evidence-item strong { display: block; margin-top: 2px; }
+    .evidence-main { padding: 20px; }
+    .retrospective-cohort {
+      margin-top: 18px;
+      padding-top: 18px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .cohort-heading {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+    }
+    .cohort-heading .evidence-copy { max-width: 760px; }
+    .compact-table {
+      margin-top: 15px;
+      border: 1px solid var(--line-soft);
+      border-radius: 6px;
+    }
+    .compact-table table { min-width: 820px; }
+    .evidence-shadow {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(360px, .75fr);
+      gap: 28px;
+      padding: 20px;
+      border-top: 1px solid var(--line-soft);
+    }
+    .evidence-shadow .evidence-list { margin-top: 0; }
     .segment {
       display: inline-flex;
       padding: 2px;
@@ -309,6 +336,7 @@
       .metric:nth-child(2n) { border-right: 0; }
       .split { grid-template-columns: 1fr; }
       .split > div:first-child { border-right: 0; border-bottom: 1px solid var(--line-soft); }
+      .evidence-shadow { grid-template-columns: 1fr; }
     }
     @media (max-width: 640px) {
       .topbar-inner, .page { width: min(100% - 24px, 1240px); }
@@ -341,7 +369,7 @@
       <div class="brand">WP · T+1 尾盘决策</div>
       <div class="top-meta">
         <span>固定决策 14:30</span>
-        <span>2026-07-30 17:37:30</span>
+        <span>等待首次更新</span>
       </div>
     </div>
   </header>
@@ -366,7 +394,7 @@
       </div>
       <div class="status-fact"><div class="label">合格候选</div><div class="value">已冻结</div></div>
       <div class="status-fact"><div class="label">研究观察</div><div class="value">历史可查</div></div>
-      <div class="status-fact"><div class="label">数据状态</div><div class="value small">研究回测就绪</div></div>
+      <div class="status-fact"><div class="label">数据状态</div><div class="value small">正常</div></div>
     </section>
 
     
@@ -376,8 +404,8 @@
     <section class="section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">T+1 真实验证</h2>
-          <p class="section-sub">同一成交合同，合格候选与研究观察分别统计；不记录人工是否买入</p>
+          <h2 class="section-title">2026 年 8 月起 T+1 真实验证</h2>
+          <p class="section-sub">这里只统计 8 月 3 日起盘中实时形成的影子记录，不记录人工是否买入；5–7 月历史回测见下方</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
           <button class="active" type="button" data-cohort-tab="QUALIFIED">合格候选</button>
@@ -402,19 +430,19 @@
           <p class="section-sub">2026-05-01 - 2026-07-31 回测；2026-08-03 起真实影子统计</p>
         </div>
       </div>
-      <div class="split">
-        <div>
-          <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
-          <p class="evidence-copy">只使用当日 14:30 前可见信息，按统一 14:35 入场和 T+1 收盘合同重放。</p><div class="evidence-list"><div class="evidence-item"><span class="label">合格样本</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">候选交易日</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">胜率</span><strong class="">0.0%</strong></div><div class="evidence-item"><span class="label">平均净收益</span><strong class="neutral">—</strong></div><div class="evidence-item"><span class="label">Profit Factor</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">50bp 压力收益</span><strong class="neutral">—</strong></div></div><div class="table-wrap compact-table"><table><thead><tr><th>月份</th><th>合格样本</th><th>候选日</th><th>胜率</th><th>平均净收益</th><th>观察样本</th></tr></thead><tbody><tr><td>2026-05</td><td>0</td><td>0</td><td>0.0%</td><td>—</td><td>90</td></tr><tr><td>2026-06</td><td>0</td><td>0</td><td>0.0%</td><td>—</td><td>105</td></tr><tr><td>2026-07</td><td>0</td><td>0</td><td>0.0%</td><td>—</td><td>110</td></tr></tbody></table></div><div class="notice amber">回测选择已冻结，但仍有 T+1 真值待闭合。待真值只补收益，不重选股票、不重训模型。</div>
-        </div>
+      <div class="evidence-main">
+        <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
+        <p class="evidence-copy">只使用当日 14:30 前可见信息，按统一 14:35 入场和 T+1 收盘合同重放。</p><div class="notice">合格样本为 0 不是数据缺失：62 个覆盖交易日内，没有股票同时通过全部固定门槛。研究观察有独立样本和收益统计，见下方。</div><div class="retrospective-cohort"><div class="cohort-heading"><div><h3 class="evidence-title">合格候选</h3><p class="evidence-copy">必须同时通过盈利概率、成交、风险和稳定性固定门槛；数量可以为 0。</p></div><span class="tag good">决策组</span></div><div class="evidence-list"><div class="evidence-item"><span class="label">样本</span><strong class="">0</strong></div><div class="evidence-item"><span class="label">统计日 / 覆盖日</span><strong class="">0 / 62</strong></div><div class="evidence-item"><span class="label">胜率</span><strong class="">—</strong></div><div class="evidence-item"><span class="label">平均净收益</span><strong class="neutral">—</strong></div><div class="evidence-item"><span class="label">Profit Factor</span><strong class="">—</strong></div><div class="evidence-item"><span class="label">50bp 压力收益</span><strong class="neutral">—</strong></div></div><div class="table-wrap compact-table"><table><thead><tr><th>月份</th><th>样本</th><th>统计日 / 覆盖日</th><th>胜率</th><th>平均净收益</th><th>Profit Factor</th><th>50bp 压力收益</th></tr></thead><tbody><tr><td>2026-05</td><td>0</td><td>0 / 18</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td>2026-06</td><td>0</td><td>0 / 21</td><td>—</td><td>—</td><td>—</td><td>—</td></tr><tr><td>2026-07</td><td>0</td><td>0 / 23</td><td>—</td><td>—</td><td>—</td><td>—</td></tr></tbody></table></div></div><div class="retrospective-cohort"><div class="cohort-heading"><div><h3 class="evidence-title">研究观察</h3><p class="evidence-copy">每个覆盖交易日固定选择 5 支最接近门槛的非合格股票；用于研究，不是买入建议。</p></div><span class="tag warn">比较组</span></div><div class="evidence-list"><div class="evidence-item"><span class="label">样本</span><strong class="">305</strong></div><div class="evidence-item"><span class="label">统计日 / 覆盖日</span><strong class="">61 / 62</strong></div><div class="evidence-item"><span class="label">胜率</span><strong class="">44.3%</strong></div><div class="evidence-item"><span class="label">平均净收益</span><strong class="negative">-0.356%</strong></div><div class="evidence-item"><span class="label">Profit Factor</span><strong class="">0.65</strong></div><div class="evidence-item"><span class="label">50bp 压力收益</span><strong class="negative">-0.505%</strong></div></div><div class="table-wrap compact-table"><table><thead><tr><th>月份</th><th>样本</th><th>统计日 / 覆盖日</th><th>胜率</th><th>平均净收益</th><th>Profit Factor</th><th>50bp 压力收益</th></tr></thead><tbody><tr><td>2026-05</td><td>90</td><td>18 / 18</td><td>31.1%</td><td>-0.804%</td><td>0.41</td><td>-0.951%</td></tr><tr><td>2026-06</td><td>105</td><td>21 / 21</td><td>39.0%</td><td>-0.657%</td><td>0.52</td><td>-0.807%</td></tr><tr><td>2026-07</td><td>110</td><td>22 / 23</td><td>60.0%</td><td>+0.297%</td><td>1.70</td><td>+0.148%</td></tr></tbody></table></div></div><div class="notice amber">回测选择已冻结，但仍有 T+1 真值待闭合。待真值只补收益，不重选股票、不重训模型。</div>
+      </div>
+      <div class="evidence-shadow">
         <div>
           <h3 class="evidence-title">2026 年 8 月起真实影子运行</h3>
           <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
-          <div class="evidence-list">
-            <div class="evidence-item"><span class="label">已运行交易日</span><strong class="">0</strong></div>
-            <div class="evidence-item"><span class="label">合格候选日</span><strong class="">0</strong></div>
-            <div class="evidence-item"><span class="label">已验证候选</span><strong class="">0</strong></div>
-          </div>
+        </div>
+        <div class="evidence-list">
+          <div class="evidence-item"><span class="label">已运行交易日</span><strong class="">0</strong></div>
+          <div class="evidence-item"><span class="label">合格候选日</span><strong class="">0</strong></div>
+          <div class="evidence-item"><span class="label">已验证候选</span><strong class="">0</strong></div>
         </div>
       </div>
       <div class="notice amber"><strong>V15 仅作为研究种子：</strong> 55 支 / 29 日，平均净收益 +0.455%。V15 使用多个早段时点和每日 Top3，与当前固定 14:30、合格不限数量的合同不同，不能直接当作新系统盈利证据。</div>
@@ -440,7 +468,7 @@
       </div>
     </section>
     
-    <section class="section"><div class="section-head"><div><h2 class="section-title">旧系统历史说明</h2><p class="section-sub">旧版盘中记录保留审计，但不计入固定 14:30 新合同</p></div></div><div class="notice amber">旧系统回补、盘后生成名单以及不同入场合同的记录，均不计入 2026 年 8 月起的真实影子统计。</div></section>
+    
 
     <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
   </main>
