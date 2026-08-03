@@ -31,6 +31,8 @@ SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
 PREP_START = time(13, 40)
 RUN_START = time(14, 0)
 RUN_END = time(15, 0)
+LATE_RECOVERY_START = time(14, 37)
+LATE_RECOVERY_END = time(16, 10)
 WARMUP_SLOTS = {
     "14:00",
     "14:05",
@@ -132,11 +134,15 @@ def run_once(
     signal_slot: str | None = None,
     *,
     settlement_slot: str | None = None,
+    late_recovery: bool = False,
 ) -> None:
     env = os.environ.copy()
     env["WP_MODE"] = "live"
     if signal_slot:
         env["WP_V3_SIGNAL_SLOT"] = signal_slot
+    if late_recovery:
+        env["WP_V3_LATE_RECOVERY"] = "1"
+        env["WP_V3_RECOVERY_REASON"] = "missed_scheduler"
     current = now_cn()
     if (
         settlement_slot is None
@@ -238,6 +244,23 @@ def run_once_if_due() -> None:
             return
     else:
         print("WP calendar fallback: TUSHARE_TOKEN is not configured; upstream data freshness will gate outputs.")
+
+    same_day_recovery = bool(
+        os.environ.get("GITHUB_EVENT_NAME", "").strip() == "push"
+        and LATE_RECOVERY_START <= current.time() <= LATE_RECOVERY_END
+        and not _has_fixed_signal_session(trade_date)
+    )
+    if same_day_recovery:
+        print(
+            "WP same-day recovery started: rebuilding immutable "
+            "14:30 signal and 14:35 entry benchmark from rt_min_daily."
+        )
+        run_once("14:30", late_recovery=True)
+        run_once(settlement_slot="14:35", late_recovery=True)
+        print(
+            "WP same-day recovery completed as non-prospective evidence."
+        )
+        return
 
     if not in_run_window(current):
         print(f"Skip WP update outside A-share trading window: {current:%Y-%m-%d %H:%M:%S}")

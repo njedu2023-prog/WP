@@ -342,6 +342,7 @@ def refresh_shadow_metrics(
         for session in ledger.get("sessions", [])
         if session.get("frozen")
         and not session.get("missing_slots")
+        and session.get("prospective_eligible", True) is True
         and _session_belongs_to_model(session, fingerprint)
         and _is_forward_shadow_session(session, observation_boundary)
     ]

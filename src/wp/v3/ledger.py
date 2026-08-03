@@ -41,6 +41,9 @@ def load_shadow_ledger(path: str | Path) -> dict[str, Any]:
     ledger["schema_version"] = "wp_candidate_ledger_v4"
     for session in ledger.get("sessions", []):
         legacy = source_schema == "wp_candidate_ledger_v3"
+        session.setdefault("evidence_tier", "PROSPECTIVE_LIVE")
+        session.setdefault("prospective_eligible", True)
+        session.setdefault("recovery_reason", None)
         session.setdefault(
             "cohort_contract_version",
             "legacy_qualified_only" if legacy else "dual_cohort_v1",
@@ -50,10 +53,26 @@ def load_shadow_ledger(path: str | Path) -> dict[str, Any]:
             candidate.setdefault("candidate_cohort", QUALIFIED)
             candidate.setdefault("statistics_scope", "official_strategy")
             candidate.setdefault("is_user_trade", False)
+            candidate.setdefault(
+                "evidence_tier",
+                session["evidence_tier"],
+            )
+            candidate.setdefault(
+                "prospective_eligible",
+                session["prospective_eligible"],
+            )
         for observation in session.get("observations", []):
             observation.setdefault("candidate_cohort", OBSERVATION)
             observation.setdefault("statistics_scope", "research_observation")
             observation.setdefault("is_user_trade", False)
+            observation.setdefault(
+                "evidence_tier",
+                session["evidence_tier"],
+            )
+            observation.setdefault(
+                "prospective_eligible",
+                session["prospective_eligible"],
+            )
         session.setdefault(
             "qualified_count",
             len(session.get("candidates", [])),
@@ -103,18 +122,34 @@ def record_shadow_slot(
     signal_slot: str,
     config: V3Config,
     observed_at: str | None = None,
+    evidence_tier: str = "PROSPECTIVE_LIVE",
+    prospective_eligible: bool = True,
+    recovery_reason: str | None = None,
 ) -> dict[str, Any]:
     if signal_slot not in config.strategy.signal_slots:
         raise ValueError(f"slot {signal_slot} is outside the immutable signal window")
     session = _session(ledger, trade_date, config)
+    slots = session.setdefault("covered_slots", [])
+    if signal_slot in slots:
+        if session.get("evidence_tier") != evidence_tier:
+            raise ValueError(
+                f"evidence tier changed within session for {trade_date}"
+            )
+        if bool(session.get("prospective_eligible")) != bool(
+            prospective_eligible
+        ):
+            raise ValueError(
+                f"prospective eligibility changed within session for {trade_date}"
+            )
+        return ledger
     if session.get("frozen"):
         raise ValueError(f"candidate ledger for {trade_date} is already frozen")
 
     observed_at = observed_at or datetime.now(CN_TZ).isoformat()
+    session["evidence_tier"] = evidence_tier
+    session["prospective_eligible"] = bool(prospective_eligible)
+    session["recovery_reason"] = recovery_reason
     _bind_session_model(session, predictions)
-    slots = session.setdefault("covered_slots", [])
-    if signal_slot in slots:
-        return ledger
     if signal_slot not in slots:
         slots.append(signal_slot)
         slots.sort(key=config.strategy.signal_slots.index)
@@ -130,6 +165,8 @@ def record_shadow_slot(
         config=config,
         observed_at=observed_at,
         cohort=QUALIFIED,
+        evidence_tier=evidence_tier,
+        prospective_eligible=prospective_eligible,
     )
     _record_cohort_rows(
         observations,
@@ -139,6 +176,8 @@ def record_shadow_slot(
         config=config,
         observed_at=observed_at,
         cohort=OBSERVATION,
+        evidence_tier=evidence_tier,
+        prospective_eligible=prospective_eligible,
     )
     session["observation_target_count"] = selection.observation_target_count
     session["observation_selection_status"] = (
@@ -167,6 +206,8 @@ def _record_cohort_rows(
     config: V3Config,
     observed_at: str,
     cohort: str,
+    evidence_tier: str,
+    prospective_eligible: bool,
 ) -> None:
     by_code = {str(candidate["ts_code"]): candidate for candidate in target}
     for row in frame.to_dict(orient="records"):
@@ -180,6 +221,8 @@ def _record_cohort_rows(
                 config=config,
                 observed_at=observed_at,
                 cohort=cohort,
+                evidence_tier=evidence_tier,
+                prospective_eligible=prospective_eligible,
             )
             target.append(candidate)
             by_code[code] = candidate
@@ -323,6 +366,8 @@ def settle_entry_benchmarks(
                 "entry_benchmark_settled_at": settled_at,
             }
         )
+    if session.get("frozen"):
+        _refresh_frozen_integrity(session, config)
     return ledger
 
 
@@ -357,6 +402,7 @@ def freeze_shadow_session(
             )
         if policy_fingerprint and not existing_policy:
             session["policy_fingerprint"] = policy_fingerprint
+        _refresh_frozen_integrity(session, config)
         return ledger
     if model_fingerprint:
         session["model_fingerprint"] = model_fingerprint
@@ -368,9 +414,19 @@ def freeze_shadow_session(
     session["candidate_count"] = len(session.get("candidates", []))
     session["qualified_count"] = len(session.get("candidates", []))
     session["observation_count"] = len(session.get("observations", []))
+    _refresh_frozen_integrity(session, config)
+    return ledger
+
+
+def _refresh_frozen_integrity(
+    session: dict[str, Any],
+    config: V3Config,
+) -> None:
     session["expected_slots"] = list(config.strategy.signal_slots)
     session["missing_slots"] = [
-        slot for slot in config.strategy.signal_slots if slot not in session.get("covered_slots", [])
+        slot
+        for slot in config.strategy.signal_slots
+        if slot not in session.get("covered_slots", [])
     ]
     pending_entries = _pending_entry_candidates(session, config)
     session["pending_entry_benchmark_count"] = len(pending_entries)
@@ -379,11 +435,27 @@ def freeze_shadow_session(
         missing_slots=session["missing_slots"],
         pending_entries=pending_entries,
     )
-    return ledger
 
 
 def assert_ledger_invariants(ledger: dict[str, Any], config: V3Config) -> None:
     for session in ledger.get("sessions", []):
+        evidence_tier = str(
+            session.get("evidence_tier") or "PROSPECTIVE_LIVE"
+        )
+        if evidence_tier not in {
+            "PROSPECTIVE_LIVE",
+            "RECOVERED_SAME_DAY",
+        }:
+            raise ValueError(
+                f"invalid evidence tier for {session.get('trade_date')}"
+            )
+        if (
+            evidence_tier == "RECOVERED_SAME_DAY"
+            and session.get("prospective_eligible") is not False
+        ):
+            raise ValueError(
+                "same-day recovered evidence cannot count as prospective"
+            )
         expected = list(
             session.get("expected_slots")
             or (
@@ -477,6 +549,14 @@ def _assert_candidate_invariant(
         raise ValueError(
             f"model evidence cannot be marked as a user trade: {code}"
         )
+    if candidate.get("evidence_tier") != session.get("evidence_tier"):
+        raise ValueError(f"candidate evidence tier differs for {code}")
+    if bool(candidate.get("prospective_eligible")) != bool(
+        session.get("prospective_eligible")
+    ):
+        raise ValueError(
+            f"candidate prospective eligibility differs for {code}"
+        )
     if candidate.get("first_signal_time") not in expected_slots:
         raise ValueError(f"invalid first signal time for {code}")
     if _float(candidate.get("first_signal_price")) is None:
@@ -521,6 +601,8 @@ def _candidate_record(
     config: V3Config,
     observed_at: str,
     cohort: str,
+    evidence_tier: str,
+    prospective_eligible: bool,
 ) -> dict[str, Any]:
     evidence_fields = (
         "p_entry_fill",
@@ -600,6 +682,8 @@ def _candidate_record(
             else "research_observation"
         ),
         "is_user_trade": False,
+        "evidence_tier": evidence_tier,
+        "prospective_eligible": bool(prospective_eligible),
         "first_signal_time": signal_slot,
         "first_signal_price": _float(row.get("signal_price")),
         "entry_adj_factor": _float(row.get("adj_factor")),
@@ -695,6 +779,9 @@ def _session(
         "strategy_id": config.strategy.strategy_id,
         "expected_slots": list(config.strategy.signal_slots),
         "integrity_status": "COLLECTING",
+        "evidence_tier": "PROSPECTIVE_LIVE",
+        "prospective_eligible": True,
+        "recovery_reason": None,
     }
     ledger["sessions"].append(session)
     ledger["sessions"].sort(key=lambda item: str(item.get("trade_date")))

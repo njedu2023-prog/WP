@@ -126,6 +126,52 @@ def test_historical_backfill_cannot_count_as_forward_shadow_day():
     assert shadow["observation_after_trade_date"] == "20260724"
 
 
+def test_same_day_recovery_cannot_count_as_forward_shadow_day():
+    registry = empty_registry()
+    register_research_model(
+        registry,
+        metadata=_metadata(
+            "model-a",
+            "policy-a",
+            "2026-07-27T00:00:00Z",
+            train_end="20260724",
+        ),
+        backtest={"backtest_gate": {"passed": True}},
+        artifact_path="a.joblib",
+    )
+    ledger = {
+        "schema_version": "wp_candidate_ledger_v4",
+        "sessions": [
+            {
+                "trade_date": "20260727",
+                "frozen": True,
+                "frozen_at": "2026-07-27T15:03:00+08:00",
+                "model_fingerprint": "model-a",
+                "policy_fingerprint": "policy-a",
+                "prospective_eligible": False,
+                "evidence_tier": "RECOVERED_SAME_DAY",
+                "candidates": [],
+            },
+            {
+                "trade_date": "20260728",
+                "frozen": True,
+                "frozen_at": "2026-07-28T14:40:00+08:00",
+                "model_fingerprint": "model-a",
+                "policy_fingerprint": "policy-a",
+                "prospective_eligible": True,
+                "evidence_tier": "PROSPECTIVE_LIVE",
+                "candidates": [],
+            },
+        ],
+    }
+
+    refresh_shadow_metrics(registry, "model-a", ledger, V3Config())
+
+    shadow = registry["models"][0]["shadow"]
+    assert shadow["trading_days"] == 1
+    assert shadow["started_trade_date"] == "20260728"
+
+
 def test_shadow_cost_stress_only_charges_filled_entries():
     registry = empty_registry()
     register_research_model(

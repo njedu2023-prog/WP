@@ -237,6 +237,35 @@ def test_repeating_the_same_slot_is_idempotent():
     assert ledger["sessions"][0]["covered_slots"] == ["14:30"]
 
 
+def test_same_day_recovery_is_immutable_and_non_prospective():
+    ledger = empty_shadow_ledger()
+    config = V3Config()
+    record_shadow_slot(
+        ledger,
+        _dual_cohort_predictions(),
+        trade_date="20260723",
+        signal_slot="14:30",
+        config=config,
+        evidence_tier="RECOVERED_SAME_DAY",
+        prospective_eligible=False,
+        recovery_reason="missed_scheduler",
+    )
+    session = ledger["sessions"][0]
+
+    assert session["evidence_tier"] == "RECOVERED_SAME_DAY"
+    assert session["prospective_eligible"] is False
+    assert session["recovery_reason"] == "missed_scheduler"
+    assert all(
+        record["evidence_tier"] == "RECOVERED_SAME_DAY"
+        and record["prospective_eligible"] is False
+        for record in [
+            *session["candidates"],
+            *session["observations"],
+        ]
+    )
+    assert_ledger_invariants(ledger, config)
+
+
 def test_repeating_freeze_preserves_the_original_freeze_time():
     ledger = empty_shadow_ledger()
     config = V3Config()

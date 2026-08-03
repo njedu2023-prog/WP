@@ -5,6 +5,7 @@ import pandas as pd
 from wp.v3.history import _normalize_historical_minutes, _slot_features
 from wp.v3.live_data import (
     capture_entry_settlement_frame,
+    _fetch_rt_min_daily_replay,
     _load_rt_min_session_snapshots,
     _normalize_rt_k_day,
     _normalize_rt_min,
@@ -21,6 +22,24 @@ class SettlementClient(Client):
     def query(self, api_name: str, **params):
         if api_name == "rt_min":
             return _rt_min_bar(10.2, 20_000_000, "14:55:00")
+        if api_name == "stk_limit":
+            return pd.DataFrame(
+                [{"ts_code": "600000.SH", "up_limit": 11.0}]
+            )
+        raise AssertionError(api_name)
+
+
+class ReplayClient(Client):
+    def query(self, api_name: str, **params):
+        if api_name == "rt_min_daily":
+            return pd.concat(
+                [
+                    _rt_min_bar(10.0, 8_000_000, "14:25:00"),
+                    _rt_min_bar(10.2, 20_000_000, "14:30:00"),
+                    _rt_min_bar(10.3, 21_000_000, "14:35:00"),
+                ],
+                ignore_index=True,
+            )
         if api_name == "stk_limit":
             return pd.DataFrame(
                 [{"ts_code": "600000.SH", "up_limit": 11.0}]
@@ -155,3 +174,36 @@ def test_entry_settlement_uses_only_the_exact_requested_bar(tmp_path):
     assert frame.loc[0, "entry_benchmark_slot"] == "14:55"
     assert frame.loc[0, "entry_benchmark_price"] == 10.2
     assert frame.loc[0, "entry_benchmark_amount"] == 20_000_000
+
+
+def test_same_day_replay_discards_bars_after_the_requested_slot(tmp_path):
+    replay = _fetch_rt_min_daily_replay(
+        ReplayClient(tmp_path),
+        trade_date="20260721",
+        through_slot="14:30",
+        ts_codes=["600000.SH"],
+        workers=1,
+    )
+
+    assert (
+        pd.to_datetime(replay["trade_time"]).dt.strftime("%H:%M").tolist()
+        == ["14:25", "14:30"]
+    )
+
+
+def test_recovered_settlement_uses_scheduled_freshness_reference(tmp_path):
+    frame, manifest = capture_entry_settlement_frame(
+        ReplayClient(tmp_path),
+        trade_date="20260721",
+        settlement_slot="14:35",
+        ts_codes=["600000.SH"],
+        config=V3Config(),
+        late_recovery=True,
+    )
+
+    assert manifest["capture_contract"] == (
+        "retrospective_same_day_rt_min_daily"
+    )
+    assert manifest["market_data_source"] == "rt_min_daily"
+    assert frame.loc[0, "entry_benchmark_price"] == 10.3
+    assert frame.loc[0, "data_age_seconds"] == 120.0

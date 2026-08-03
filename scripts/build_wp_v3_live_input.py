@@ -62,6 +62,9 @@ def build_live_input(
         if requested in DEFAULT_SIGNAL_SLOTS
         else due_slot(capture_started_at)
     )
+    late_recovery = (
+        environment.get("WP_V3_LATE_RECOVERY", "").strip() == "1"
+    )
     config = load_v3_config(root / "config" / "wp_v3.yml")
     client = TushareHistoryClient(
         ts.pro_api(token),
@@ -73,11 +76,41 @@ def build_live_input(
         trade_date=trade_date,
         signal_slot=signal_slot,
         config=config,
+        late_recovery=late_recovery,
     )
     manifest = dict(manifest)
     manifest["capture_started_at"] = capture_started_at.isoformat()
-    manifest["capture_completed_at"] = datetime.now(CN_TZ).isoformat()
-    manifest["capture_contract"] = "anchored_signal_slot_snapshot"
+    capture_completed_at = datetime.now(CN_TZ)
+    manifest["capture_completed_at"] = capture_completed_at.isoformat()
+    manifest["capture_contract"] = (
+        "retrospective_same_day_rt_min_daily"
+        if late_recovery
+        else "anchored_signal_slot_snapshot"
+    )
+    manifest["evidence_tier"] = (
+        "RECOVERED_SAME_DAY"
+        if late_recovery
+        else "PROSPECTIVE_LIVE"
+    )
+    manifest["prospective_eligible"] = not late_recovery
+    if late_recovery:
+        grace_seconds = int(
+            environment.get("WP_SCHEDULE_GRACE_SECONDS", "120")
+        )
+        scheduled = datetime.combine(
+            datetime.strptime(trade_date, "%Y%m%d").date(),
+            datetime.strptime(signal_slot, "%H:%M").time(),
+            CN_TZ,
+        )
+        manifest["decision_reference_time"] = (
+            scheduled + timedelta(seconds=grace_seconds)
+        ).isoformat()
+        manifest["recovered_at"] = capture_completed_at.isoformat()
+        manifest["recovery_reason"] = (
+            environment.get("WP_V3_RECOVERY_REASON", "").strip()
+            or "missed_scheduler"
+        )
+        manifest["source_api"] = "rt_min_daily"
     output_dir = root / "data" / "v3" / "latest"
     output_dir.mkdir(parents=True, exist_ok=True)
     csv_path = output_dir / "wp_v3_live_features.csv"
@@ -132,6 +165,9 @@ def capture_entry_settlement_input(
         or capture_started_at.strftime("%Y%m%d")
     )
     config = load_v3_config(root / "config" / "wp_v3.yml")
+    late_recovery = (
+        environment.get("WP_V3_LATE_RECOVERY", "").strip() == "1"
+    )
     ledger = load_shadow_ledger(
         root / "outputs" / "json" / "wp_v3_candidate_ledger.json"
     )
@@ -162,12 +198,38 @@ def capture_entry_settlement_input(
         settlement_slot=settlement_slot,
         ts_codes=codes,
         config=config,
+        late_recovery=late_recovery,
     )
+    capture_completed_at = datetime.now(CN_TZ)
     manifest = {
         **manifest,
         "capture_started_at": capture_started_at.isoformat(),
-        "capture_completed_at": datetime.now(CN_TZ).isoformat(),
+        "capture_completed_at": capture_completed_at.isoformat(),
+        "evidence_tier": (
+            "RECOVERED_SAME_DAY"
+            if late_recovery
+            else "PROSPECTIVE_LIVE"
+        ),
+        "prospective_eligible": not late_recovery,
     }
+    if late_recovery:
+        grace_seconds = int(
+            environment.get("WP_SCHEDULE_GRACE_SECONDS", "120")
+        )
+        scheduled = datetime.combine(
+            datetime.strptime(trade_date, "%Y%m%d").date(),
+            datetime.strptime(settlement_slot, "%H:%M").time(),
+            CN_TZ,
+        )
+        manifest["decision_reference_time"] = (
+            scheduled + timedelta(seconds=grace_seconds)
+        ).isoformat()
+        manifest["recovered_at"] = capture_completed_at.isoformat()
+        manifest["recovery_reason"] = (
+            environment.get("WP_V3_RECOVERY_REASON", "").strip()
+            or "missed_scheduler"
+        )
+        manifest["source_api"] = "rt_min_daily"
     output_dir = root / "data" / "v3" / "latest"
     csv_path = output_dir / "wp_v3_entry_settlement.csv"
     json_path = output_dir / "wp_v3_entry_settlement_manifest.json"

@@ -26,6 +26,7 @@ from .history import (
     _load_stock_basic,
     _minute_universe_quality,
     _observation_slots,
+    _ordered_bounded_map,
     _slot_features,
 )
 
@@ -41,6 +42,7 @@ def build_live_feature_frame(
     trade_date: str,
     signal_slot: str,
     config: V3Config,
+    late_recovery: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     if signal_slot not in config.strategy.signal_slots:
         raise ValueError(f"{signal_slot} is not a V3 signal slot")
@@ -205,12 +207,27 @@ def build_live_feature_frame(
             "ts_code",
         ].astype(str)
     )
-    current_minute = _fetch_rt_min_snapshot(
-        client,
-        trade_date=trade_date,
-        observation_slot=signal_slot,
-        ts_codes=sorted(expected_symbols),
-    )
+    replay = pd.DataFrame()
+    if late_recovery:
+        replay = _fetch_rt_min_daily_replay(
+            client,
+            trade_date=trade_date,
+            through_slot=signal_slot,
+            ts_codes=sorted(expected_symbols),
+            workers=config.history.minute_fetch_workers,
+        )
+        current_minute = replay.loc[
+            pd.to_datetime(replay["trade_time"], errors="coerce")
+            .dt.strftime("%H:%M")
+            .eq(signal_slot)
+        ].copy()
+    else:
+        current_minute = _fetch_rt_min_snapshot(
+            client,
+            trade_date=trade_date,
+            observation_slot=signal_slot,
+            ts_codes=sorted(expected_symbols),
+        )
     if current_minute.empty:
         raise RuntimeError("live all-market rt_min 5MIN snapshot is missing")
     current_minute["bar_slot"] = pd.to_datetime(
@@ -242,14 +259,28 @@ def build_live_feature_frame(
         raise RuntimeError("live rt_min snapshot has no valid time")
     actual_slot = pd.Timestamp(actual_market_time).strftime("%H:%M")
 
-    open_snapshot = client.query(
-        "rt_k",
-        cache_key=f"{trade_date}_{signal_slot.replace(':', '')}_open",
-        refresh=True,
-        ts_code=RTK_WILDCARDS,
-        fields=RTK_FIELDS,
-    )
-    day_snapshot = _normalize_rt_k_day(open_snapshot)
+    if late_recovery:
+        day_snapshot = (
+            replay.sort_values(["ts_code", "trade_time"], kind="stable")
+            .drop_duplicates("ts_code", keep="first")
+            [["ts_code", "open"]]
+            .rename(columns={"open": "day_open"})
+            .merge(
+                previous_close[["ts_code", "pre_close"]],
+                on="ts_code",
+                how="inner",
+            )
+            .rename(columns={"pre_close": "rt_pre_close"})
+        )
+    else:
+        open_snapshot = client.query(
+            "rt_k",
+            cache_key=f"{trade_date}_{signal_slot.replace(':', '')}_open",
+            refresh=True,
+            ts_code=RTK_WILDCARDS,
+            fields=RTK_FIELDS,
+        )
+        day_snapshot = _normalize_rt_k_day(open_snapshot)
     if day_snapshot.empty:
         raise RuntimeError("live all-market rt_k day-open/previous-close snapshot is missing")
     quality = _minute_universe_quality(
@@ -259,13 +290,21 @@ def build_live_feature_frame(
         config,
         trade_date=trade_date,
     )
-    tail = _load_rt_min_session_snapshots(
-        client,
-        trade_date=trade_date,
-        observation_slot=signal_slot,
-        current=current_minute,
-        observation_slots=_observation_slots(config.strategy.signal_slots),
-    )
+    observation_slots = _observation_slots(config.strategy.signal_slots)
+    if late_recovery:
+        tail = replay.loc[
+            pd.to_datetime(replay["trade_time"], errors="coerce")
+            .dt.strftime("%H:%M")
+            .isin(observation_slots)
+        ].copy()
+    else:
+        tail = _load_rt_min_session_snapshots(
+            client,
+            trade_date=trade_date,
+            observation_slot=signal_slot,
+            current=current_minute,
+            observation_slots=observation_slots,
+        )
     snapshots = _slot_features(tail, signal_slot)
     snapshots = snapshots.merge(day_snapshot, on="ts_code", how="left").merge(
         base, on="ts_code", how="inner"
@@ -304,7 +343,11 @@ def build_live_feature_frame(
     snapshots = _add_market_context(snapshots)
     snapshots = _add_industry_context(snapshots)
     snapshots = enrich_feature_frame(snapshots)
-    capture_time = pd.Timestamp.now(tz="Asia/Shanghai").tz_localize(None)
+    capture_time = (
+        requested_time + pd.Timedelta(2, unit="min")
+        if late_recovery
+        else pd.Timestamp.now(tz="Asia/Shanghai").tz_localize(None)
+    )
     snapshots["data_age_seconds"] = (
         capture_time
         - pd.to_datetime(snapshots["slot_bar_time"], errors="coerce")
@@ -339,6 +382,9 @@ def build_live_feature_frame(
         ),
         "eligible_count": int(snapshots["execution_eligible"].sum()),
         "feature_version": config.model.feature_version,
+        "market_data_source": (
+            "rt_min_daily" if late_recovery else "rt_min"
+        ),
         **quality,
     }
     return snapshots, manifest
@@ -415,6 +461,7 @@ def capture_entry_settlement_frame(
     settlement_slot: str,
     ts_codes: list[str],
     config: V3Config,
+    late_recovery: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     columns = [
         "ts_code",
@@ -439,15 +486,31 @@ def capture_entry_settlement_frame(
             "requested_symbols": 0,
             "observed_symbols": 0,
             "fresh_symbols": 0,
-            "capture_contract": "exact_next_5m_bar",
+            "capture_contract": (
+                "retrospective_same_day_rt_min_daily"
+                if late_recovery
+                else "exact_next_5m_bar"
+            ),
+            "market_data_source": (
+                "rt_min_daily" if late_recovery else "rt_min"
+            ),
         }
 
-    snapshot = _fetch_rt_min_snapshot(
-        client,
-        trade_date=trade_date,
-        observation_slot=settlement_slot,
-        ts_codes=codes,
-    ).copy()
+    if late_recovery:
+        snapshot = _fetch_rt_min_daily_replay(
+            client,
+            trade_date=trade_date,
+            through_slot=settlement_slot,
+            ts_codes=codes,
+            workers=config.history.minute_fetch_workers,
+        )
+    else:
+        snapshot = _fetch_rt_min_snapshot(
+            client,
+            trade_date=trade_date,
+            observation_slot=settlement_slot,
+            ts_codes=codes,
+        ).copy()
     snapshot["bar_slot"] = pd.to_datetime(
         snapshot["trade_time"],
         errors="coerce",
@@ -476,7 +539,11 @@ def capture_entry_settlement_frame(
         result["trade_time"],
         errors="coerce",
     ).dt.strftime("%Y-%m-%d %H:%M:%S")
-    capture_time = pd.Timestamp.now(tz="Asia/Shanghai").tz_localize(None)
+    capture_time = (
+        requested + pd.Timedelta(2, unit="min")
+        if late_recovery
+        else pd.Timestamp.now(tz="Asia/Shanghai").tz_localize(None)
+    )
     result["data_age_seconds"] = (
         capture_time - pd.to_datetime(result["trade_time"], errors="coerce")
     ).dt.total_seconds()
@@ -501,13 +568,92 @@ def capture_entry_settlement_frame(
         "requested_symbols": len(codes),
         "observed_symbols": int(len(result)),
         "fresh_symbols": int(fresh.sum()),
-        "capture_contract": "exact_next_5m_bar",
+        "capture_contract": (
+            "retrospective_same_day_rt_min_daily"
+            if late_recovery
+            else "exact_next_5m_bar"
+        ),
+        "market_data_source": (
+            "rt_min_daily" if late_recovery else "rt_min"
+        ),
         "latest_bar_time": (
             result["entry_benchmark_bar_time"].max()
             if not result.empty
             else None
         ),
     }
+
+
+def _fetch_rt_min_daily_replay(
+    client: TushareHistoryClient,
+    *,
+    trade_date: str,
+    through_slot: str,
+    ts_codes: list[str],
+    workers: int,
+) -> pd.DataFrame:
+    requested_codes = sorted({str(code) for code in ts_codes if str(code)})
+
+    def fetch(code: str) -> pd.DataFrame:
+        raw = client.query(
+            "rt_min_daily",
+            cache_key=(
+                f"{trade_date}_{through_slot.replace(':', '')}_{code}"
+            ),
+            refresh=True,
+            ts_code=code,
+            freq="5MIN",
+        )
+        normalized = _normalize_rt_min(raw, trade_date=trade_date)
+        if normalized.empty:
+            return normalized
+        trade_time = pd.to_datetime(
+            normalized["trade_time"],
+            errors="coerce",
+        )
+        slots = trade_time.dt.strftime("%H:%M")
+        dates = trade_time.dt.strftime("%Y%m%d")
+        return normalized.loc[
+            dates.eq(trade_date) & slots.le(through_slot)
+        ].copy()
+
+    frames: list[pd.DataFrame] = []
+    for index, frame in enumerate(
+        _ordered_bounded_map(
+            fetch,
+            requested_codes,
+            workers=max(1, workers),
+        ),
+        start=1,
+    ):
+        if not frame.empty:
+            frames.append(frame)
+        if index % 250 == 0 or index == len(requested_codes):
+            print(
+                "WP same-day minute replay progress: "
+                f"{index}/{len(requested_codes)}"
+            )
+    if not frames:
+        raise RuntimeError("rt_min_daily returned no same-day minute rows")
+    replay = (
+        pd.concat(frames, ignore_index=True)
+        .sort_values(["ts_code", "trade_time"], kind="stable")
+        .drop_duplicates(["ts_code", "trade_time"], keep="last")
+        .reset_index(drop=True)
+    )
+    exact_codes = set(
+        replay.loc[
+            pd.to_datetime(replay["trade_time"], errors="coerce")
+            .dt.strftime("%H:%M")
+            .eq(through_slot),
+            "ts_code",
+        ].astype(str)
+    )
+    if not exact_codes:
+        raise RuntimeError(
+            f"rt_min_daily has no completed {through_slot} bars"
+        )
+    return replay
 
 
 def _fetch_rt_min_snapshot(

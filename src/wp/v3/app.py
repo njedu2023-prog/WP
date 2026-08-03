@@ -72,9 +72,19 @@ def run_v3() -> dict[str, Any]:
         source_manifest,
         config,
     )
+    source_recovery_authorized = _source_recovery_authorized(
+        source_manifest,
+        config,
+    )
+    source_evidence_authorized = (
+        source_signal_authorized or source_recovery_authorized
+    )
     record_signal = (
-        source_signal_authorized
-        and phase in {"SIGNAL", "NO_NEW_SIGNAL"}
+        source_evidence_authorized
+        and (
+            phase in {"SIGNAL", "NO_NEW_SIGNAL"}
+            or source_recovery_authorized
+        )
     )
     live_display_allowed = (
         source_signal_authorized
@@ -100,7 +110,7 @@ def run_v3() -> dict[str, Any]:
     )
     inference_summary = inference_manifest(inference)
     evidence_manifest: dict[str, Any] = {}
-    if source_signal_authorized and signal_slot in config.strategy.signal_slots:
+    if source_evidence_authorized and signal_slot in config.strategy.signal_slots:
         evidence_manifest = archive_signal_evidence(
             output,
             features=frame,
@@ -112,7 +122,7 @@ def run_v3() -> dict[str, Any]:
     ledger_path = output / "json" / "wp_v3_candidate_ledger.json"
     ledger = load_shadow_ledger(ledger_path)
     settlement_summary: dict[str, Any] = {}
-    if source_signal_authorized and signal_slot in config.strategy.signal_slots:
+    if source_evidence_authorized and signal_slot in config.strategy.signal_slots:
         settle_entry_benchmarks(
             ledger,
             frame,
@@ -171,7 +181,19 @@ def run_v3() -> dict[str, Any]:
             trade_date=trade_date,
             signal_slot=signal_slot,
             config=config,
-            observed_at=str(source_manifest.get("market_data_time") or current.isoformat()),
+            observed_at=str(
+                source_manifest.get("recovered_at")
+                or source_manifest.get("market_data_time")
+                or current.isoformat()
+            ),
+            evidence_tier=str(
+                source_manifest.get("evidence_tier")
+                or "PROSPECTIVE_LIVE"
+            ),
+            prospective_eligible=bool(
+                source_manifest.get("prospective_eligible", True)
+            ),
+            recovery_reason=source_manifest.get("recovery_reason"),
         )
     if phase in {"FROZEN", "CLOSED"} and inference.model_fingerprint:
         freeze_shadow_session(
@@ -228,7 +250,11 @@ def run_v3() -> dict[str, Any]:
         "signal_slot": signal_slot,
         "source_scheduled_slot": signal_slot,
         "market_data_time": source_manifest.get("market_data_time"),
-        "source_mode": "direct_tushare_v40",
+        "source_mode": (
+            "direct_tushare_v40_same_day_recovery"
+            if source_recovery_authorized
+            else "direct_tushare_v40"
+        ),
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
         "signal_capture_started_at": source_manifest.get("capture_started_at"),
@@ -236,6 +262,18 @@ def run_v3() -> dict[str, Any]:
             "capture_completed_at"
         ),
         "signal_source_authorized": source_signal_authorized,
+        "signal_recovery_authorized": source_recovery_authorized,
+        "signal_evidence_authorized": source_evidence_authorized,
+        "signal_evidence_tier": source_manifest.get(
+            "evidence_tier",
+            "PROSPECTIVE_LIVE",
+        ),
+        "prospective_eligible": source_manifest.get(
+            "prospective_eligible",
+            True,
+        ),
+        "recovery_reason": source_manifest.get("recovery_reason"),
+        "recovered_at": source_manifest.get("recovered_at"),
         "live_display_allowed": live_display_allowed,
         "buy_plan_count": int(len(qualified_live)),
         "qualified_count": int(len(qualified_live)),
@@ -443,7 +481,12 @@ def _decision_time(
     *,
     fallback: datetime,
 ) -> datetime:
-    for field in ("capture_completed_at", "capture_started_at", "market_data_time"):
+    for field in (
+        "decision_reference_time",
+        "capture_completed_at",
+        "capture_started_at",
+        "market_data_time",
+    ):
         value = source_manifest.get(field)
         if not value:
             continue
@@ -504,6 +547,92 @@ def _source_signal_authorized(
         <= market_time
         < scheduled + pd.Timedelta(60, unit="s")
     )
+
+
+def _source_recovery_authorized(
+    source_manifest: dict[str, Any],
+    config: V3Config,
+) -> bool:
+    if (
+        source_manifest.get("capture_contract")
+        != "retrospective_same_day_rt_min_daily"
+        or source_manifest.get("evidence_tier")
+        != "RECOVERED_SAME_DAY"
+        or source_manifest.get("prospective_eligible") is not False
+        or source_manifest.get("source_api") != "rt_min_daily"
+    ):
+        return False
+    trade_date = str(source_manifest.get("trade_date") or "")
+    signal_slot = str(source_manifest.get("signal_slot") or "")
+    market_data_time = source_manifest.get("market_data_time")
+    recovered_at = source_manifest.get("recovered_at")
+    decision_reference_time = source_manifest.get(
+        "decision_reference_time"
+    )
+    if (
+        len(trade_date) != 8
+        or signal_slot not in config.strategy.signal_slots
+        or not market_data_time
+        or not recovered_at
+        or not decision_reference_time
+    ):
+        return False
+    try:
+        scheduled = pd.Timestamp(
+            f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
+            f"{signal_slot}:00",
+            tz=config.strategy.timezone,
+        )
+        market_time = _localized_timestamp(
+            market_data_time,
+            config.strategy.timezone,
+        )
+        recovered = _localized_timestamp(
+            recovered_at,
+            config.strategy.timezone,
+        )
+        decision_reference = _localized_timestamp(
+            decision_reference_time,
+            config.strategy.timezone,
+        )
+        row_count = int(source_manifest.get("row_count") or 0)
+        fresh_count = int(source_manifest.get("fresh_row_count") or 0)
+        open_coverage = float(
+            source_manifest.get("open_universe_coverage") or 0.0
+        )
+        tail_coverage = float(
+            source_manifest.get("tail_universe_coverage") or 0.0
+        )
+    except (TypeError, ValueError):
+        return False
+    return bool(
+        scheduled
+        <= market_time
+        < scheduled + pd.Timedelta(1, unit="min")
+        and scheduled
+        <= decision_reference
+        <= scheduled
+        + pd.Timedelta(
+            config.execution.max_market_data_age_seconds,
+            unit="s",
+        )
+        and recovered.strftime("%Y%m%d") == trade_date
+        and str(source_manifest.get("latest_bar_slot") or "")
+        == signal_slot
+        and row_count >= 1_000
+        and fresh_count >= 1_000
+        and open_coverage
+        >= config.history.minimum_minute_universe_coverage
+        and tail_coverage
+        >= config.history.minimum_minute_universe_coverage
+    )
+
+
+def _localized_timestamp(value: Any, timezone: str) -> pd.Timestamp:
+    timestamp = pd.Timestamp(value)
+    if timestamp.tzinfo is None:
+        return timestamp.tz_localize(timezone)
+    return timestamp.tz_convert(timezone)
 
 
 def _write_not_ready(
