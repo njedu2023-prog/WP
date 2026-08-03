@@ -111,9 +111,10 @@ def run_v3() -> dict[str, Any]:
     inference_summary = inference_manifest(inference)
     evidence_manifest: dict[str, Any] = {}
     if source_evidence_authorized and signal_slot in config.strategy.signal_slots:
+        evidence_features = _evidence_feature_universe(frame, predictions)
         evidence_manifest = archive_signal_evidence(
             output,
-            features=frame,
+            features=evidence_features,
             predictions=predictions,
             source_manifest=source_manifest,
             inference_manifest=inference_summary,
@@ -435,6 +436,25 @@ def run_v3() -> dict[str, Any]:
         research_seed=research_seed,
     )
     return manifest
+
+
+def _evidence_feature_universe(
+    features: pd.DataFrame,
+    predictions: pd.DataFrame,
+) -> pd.DataFrame:
+    if "ts_code" not in features or "ts_code" not in predictions:
+        raise ValueError("signal evidence requires ts_code in both frames")
+    feature_codes = features["ts_code"].astype(str)
+    prediction_codes = predictions["ts_code"].astype(str)
+    if feature_codes.duplicated().any() or prediction_codes.duplicated().any():
+        raise ValueError("signal evidence requires one row per stock")
+    unknown = sorted(set(prediction_codes) - set(feature_codes))
+    if unknown:
+        raise ValueError(
+            "prediction universe contains stocks absent from source features: "
+            + ",".join(unknown[:5])
+        )
+    return features.loc[feature_codes.isin(set(prediction_codes))].copy()
 
 
 def _refresh_data_age(

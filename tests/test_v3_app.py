@@ -2,9 +2,11 @@ from datetime import datetime
 from zoneinfo import ZoneInfo
 
 import pandas as pd
+import pytest
 
 from wp.v3.app import (
     _decision_time,
+    _evidence_feature_universe,
     _missing_input_state,
     _refresh_data_age,
     _resolve_model_path,
@@ -123,6 +125,33 @@ def test_recovery_cannot_be_marked_as_prospective():
     }
 
     assert _source_recovery_authorized(manifest, V3Config()) is False
+
+
+def test_evidence_features_follow_the_pruned_model_universe():
+    features = pd.DataFrame(
+        {
+            "ts_code": ["600001.SH", "600002.SH", "600003.SH"],
+            "feature": [1.0, 2.0, 3.0],
+        }
+    )
+    predictions = pd.DataFrame(
+        {
+            "ts_code": ["600003.SH", "600001.SH"],
+            "passes_policy": [False, True],
+        }
+    )
+
+    result = _evidence_feature_universe(features, predictions)
+
+    assert result["ts_code"].tolist() == ["600001.SH", "600003.SH"]
+
+
+def test_evidence_features_reject_predictions_outside_the_source_universe():
+    features = pd.DataFrame({"ts_code": ["600001.SH"]})
+    predictions = pd.DataFrame({"ts_code": ["600002.SH"]})
+
+    with pytest.raises(ValueError, match="absent from source features"):
+        _evidence_feature_universe(features, predictions)
 
 
 def test_live_model_resolution_uses_designated_fingerprint_not_contract_fingerprint():
