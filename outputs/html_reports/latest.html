@@ -96,7 +96,7 @@
       border-right: 1px solid var(--line-soft);
     }
     .status-kicker {
-      color: #6e6e73;
+      color: #c9342f;
       font-size: 12px;
       font-weight: 700;
     }
@@ -383,7 +383,7 @@
       <div class="brand">WP · T+1 尾盘决策</div>
       <div class="top-meta">
         <span>固定决策 14:30</span>
-        <span>等待首次更新</span>
+        <span>2026-08-03 16:08:45</span>
       </div>
     </div>
   </header>
@@ -398,17 +398,28 @@
 
     <section class="status-panel">
       <div class="status-main">
-        <div class="status-kicker">今日决策已结束</div>
-        <div class="status-title">已收盘，不再显示可买名单</div>
-        
+        <div class="status-kicker">数据或账本异常</div>
+        <div class="status-title">暂不使用本次名单</div>
+        <p class="status-copy">完整性检查未通过。系统不会用缺失数据补足候选或研究观察。</p>
       </div>
       <div class="status-fact"><div class="label">合格候选</div><div class="value">已冻结</div></div>
       <div class="status-fact"><div class="label">研究观察</div><div class="value">历史可查</div></div>
-      <div class="status-fact"><div class="label">数据状态</div><div class="value">正常</div></div>
+      <div class="status-fact"><div class="label">数据状态</div><div class="value">session_integrity_fault · 覆盖 100.0% · P95 5926秒</div></div>
     </section>
 
     
 
+    
+    <section class="section">
+      <div class="section-head">
+        <div>
+          <h2 class="section-title">今日冻结证据</h2>
+          <p class="section-sub">已收盘，不再显示可买名单；以下仅供审计与 T+1 验证</p>
+        </div>
+        <div class="count">5</div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>组别</th><th>股票</th><th>信号</th><th>信号价</th><th>14:35 基准价</th><th>盈利概率下界</th><th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th></tr></thead><tbody><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>601138.SH</div><div class='stock-name'>工业富联</div></td><td>14:30</td><td>56.02</td><td>—</td><td>57.8%</td><td><span class="negative">-0.01%</span></td><td><span class="negative">-4.48%</span></td><td class='reason'>元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>002050.SZ</div><div class='stock-name'>三花智控</div></td><td>14:30</td><td>38.27</td><td>—</td><td>57.8%</td><td><span class="positive">+0.02%</span></td><td><span class="negative">-3.21%</span></td><td class='reason'>次日退出风险过高</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>002475.SZ</div><div class='stock-name'>立讯精密</div></td><td>14:30</td><td>53.77</td><td>—</td><td>57.8%</td><td><span class="negative">-0.07%</span></td><td><span class="negative">-5.50%</span></td><td class='reason'>元模型期望收益不足、元模型横截面排名不足、次日退出风险过高</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>601919.SH</div><div class='stock-name'>中远海控</div></td><td>14:30</td><td>15.69</td><td>—</td><td>47.7%</td><td><span class="negative">-0.36%</span></td><td><span class="negative">-1.59%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足、次日退出风险过高</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>002202.SZ</div><div class='stock-name'>金风科技</div></td><td>14:30</td><td>19.21</td><td>—</td><td>57.8%</td><td><span class="negative">-0.32%</span></td><td><span class="negative">-3.59%</span></td><td class='reason'>元模型期望收益不足、元模型横截面排名不足、次日退出风险过高</td></tr></tbody></table></div>
+    </section>
     
 
     <section class="section" data-tab-group>
@@ -427,9 +438,9 @@
         <div class="empty"><strong>暂无验证记录</strong>新合同尚未形成该组的可验证样本。</div>
       </div>
       <div role="tabpanel" data-tab-panel="OBSERVATION" hidden>
-        <div class="metric-grid"><div class="metric"><div class="label">样本</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">已验证</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">覆盖交易日</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">胜率</div><div class="metric-value ">—</div></div><div class="metric"><div class="label">平均净收益</div><div class="metric-value neutral">—</div></div></div>
+        <div class="metric-grid"><div class="metric"><div class="label">样本</div><div class="metric-value ">5</div></div><div class="metric"><div class="label">已验证</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">覆盖交易日</div><div class="metric-value ">1</div></div><div class="metric"><div class="label">胜率</div><div class="metric-value ">—</div></div><div class="metric"><div class="label">平均净收益</div><div class="metric-value neutral">—</div></div></div>
         <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
-        <div class="empty"><strong>暂无验证记录</strong>新合同尚未形成该组的可验证样本。</div>
+        <div class="table-wrap"><table><thead><tr><th>信号日</th><th>验证日</th><th>股票</th><th>入场价</th><th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th></tr></thead><tbody><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>601919.SH</div><div class='stock-name'>中远海控</div></td><td>—</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>601138.SH</div><div class='stock-name'>工业富联</div></td><td>—</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002475.SZ</div><div class='stock-name'>立讯精密</div></td><td>—</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002202.SZ</div><div class='stock-name'>金风科技</div></td><td>—</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002050.SZ</div><div class='stock-name'>三花智控</div></td><td>—</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr></tbody></table></div>
       </div>
     </section>
 
@@ -490,7 +501,7 @@
       </div>
     </section>
     
-    
+    <section class="section"><div class="section-head"><div><h2 class="section-title">旧系统历史说明</h2><p class="section-sub">旧版盘中记录保留审计，但不计入固定 14:30 新合同</p></div></div><div class="notice amber">旧系统回补、盘后生成名单以及不同入场合同的记录，均不计入 2026 年 8 月起的真实影子统计。</div></section>
 
     <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
   </main>
