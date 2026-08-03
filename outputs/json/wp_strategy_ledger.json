@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-03 16:08:59",
+  "generated_at": "2026-08-03 18:50:58",
   "schema_version": "wp_strategy_ledger_v4_bridge",
   "sessions": [
     {
@@ -1212,10 +1212,10 @@
   ],
   "summary": {
     "candidate_semantics": "model_candidates_not_user_fills",
-    "formal_authorization": false,
-    "live_shadow_start_date": "20260803",
     "observation_statistics_scope": "research_only",
     "qualified_statistics_scope": "official_strategy",
-    "state": "SHADOW_OBSERVATION"
+    "verified_count": 0,
+    "verified_observation_count": 0,
+    "verified_qualified_count": 0
   }
 }

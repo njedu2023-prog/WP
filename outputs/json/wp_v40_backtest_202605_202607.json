@@ -1,7 +1,6 @@
 {
   "backtest_gate": {
     "failed_gates": [
-      "complete_evidence",
       "minimum_candidates",
       "minimum_win_rate",
       "minimum_wilson_lower",
@@ -14,7 +13,7 @@
     "gates": {
       "50bps_stress_nonnegative": false,
       "clustered_mean_lower_nonnegative": false,
-      "complete_evidence": false,
+      "complete_evidence": true,
       "minimum_candidates": false,
       "minimum_clustered_win_lower": false,
       "minimum_mean_net_return": false,
@@ -845,9 +844,9 @@
     "qualified_observation_overlap": 0
   },
   "interpretation": {
-    "conclusion": "INCOMPLETE_EVIDENCE",
+    "conclusion": "NO_QUALIFIED_EVENTS",
     "profitability_guaranteed": false,
-    "text": "The requested May-July evidence is not complete. No profitability claim is permitted until source coverage, T+1 truth and the five-observation integrity rule are all complete."
+    "text": "The fixed contract produced no qualified historical event. This is a valid result, not permission to lower the gate."
   },
   "model": {
     "base_model_fingerprint": "2de82ebed5a7097a6072",
@@ -1037,13 +1036,13 @@
       "month": "202605",
       "observations": {
         "day_equal_weight_cumulative_return_pct": -13.612351716677907,
-        "day_equal_weight_mean_net_return_pct": -0.8040509274916978,
+        "day_equal_weight_mean_net_return_pct": -0.8040509274916979,
         "day_equal_weight_win_rate": 0.2222222222222222,
         "entry_fill_rate": 0.9777777777777777,
         "events": 90,
         "exit_fill_rate_given_entry": 0.9886363636363636,
         "maximum_day_equal_weight_drawdown_pct": -13.43579128609752,
-        "mean_net_return_day_clustered_lower_pct": -1.160790836187263,
+        "mean_net_return_day_clustered_lower_pct": -1.1607908361872632,
         "mean_net_return_day_clustered_upper_pct": -0.49013626790360815,
         "mean_net_return_pct": -0.8040509274916979,
         "median_net_return_pct": -0.7108109343271993,
@@ -1120,7 +1119,7 @@
         "exit_fill_rate_given_entry": 1.0,
         "maximum_day_equal_weight_drawdown_pct": -13.264762240946293,
         "mean_net_return_day_clustered_lower_pct": -1.1859974365755077,
-        "mean_net_return_day_clustered_upper_pct": -0.1162333687806244,
+        "mean_net_return_day_clustered_upper_pct": -0.11623336878062436,
         "mean_net_return_pct": -0.6568595187641069,
         "median_net_return_pct": -0.871377131444234,
         "net_return_q10_pct": -3.5792171604429033,
@@ -1188,40 +1187,40 @@
       "evaluated_trade_days": 23,
       "month": "202607",
       "observations": {
-        "day_equal_weight_cumulative_return_pct": 6.590169420561143,
-        "day_equal_weight_mean_net_return_pct": 0.2970714059505381,
-        "day_equal_weight_win_rate": 0.6363636363636364,
-        "entry_fill_rate": 0.990909090909091,
-        "events": 110,
+        "day_equal_weight_cumulative_return_pct": 6.850328151710405,
+        "day_equal_weight_mean_net_return_pct": 0.2947671644251198,
+        "day_equal_weight_win_rate": 0.6521739130434783,
+        "entry_fill_rate": 0.991304347826087,
+        "events": 115,
         "exit_fill_rate_given_entry": 1.0,
         "maximum_day_equal_weight_drawdown_pct": -3.404099402421068,
-        "mean_net_return_day_clustered_lower_pct": -0.018239250264922974,
-        "mean_net_return_day_clustered_upper_pct": 0.6285764545397811,
-        "mean_net_return_pct": 0.297071405950538,
-        "median_net_return_pct": 0.3650606703687167,
-        "net_return_q10_pct": -1.2301518340844928,
-        "net_return_q90_pct": 2.038483361839982,
-        "profit_factor": 1.6966712545752916,
-        "round_trip_fill_rate": 0.990909090909091,
+        "mean_net_return_day_clustered_lower_pct": -0.0013785349840181266,
+        "mean_net_return_day_clustered_upper_pct": 0.59560986677307,
+        "mean_net_return_pct": 0.2947671644251198,
+        "median_net_return_pct": 0.3740136674919405,
+        "net_return_q10_pct": -1.1917547765874401,
+        "net_return_q90_pct": 2.0001259248557313,
+        "profit_factor": 1.708423188134263,
+        "round_trip_fill_rate": 0.991304347826087,
         "stress": {
           "35bps": {
-            "mean_net_return_pct": 0.297071405950538,
+            "mean_net_return_pct": 0.2947671644251198,
             "positive_total_return": true,
-            "win_rate": 0.6
+            "win_rate": 0.6086956521739131
           },
           "50bps": {
-            "mean_net_return_pct": 0.14843504231417445,
+            "mean_net_return_pct": 0.14607151225120674,
             "positive_total_return": true,
-            "win_rate": 0.5636363636363636
+            "win_rate": 0.5652173913043478
           }
         },
-        "trade_days": 22,
-        "win_rate": 0.6,
-        "win_rate_day_clustered_lower": 0.5181818181818182,
-        "win_rate_day_clustered_upper": 0.6909090909090909,
-        "win_rate_wilson_lower": 0.5065704511305059,
-        "win_rate_wilson_upper": 0.6866807618098613,
-        "wins": 66
+        "trade_days": 23,
+        "win_rate": 0.6086956521739131,
+        "win_rate_day_clustered_lower": 0.5304347826086957,
+        "win_rate_day_clustered_upper": 0.6956521739130435,
+        "win_rate_wilson_lower": 0.5173670018666,
+        "win_rate_wilson_upper": 0.6929972956444189,
+        "wins": 70
       },
       "qualified": {
         "day_equal_weight_cumulative_return_pct": null,
@@ -1264,40 +1263,40 @@
   "objective": "At 14:30 publish every fixed-gate qualified candidate and five separate near-gate research observations, then evaluate the immutable 14:35 entry benchmark against the T+1 close after costs.",
   "observations": {
     "metrics": {
-      "day_equal_weight_cumulative_return_pct": -20.09418793106592,
-      "day_equal_weight_mean_net_return_pct": -0.3562523878358191,
-      "day_equal_weight_win_rate": 0.4098360655737705,
-      "entry_fill_rate": 0.9901639344262295,
-      "events": 305,
-      "exit_fill_rate_given_entry": 0.9966887417218543,
+      "day_equal_weight_cumulative_return_pct": -19.899158738483592,
+      "day_equal_weight_mean_net_return_pct": -0.34656970656643626,
+      "day_equal_weight_win_rate": 0.41935483870967744,
+      "entry_fill_rate": 0.9903225806451613,
+      "events": 310,
+      "exit_fill_rate_given_entry": 0.996742671009772,
       "maximum_day_equal_weight_drawdown_pct": -25.955892199737352,
-      "mean_net_return_day_clustered_lower_pct": -0.7126512477458506,
-      "mean_net_return_day_clustered_upper_pct": -0.009854949701893436,
-      "mean_net_return_pct": -0.35625238783581914,
-      "median_net_return_pct": -0.1605416652126488,
-      "net_return_q10_pct": -3.1816039238686793,
-      "net_return_q90_pct": 2.1448287601904084,
-      "profit_factor": 0.6530537841595768,
-      "round_trip_fill_rate": 0.9868852459016394,
+      "mean_net_return_day_clustered_lower_pct": -0.7062473549878883,
+      "mean_net_return_day_clustered_upper_pct": -0.004465565708669173,
+      "mean_net_return_pct": -0.3465697065664363,
+      "median_net_return_pct": -0.1541265835891478,
+      "net_return_q10_pct": -3.1159151378809296,
+      "net_return_q90_pct": 2.0963778788162237,
+      "profit_factor": 0.6579819884312884,
+      "round_trip_fill_rate": 0.9870967741935484,
       "stress": {
         "35bps": {
-          "mean_net_return_pct": -0.35625238783581914,
+          "mean_net_return_pct": -0.3465697065664363,
           "positive_total_return": false,
-          "win_rate": 0.4426229508196721
+          "win_rate": 0.4483870967741935
         },
         "50bps": {
-          "mean_net_return_pct": -0.5047769779997536,
+          "mean_net_return_pct": -0.49511809366321047,
           "positive_total_return": false,
-          "win_rate": 0.4131147540983607
+          "win_rate": 0.4161290322580645
         }
       },
-      "trade_days": 61,
-      "win_rate": 0.4426229508196721,
-      "win_rate_day_clustered_lower": 0.36065573770491804,
-      "win_rate_day_clustered_upper": 0.5278688524590164,
-      "win_rate_wilson_lower": 0.38793686882858963,
-      "win_rate_wilson_upper": 0.49873637726457776,
-      "wins": 135
+      "trade_days": 62,
+      "win_rate": 0.4483870967741935,
+      "win_rate_day_clustered_lower": 0.36129032258064514,
+      "win_rate_day_clustered_upper": 0.532258064516129,
+      "win_rate_wilson_lower": 0.393993177593452,
+      "win_rate_wilson_upper": 0.5040445127733824,
+      "wins": 139
     }
   },
   "policy": {
@@ -1370,17 +1369,17 @@
     "fixed_slot_rows_in_requested_range": 2707,
     "input_rows": 23368,
     "last_source_trade_date": "20260731",
-    "last_truth_trade_date": "20260730",
+    "last_truth_trade_date": "20260731",
     "missing_source_trade_dates": [],
     "pruned_frontier_rows": 36020,
     "scored_oos_rows": 23368,
     "selection_uses_future_truth": false,
     "source_range_complete": true,
     "top_per_base_score": 12,
-    "truth_range_complete": false,
+    "truth_range_complete": true,
     "unexpected_source_trade_dates": [],
     "verified_shard_rows": 215047,
     "workflow_run_id": "30704037225"
   },
-  "status": "INCOMPLETE"
+  "status": "COMPLETE"
 }
