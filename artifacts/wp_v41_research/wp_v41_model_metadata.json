@@ -117,7 +117,7 @@
     "up_limit_distance_cs_rank"
   ],
   "feature_version": "wp_v9_causal_features_1",
-  "fingerprint": "7290ef754c5a4233aa71",
+  "fingerprint": "0407cf435f32f21d65b7",
   "meta_feature_columns": [
     "ret_from_prev_close_pct",
     "ret_abs_pct",
@@ -158,7 +158,7 @@
     "selection_rank_recomputed_pct",
     "severe_quality_rank_pct"
   ],
-  "model_version": "wpv41-20260731-7290ef75",
+  "model_version": "wpv41-20260731-0407cf43",
   "policy": {
     "exit_failure_rank_max": 0.5,
     "expected_return_min_pct": 0.0,
@@ -170,13 +170,19 @@
     "severe_loss_max": 0.35,
     "signal_slot": "14:00"
   },
-  "policy_fingerprint": "933417abb7ae7cada476",
-  "schema_version": "wp_v41_fixed_1400_bundle_1",
+  "policy_fingerprint": "d8c691c4187a4066aa97",
+  "probability_calibration": {
+    "lower_bound_contract": "minimum of calibrated meta-model members, day-clustered calibration margin, and base ensemble lower estimate",
+    "method": "platt",
+    "one_sided_margin": 0.06570792943163667,
+    "policy_gate_contract": "The frozen V41 gate continues to use the calibrated point probability. The conservative estimate is audit evidence until a separately designed and confirmed policy adopts it."
+  },
+  "schema_version": "wp_v41_fixed_1400_bundle_2",
   "strategy_id": "wp_t1_net_profit_v41_1400",
   "top_per_base_score": 12,
   "train_end": "20260630",
   "train_start": "20250516",
-  "trained_at": "2026-08-04T15:17:13.665578+00:00",
+  "trained_at": "2026-08-04T15:33:41.408762+00:00",
   "training_data_digest": "e0d68372a00a2a1518725523ffd7d9357e93803043ce37c7222d81ecc10f17b0",
   "training_rows": 35665
 }
