@@ -57,21 +57,53 @@ def render_v3_dashboard(
             phase in {"SIGNAL", "NO_NEW_SIGNAL", "FROZEN"},
         )
     ) and phase != "CLOSED"
+    sessions = list(ledger.get("sessions", []))
     records = [
         record
-        for session in ledger.get("sessions", [])
+        for session in sessions
         for record in session_records(session)
     ]
     qualified_stats = _cohort_stats(records, "QUALIFIED")
     observation_stats = _cohort_stats(records, "OBSERVATION")
+    live_shadow_sessions = [
+        session
+        for session in sessions
+        if _compact_date(session.get("trade_date"))
+        >= config.evidence.live_shadow_start_date
+        and session.get("prospective_eligible") is True
+    ]
+    live_shadow_records = [
+        record
+        for session in live_shadow_sessions
+        for record in session_records(session)
+        if record.get("prospective_eligible") is True
+    ]
+    live_shadow_days = len(
+        {
+            _compact_date(session.get("trade_date"))
+            for session in live_shadow_sessions
+            if _compact_date(session.get("trade_date"))
+        }
+    )
     qualified_shadow_stats = _cohort_stats(
-        [
-            row
-            for row in records
-            if _compact_date(row.get("trade_date"))
-            >= config.evidence.live_shadow_start_date
-        ],
+        live_shadow_records,
         "QUALIFIED",
+        trading_days=live_shadow_days,
+    )
+    observation_shadow_stats = _cohort_stats(
+        live_shadow_records,
+        "OBSERVATION",
+        trading_days=live_shadow_days,
+    )
+    excluded_observation_records = sum(
+        1
+        for session in sessions
+        if _compact_date(session.get("trade_date"))
+        >= config.evidence.live_shadow_start_date
+        and session.get("prospective_eligible") is not True
+        for record in session_records(session)
+        if str(record.get("candidate_cohort") or "QUALIFIED")
+        == "OBSERVATION"
     )
     state = str(manifest.get("v3_state") or "MODEL_NOT_READY")
     decision = _decision_copy(
@@ -437,6 +469,11 @@ def render_v3_dashboard(
       border-top: 1px solid var(--line-soft);
     }}
     .evidence-shadow .evidence-list {{ margin-top: 0; }}
+    .evidence-shadow-wide {{ display: block; }}
+    .evidence-shadow-wide .evidence-list {{
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin-top: 14px;
+    }}
     .segment {{
       display: inline-flex;
       padding: 2px;
@@ -476,6 +513,9 @@ def render_v3_dashboard(
       .split {{ grid-template-columns: 1fr; }}
       .split > div:first-child {{ border-right: 0; border-bottom: 1px solid var(--line-soft); }}
       .evidence-shadow {{ grid-template-columns: 1fr; }}
+      .evidence-shadow-wide .evidence-list {{
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
     }}
     @media (max-width: 640px) {{
       .topbar-inner, .page {{ width: min(100% - 24px, 1240px); }}
@@ -589,13 +629,26 @@ def render_v3_dashboard(
       </div>
       <div class="evidence-shadow">
         <div>
-          <h3 class="evidence-title">2026 年 8 月起真实影子运行</h3>
+          <h3 class="evidence-title">2026 年 8 月起合格票真实影子运行</h3>
           <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
         </div>
         <div class="evidence-list">
           {_evidence_item("已运行交易日", _number(qualified_shadow_stats["trading_days"]))}
           {_evidence_item("合格候选日", _number(qualified_shadow_stats["candidate_days"]))}
           {_evidence_item("已验证候选", _number(qualified_shadow_stats["verified"]))}
+        </div>
+      </div>
+      <div class="evidence-shadow evidence-shadow-wide">
+        <div>
+          <h3 class="evidence-title">2026 年 8 月起观察票真实影子运行</h3>
+          <p class="evidence-copy">只统计当日 14:30 前瞻产生、14:35 锁定影子入场价并在 T+1 收盘取得真值的观察票。补算和历史回放不计入本块；已排除 {_number(excluded_observation_records)} 支补算记录，仍可在上方逐票查看。</p>
+        </div>
+        <div class="evidence-list">
+          {_evidence_item("前瞻观察样本", _number(observation_shadow_stats["records"]))}
+          {_evidence_item("已验证", _number(observation_shadow_stats["verified"]))}
+          {_evidence_item("覆盖交易日", _number(observation_shadow_stats["trading_days"]))}
+          {_evidence_item("胜率", _ratio(observation_shadow_stats["win_rate"]))}
+          {_evidence_item("平均净收益", _signed_pct(observation_shadow_stats["mean_net_return_pct"]), _return_class(observation_shadow_stats["mean_net_return_pct"]))}
         </div>
       </div>
       {_research_seed_note(research_seed)}
@@ -868,6 +921,8 @@ def _metric_strip(stats: dict[str, Any]) -> str:
 def _cohort_stats(
     records: list[dict[str, Any]],
     cohort: str,
+    *,
+    trading_days: int | None = None,
 ) -> dict[str, Any]:
     selected = [
         row
@@ -890,12 +945,16 @@ def _cohort_stats(
     return {
         "records": len(selected),
         "verified": len(verified),
-        "trading_days": len(
-            {
-                _compact_date(row.get("trade_date"))
-                for row in selected
-                if _compact_date(row.get("trade_date"))
-            }
+        "trading_days": (
+            trading_days
+            if trading_days is not None
+            else len(
+                {
+                    _compact_date(row.get("trade_date"))
+                    for row in selected
+                    if _compact_date(row.get("trade_date"))
+                }
+            )
         ),
         "candidate_days": len(
             {
