@@ -12,7 +12,7 @@ from wp.v3.model import bundle_metadata, save_bundle, train_bundle
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Train the frozen V9 causal base scorer used inside WP V40. "
+            "Train the frozen V9 causal base scorer used inside WP V41. "
             "This command does not select or publish candidates."
         )
     )
@@ -29,16 +29,16 @@ def main() -> int:
     bundle = train_bundle(
         panel,
         config,
-        model_version="wpv40-base-v9",
+        model_version="wpv41-base-v9",
     )
     output = Path(args.output_dir)
     model_path = output / "models" / f"{bundle.fingerprint}.joblib"
     save_bundle(bundle, model_path)
     metadata = bundle_metadata(bundle)
     metadata["artifact_path"] = model_path.as_posix()
-    atomic_write_json(output / "wp_v40_base_model_metadata.json", metadata)
+    atomic_write_json(output / "wp_v41_base_model_metadata.json", metadata)
     print(
-        "WP_V40_BASE_MODEL="
+        "WP_V41_BASE_MODEL="
         f"{model_path.as_posix()} fingerprint={bundle.fingerprint}",
         flush=True,
     )

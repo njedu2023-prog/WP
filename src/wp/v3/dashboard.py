@@ -63,8 +63,6 @@ def render_v3_dashboard(
         for session in sessions
         for record in session_records(session)
     ]
-    qualified_stats = _cohort_stats(records, "QUALIFIED")
-    observation_stats = _cohort_stats(records, "OBSERVATION")
     live_shadow_sessions = [
         session
         for session in sessions
@@ -334,11 +332,7 @@ def render_v3_dashboard(
       padding: 9px 10px;
       line-height: 1.25;
     }}
-    .dense-table .stock {{ font-size: 13px; }}
-    .dense-table .stock-name {{
-      margin-top: 1px;
-      font-size: 10px;
-    }}
+    .dense-table .stock-inline {{ font-size: 13px; }}
     .dense-table .tag {{
       padding: 1px 5px;
       font-size: 10px;
@@ -350,8 +344,21 @@ def render_v3_dashboard(
     }}
     tbody tr:last-child td {{ border-bottom: 0; }}
     tbody tr:hover {{ background: #fbfbfd; }}
-    .stock {{ font-weight: 700; }}
-    .stock-name {{ color: var(--muted); font-size: 12px; }}
+    .stock-inline {{
+      display: inline-flex;
+      align-items: baseline;
+      gap: 6px;
+      min-width: max-content;
+      color: var(--text);
+      font-size: 13px;
+      white-space: nowrap;
+    }}
+    .stock-code {{ font-weight: 700; }}
+    .stock-name-inline {{
+      color: var(--muted);
+      font-size: inherit;
+      font-weight: 500;
+    }}
     .positive {{ color: var(--red); font-weight: 700; }}
     .negative {{ color: var(--green); font-weight: 700; }}
     .neutral {{ color: var(--muted); }}
@@ -385,6 +392,9 @@ def render_v3_dashboard(
       display: grid;
       grid-template-columns: repeat(5, minmax(0, 1fr));
     }}
+    .validation-metric-grid {{
+      grid-template-columns: repeat(7, minmax(0, 1fr));
+    }}
     .metric {{
       padding: 18px 20px;
       border-right: 1px solid var(--line-soft);
@@ -395,6 +405,62 @@ def render_v3_dashboard(
       font-size: 21px;
       font-weight: 730;
     }}
+    .month-strip {{
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 10px 16px;
+      overflow-x: auto;
+      border-bottom: 1px solid var(--line-soft);
+      scrollbar-width: thin;
+    }}
+    .month-tab {{
+      flex: 0 0 auto;
+      padding: 5px 10px;
+      border: 1px solid var(--line);
+      border-radius: 6px;
+      color: var(--muted);
+      background: var(--surface);
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 650;
+    }}
+    .month-tab.active {{
+      color: var(--text);
+      border-color: #a8a8ad;
+      background: #f0f0f2;
+    }}
+    .validation-day {{ border-top: 1px solid var(--line-soft); }}
+    .validation-day:first-child {{ border-top: 0; }}
+    .validation-day-head {{
+      display: grid;
+      grid-template-columns: 110px 110px 70px 80px 90px minmax(110px, 1fr) 90px 34px;
+      gap: 12px;
+      align-items: center;
+      padding: 11px 16px;
+      background: var(--surface);
+    }}
+    .validation-day-head:hover {{ background: #fbfbfd; }}
+    .day-fact {{ min-width: 0; }}
+    .day-fact strong {{
+      display: block;
+      margin-top: 1px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }}
+    .day-toggle {{
+      width: 28px;
+      height: 28px;
+      flex-basis: 28px;
+      font-size: 18px;
+    }}
+    .validation-day-detail {{
+      border-top: 1px solid var(--line-soft);
+      background: var(--surface-soft);
+    }}
+    .validation-day-detail table {{ min-width: 700px; }}
     .split {{
       display: grid;
       grid-template-columns: 1fr 1fr;
@@ -508,13 +574,28 @@ def render_v3_dashboard(
       .status-fact:nth-child(3) {{ border-right: 0; }}
       .status-fact:last-child {{ grid-column: 1 / -1; border-bottom: 0; }}
       .metric-grid {{ grid-template-columns: repeat(2, 1fr); }}
+      .validation-metric-grid {{ grid-template-columns: repeat(4, 1fr); }}
       .metric {{ border-bottom: 1px solid var(--line-soft); }}
       .metric:nth-child(2n) {{ border-right: 0; }}
+      .validation-metric-grid .metric:nth-child(2n) {{ border-right: 1px solid var(--line-soft); }}
+      .validation-metric-grid .metric:nth-child(4n) {{ border-right: 0; }}
       .split {{ grid-template-columns: 1fr; }}
       .split > div:first-child {{ border-right: 0; border-bottom: 1px solid var(--line-soft); }}
       .evidence-shadow {{ grid-template-columns: 1fr; }}
       .evidence-shadow-wide .evidence-list {{
         grid-template-columns: repeat(2, minmax(0, 1fr));
+      }}
+      .validation-day-head {{
+        grid-template-columns: repeat(4, minmax(0, 1fr)) 32px;
+      }}
+      .validation-day-head .day-toggle {{
+        grid-column: 5;
+        grid-row: 1;
+      }}
+      .validation-day-head .day-fact:nth-child(5),
+      .validation-day-head .day-fact:nth-child(6),
+      .validation-day-head .day-fact:nth-child(7) {{
+        grid-column: span 1;
       }}
     }}
     @media (max-width: 640px) {{
@@ -530,9 +611,24 @@ def render_v3_dashboard(
       .status-fact:last-child {{ grid-column: auto; }}
       .section-head {{ align-items: flex-start; }}
       .metric-grid {{ grid-template-columns: 1fr 1fr; }}
+      .validation-metric-grid {{ grid-template-columns: 1fr 1fr; }}
       .metric {{ padding: 15px 14px; }}
       .metric-value {{ font-size: 18px; }}
       .evidence-list {{ grid-template-columns: 1fr; }}
+      .validation-day-head {{
+        grid-template-columns: repeat(2, minmax(0, 1fr)) 30px;
+        gap: 9px;
+        padding: 10px 12px;
+      }}
+      .validation-day-head .day-fact:nth-child(5),
+      .validation-day-head .day-fact:nth-child(6),
+      .validation-day-head .day-fact:nth-child(7) {{
+        grid-column: span 1;
+      }}
+      .validation-day-head .day-toggle {{
+        grid-column: 3;
+        grid-row: 1;
+      }}
       .segment {{ width: 100%; }}
       .segment button {{ flex: 1; }}
     }}
@@ -543,7 +639,7 @@ def render_v3_dashboard(
     <div class="topbar-inner">
       <div class="brand">WP · T+1 尾盘决策</div>
       <div class="top-meta">
-        <span>固定决策 14:30</span>
+        <span>固定决策 14:00</span>
         <span>{_e(_display_datetime(manifest.get("report_revision")))}</span>
       </div>
     </div>
@@ -586,7 +682,7 @@ def render_v3_dashboard(
       <div class="section-head">
         <div>
           <h2 class="section-title">T+1 真实验证</h2>
-          <p class="section-sub">实时统计始于 2026-08-03 · T 日 14:30 产生信号 · 14:35 影子入场 · T+1 收盘验证 · 不记录人工是否买入</p>
+          <p class="section-sub">实时统计始于 {_display_date(config.evidence.live_shadow_start_date)} · T 日 14:00 产生信号 · 14:05 影子入场 · T+1 收盘验证 · 旧合同单独标记且不合并统计</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
           <button type="button" role="tab" aria-selected="false" data-tab="QUALIFIED">合格</button>
@@ -594,13 +690,24 @@ def render_v3_dashboard(
         </div>
       </div>
       <div role="tabpanel" data-tab-panel="QUALIFIED" hidden>
-        {_metric_strip(qualified_stats)}
-        {_validation_table(records, "QUALIFIED")}
+        {_validation_month_view(
+            records,
+            "QUALIFIED",
+            current_signal_slot=config.strategy.signal_slots[0],
+            current_entry_slot=config.execution.entry_execution_deadline,
+        )}
       </div>
       <div role="tabpanel" data-tab-panel="OBSERVATION">
-        {_metric_strip(observation_stats)}
-        <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
-        {_validation_table(records, "OBSERVATION")}
+        {_validation_month_view(
+            records,
+            "OBSERVATION",
+            current_signal_slot=config.strategy.signal_slots[0],
+            current_entry_slot=config.execution.entry_execution_deadline,
+            notice=(
+                "研究观察用于检验门槛附近股票的真实结果，"
+                "不与正式策略胜率、收益或晋级门槛合并。"
+            ),
+        )}
       </div>
     </section>
 
@@ -616,6 +723,7 @@ def render_v3_dashboard(
           <h3 class="evidence-title">2026 年 5–7 月新合同回测</h3>
           <button class="collapse-toggle" type="button"
                   data-collapse-toggle
+                  data-collapse-label="2026 年 5–7 月新合同回测"
                   aria-controls="retrospective-backtest-content"
                   aria-expanded="false"
                   aria-label="展开 2026 年 5–7 月新合同回测"
@@ -629,7 +737,7 @@ def render_v3_dashboard(
       </div>
       <div class="evidence-shadow">
         <div>
-          <h3 class="evidence-title">2026 年 8 月起合格票真实影子运行</h3>
+          <h3 class="evidence-title">{_display_date(config.evidence.live_shadow_start_date)} 起合格票真实影子运行</h3>
           <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
         </div>
         <div class="evidence-list">
@@ -640,8 +748,8 @@ def render_v3_dashboard(
       </div>
       <div class="evidence-shadow evidence-shadow-wide">
         <div>
-          <h3 class="evidence-title">2026 年 8 月起观察票真实影子运行</h3>
-          <p class="evidence-copy">只统计当日 14:30 前瞻产生、14:35 锁定影子入场价并在 T+1 收盘取得真值的观察票。补算和历史回放不计入本块；已排除 {_number(excluded_observation_records)} 支补算记录，仍可在上方逐票查看。</p>
+          <h3 class="evidence-title">{_display_date(config.evidence.live_shadow_start_date)} 起观察票真实影子运行</h3>
+          <p class="evidence-copy">只统计当日 14:00 前瞻产生、14:05 锁定影子入场价并在 T+1 收盘取得真值的观察票。补算和历史回放不计入本块；已排除 {_number(excluded_observation_records)} 支补算记录，仍可在上方逐票查看。</p>
         </div>
         <div class="evidence-list">
           {_evidence_item("前瞻观察样本", _number(observation_shadow_stats["records"]))}
@@ -677,17 +785,32 @@ def render_v3_dashboard(
         }});
       }});
     }});
+    document.querySelectorAll('[data-month-group]').forEach(function (group) {{
+      var buttons = group.querySelectorAll('[data-month-tab]');
+      var panels = group.querySelectorAll('[data-month-panel]');
+      buttons.forEach(function (button) {{
+        button.addEventListener('click', function () {{
+          var target = button.getAttribute('data-month-tab');
+          buttons.forEach(function (item) {{
+            var selected = item === button;
+            item.classList.toggle('active', selected);
+            item.setAttribute('aria-selected', selected ? 'true' : 'false');
+          }});
+          panels.forEach(function (panel) {{
+            panel.hidden = panel.getAttribute('data-month-panel') !== target;
+          }});
+        }});
+      }});
+    }});
     document.querySelectorAll('[data-collapse-toggle]').forEach(function (button) {{
       var panel = document.getElementById(button.getAttribute('aria-controls'));
       if (!panel) return;
       button.addEventListener('click', function () {{
         var expanded = button.getAttribute('aria-expanded') !== 'true';
         button.setAttribute('aria-expanded', expanded ? 'true' : 'false');
-        button.setAttribute(
-          'aria-label',
-          (expanded ? '收起 ' : '展开 ') + '2026 年 5–7 月新合同回测'
-        );
-        button.setAttribute('title', expanded ? '收起回测详情' : '展开回测详情');
+        var label = button.getAttribute('data-collapse-label') || '内容';
+        button.setAttribute('aria-label', (expanded ? '收起' : '展开') + label);
+        button.setAttribute('title', expanded ? '收起' + label : '展开' + label);
         panel.hidden = !expanded;
         var icon = button.querySelector('[data-collapse-icon]');
         if (icon) icon.textContent = expanded ? '−' : '+';
@@ -823,9 +946,8 @@ def _cohort_table(
         rows.append(
             "<tr>"
             f"<td>{status}</td>"
-            f"<td><div class='stock'>{_e(row.get('ts_code'))}</div>"
-            f"<div class='stock-name'>{_e(row.get('name'))}</div></td>"
-            f"<td>{_e(row.get('first_signal_time') or '14:30')}</td>"
+            f"<td>{_stock_cell(row)}</td>"
+            f"<td>{_e(row.get('first_signal_time') or '14:00')}</td>"
             f"<td>{_price(row.get('first_signal_price'))}</td>"
             f"<td>{_price(row.get('entry_price'))}</td>"
             f"<td>{_pct(row.get('p_net_positive_lower'))}</td>"
@@ -838,7 +960,7 @@ def _cohort_table(
     return (
         '<div class="table-wrap dense-table"><table><thead><tr>'
         f"<th>{heading}</th><th>股票</th><th>信号</th><th>信号价</th>"
-        "<th>14:35 基准价</th><th>盈利概率下界</th>"
+        "<th>入场基准价</th><th>盈利概率下界</th>"
         "<th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
@@ -846,29 +968,190 @@ def _cohort_table(
     )
 
 
-def _validation_table(
+def _validation_month_view(
     records: list[dict[str, Any]],
     cohort: str,
+    *,
+    current_signal_slot: str,
+    current_entry_slot: str,
+    notice: str | None = None,
 ) -> str:
     selected = [
         row
         for row in records
         if str(row.get("candidate_cohort") or "QUALIFIED") == cohort
     ]
-    selected.sort(
-        key=lambda row: (
-            _compact_date(row.get("trade_date")),
-            str(row.get("ts_code") or ""),
+    if not selected:
+        stats = _cohort_stats([], cohort)
+        stats["month_total_return_pct"] = None
+        stats["historical_total_return_pct"] = None
+        return (
+            _validation_metric_strip(stats)
+            + _validation_notice(notice)
+            + '<div class="empty"><strong>暂无验证记录</strong>'
+            "新合同尚未形成该组的可验证样本。</div>"
+        )
+
+    buckets: dict[tuple[str, str, str], list[dict[str, Any]]] = {}
+    for row in selected:
+        month = _compact_date(row.get("trade_date"))[:6]
+        if not month:
+            continue
+        signal_slot = str(row.get("first_signal_time") or "未知")
+        entry_slot = str(row.get("entry_benchmark_slot") or "未知")
+        buckets.setdefault((month, signal_slot, entry_slot), []).append(row)
+    bucket_keys = sorted(
+        buckets,
+        key=lambda key: (
+            key[1] == current_signal_slot and key[2] == current_entry_slot,
+            key[0],
+            key[1],
         ),
         reverse=True,
     )
-    if not selected:
-        return (
-            '<div class="empty"><strong>暂无验证记录</strong>'
-            "新合同尚未形成该组的可验证样本。</div>"
+    contract_count = len({(key[1], key[2]) for key in bucket_keys})
+    tabs = []
+    panels = []
+    for index, (month, signal_slot, entry_slot) in enumerate(bucket_keys):
+        active = index == 0
+        month_records = buckets[(month, signal_slot, entry_slot)]
+        contract_records = [
+            row
+            for row in selected
+            if str(row.get("first_signal_time") or "未知") == signal_slot
+            and str(row.get("entry_benchmark_slot") or "未知") == entry_slot
+        ]
+        current_contract = (
+            signal_slot == current_signal_slot
+            and entry_slot == current_entry_slot
         )
+        bucket_id = (
+            f"{month}-{signal_slot.replace(':', '')}-"
+            f"{entry_slot.replace(':', '')}"
+        )
+        tab_label = _display_month(month)
+        if contract_count > 1:
+            tab_label += (
+                f" · {signal_slot}"
+                if current_contract
+                else f" · {signal_slot} 旧"
+            )
+        stats = _cohort_stats(month_records, cohort)
+        stats["month_total_return_pct"] = _compounded_daily_return(
+            month_records
+        )
+        stats["historical_total_return_pct"] = _compounded_daily_return(
+            contract_records
+        )
+        tabs.append(
+            f'<button class="month-tab{" active" if active else ""}" '
+            'type="button" role="tab" '
+            f'aria-selected="{str(active).lower()}" '
+            f'data-month-tab="{_e(bucket_id)}">{_e(tab_label)}</button>'
+        )
+        panel_notice = notice
+        if not current_contract:
+            panel_notice = (
+                f"旧 {signal_slot} 信号 / {entry_slot} 入场合同，仅保留审计，"
+                "不与当前 14:00 新合同合并统计。"
+                + (f" {notice}" if notice else "")
+            )
+        panels.append(
+            f'<div role="tabpanel" data-month-panel="{_e(bucket_id)}"'
+            f'{"" if active else " hidden"}>'
+            f'{_validation_metric_strip(stats)}'
+            f'{_validation_notice(panel_notice)}'
+            f'{_validation_day_groups(month_records, cohort, bucket_id)}'
+            "</div>"
+        )
+    return (
+        '<div data-month-group>'
+        '<div class="month-strip" role="tablist" aria-label="验证月份">'
+        + "".join(tabs)
+        + "</div>"
+        + "".join(panels)
+        + "</div>"
+    )
+
+
+def _validation_day_groups(
+    records: list[dict[str, Any]],
+    cohort: str,
+    month: str,
+) -> str:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in records:
+        trade_date = _compact_date(row.get("trade_date"))
+        if trade_date:
+            grouped.setdefault(trade_date, []).append(row)
+    days = []
+    for trade_date in sorted(grouped, reverse=True):
+        day_records = sorted(
+            grouped[trade_date],
+            key=lambda row: (
+                int(_float(row.get("cohort_rank")) or 9999),
+                str(row.get("ts_code") or ""),
+            ),
+        )
+        verified = [
+            row
+            for row in day_records
+            if str(row.get("truth_status") or "") == "verified"
+        ]
+        complete = bool(day_records) and len(verified) == len(day_records)
+        wins = sum(row.get("net_positive") is True for row in verified)
+        day_return = _daily_portfolio_return(day_records)
+        target_dates = {
+            _compact_date(row.get("target_trade_date"))
+            for row in day_records
+            if _compact_date(row.get("target_trade_date"))
+        }
+        target_date = (
+            _display_date(next(iter(target_dates)))
+            if len(target_dates) == 1
+            else "—"
+        )
+        if complete and day_return is not None:
+            status = '<span class="tag good">已验证</span>'
+            result = "组合盈利" if day_return > 0 else "组合未盈利"
+        elif complete:
+            status = '<span class="tag">收益缺失</span>'
+            result = "真值不完整"
+        elif verified:
+            status = '<span class="tag">验证中</span>'
+            result = "部分待验证"
+        else:
+            status = '<span class="tag">待 T+1 收盘</span>'
+            result = "待验证"
+        detail_id = f"validation-{cohort.lower()}-{month}-{trade_date}"
+        days.append(
+            '<div class="validation-day">'
+            '<div class="validation-day-head">'
+            f'{_day_fact("信号日", _display_date(trade_date))}'
+            f'{_day_fact("验证日", target_date)}'
+            f'{_day_fact("股票", f"{len(day_records)} 支")}'
+            f'{_day_fact("已验证", f"{len(verified)} / {len(day_records)}")}'
+            f'{_day_fact("盈利票", f"{wins} / {len(verified)}" if verified else "—")}'
+            f'{_day_fact("当日组合净收益", _return_pct(day_return), raw=True)}'
+            f'{_day_fact("当日结果", result)}'
+            '<button class="collapse-toggle day-toggle" type="button" '
+            f'data-collapse-toggle aria-controls="{_e(detail_id)}" '
+            'aria-expanded="false" aria-label="展开当日逐票验证" '
+            'data-collapse-label="当日逐票验证" title="展开当日逐票验证">'
+            '<span aria-hidden="true" data-collapse-icon>+</span>'
+            "</button>"
+            "</div>"
+            f'<div class="validation-day-detail" id="{_e(detail_id)}" '
+            "data-collapse-panel hidden>"
+            f"{_validation_detail_table(day_records)}"
+            "</div></div>"
+        )
+    return '<div class="validation-day-list">' + "".join(days) + "</div>"
+
+
+def _validation_detail_table(records: list[dict[str, Any]]) -> str:
     rows = []
-    for row in selected[:80]:
+    for row in records:
         verified = str(row.get("truth_status") or "") == "verified"
         status = (
             '<span class="tag good">已验证</span>'
@@ -882,10 +1165,7 @@ def _validation_table(
         )
         rows.append(
             "<tr>"
-            f"<td>{_e(_display_date(row.get('trade_date')))}</td>"
-            f"<td>{_e(_display_date(row.get('target_trade_date')))}</td>"
-            f"<td><div class='stock'>{_e(row.get('ts_code'))}</div>"
-            f"<div class='stock-name'>{_e(row.get('name'))}</div></td>"
+            f"<td>{_stock_cell(row)}</td>"
             f"<td>{_price(row.get('entry_price'))}</td>"
             f"<td>{_price(row.get('t1_close'))}</td>"
             f"<td>{_return_pct(row.get('net_return_pct'))}</td>"
@@ -894,7 +1174,7 @@ def _validation_table(
         )
     return (
         '<div class="table-wrap dense-table"><table><thead><tr>'
-        "<th>信号日</th><th>验证日</th><th>股票</th><th>入场价</th>"
+        "<th>股票</th><th>入场价</th>"
         "<th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
@@ -902,13 +1182,23 @@ def _validation_table(
     )
 
 
-def _metric_strip(stats: dict[str, Any]) -> str:
+def _validation_metric_strip(stats: dict[str, Any]) -> str:
     return (
-        '<div class="metric-grid">'
+        '<div class="metric-grid validation-metric-grid">'
         + _metric("样本", _number(stats["records"]))
         + _metric("已验证", _number(stats["verified"]))
         + _metric("覆盖交易日", _number(stats["trading_days"]))
         + _metric("胜率", _ratio(stats["win_rate"]))
+        + _metric(
+            "当月总收益",
+            _signed_pct(stats["month_total_return_pct"]),
+            _return_class(stats["month_total_return_pct"]),
+        )
+        + _metric(
+            "历史总收益",
+            _signed_pct(stats["historical_total_return_pct"]),
+            _return_class(stats["historical_total_return_pct"]),
+        )
         + _metric(
             "平均净收益",
             _signed_pct(stats["mean_net_return_pct"]),
@@ -916,6 +1206,56 @@ def _metric_strip(stats: dict[str, Any]) -> str:
         )
         + "</div>"
     )
+
+
+def _validation_notice(notice: str | None) -> str:
+    if not notice:
+        return ""
+    return f'<div class="notice amber">{_e(notice)}</div>'
+
+
+def _day_fact(label: str, value: str, *, raw: bool = False) -> str:
+    displayed = value if raw else _e(value)
+    return (
+        '<div class="day-fact">'
+        f'<span class="label">{_e(label)}</span><strong>{displayed}</strong>'
+        "</div>"
+    )
+
+
+def _daily_portfolio_return(
+    records: list[dict[str, Any]],
+) -> float | None:
+    if not records or any(
+        str(row.get("truth_status") or "") != "verified"
+        for row in records
+    ):
+        return None
+    returns = [_float(row.get("net_return_pct")) for row in records]
+    if any(value is None for value in returns):
+        return None
+    return sum(value for value in returns if value is not None) / len(returns)
+
+
+def _compounded_daily_return(
+    records: list[dict[str, Any]],
+) -> float | None:
+    grouped: dict[str, list[dict[str, Any]]] = {}
+    for row in records:
+        trade_date = _compact_date(row.get("trade_date"))
+        if trade_date:
+            grouped.setdefault(trade_date, []).append(row)
+    daily_returns = [
+        value
+        for day_records in grouped.values()
+        if (value := _daily_portfolio_return(day_records)) is not None
+    ]
+    if not daily_returns:
+        return None
+    growth = 1.0
+    for value in daily_returns:
+        growth *= 1.0 + value / 100.0
+    return (growth - 1.0) * 100.0
 
 
 def _cohort_stats(
@@ -979,7 +1319,7 @@ def _retrospective_evidence(
     if not summary or status in {"", "PENDING", "NOT_STARTED"}:
         return (
             '<p class="evidence-copy">新合同回测尚未形成可确认结果。'
-            "页面不会把 V15 多时点结果冒充为固定 14:30 结果。</p>"
+            "页面不会把 V15 或 V40 的旧时点结果冒充为固定 14:00 结果。</p>"
             '<div class="notice amber">状态：等待严格点时回放与真值计算</div>'
         )
     qualified_metrics = (
@@ -1029,8 +1369,8 @@ def _retrospective_evidence(
             "研究观察有独立样本和收益统计，见下方。</div>"
         )
     return (
-        '<p class="evidence-copy">只使用当日 14:30 前可见信息，'
-        "按统一 14:35 入场和 T+1 收盘合同重放。</p>"
+        '<p class="evidence-copy">只使用当日 14:00 前可见信息，'
+        "按统一 14:05 入场和 T+1 收盘合同重放。</p>"
         + '<div class="retrospective-tabs" data-tab-group>'
         '<div class="retrospective-switch">'
         '<div class="segment" role="tablist" aria-label="回测组别">'
@@ -1188,7 +1528,7 @@ def _research_seed_note(seed: dict[str, Any]) -> str:
         f"{_number(challenger.get('events'))} 支 / "
         f"{_number(challenger.get('trade_days'))} 日，"
         f"平均净收益 {_signed_pct(challenger.get('mean_net_return_pct'))}。"
-        "V15 使用多个早段时点和每日 Top3，与当前固定 14:30、合格不限数量的合同不同，"
+        "V15 使用多个早段时点和每日 Top3，与当前固定 14:00、合格不限数量的合同不同，"
         "不能直接当作新系统盈利证据。</div>"
     )
 
@@ -1210,7 +1550,7 @@ def _system_contract(
       <div class="split">
         <div>
           <h3 class="evidence-title">执行合同</h3>
-          <p class="evidence-copy">14:30 形成候选；14:35 五分钟收盘价加 {_number(config.execution.entry_slippage_bps)}bp 作为影子入场价；T+1 参与收盘集合竞价卖出；往返成本 {_number(config.execution.round_trip_cost_bps)}bp。</p>
+          <p class="evidence-copy">14:00 形成候选；14:05 五分钟收盘价加 {_number(config.execution.entry_slippage_bps)}bp 作为影子入场价；T+1 参与收盘集合竞价卖出；往返成本 {_number(config.execution.round_trip_cost_bps)}bp。</p>
         </div>
         <div>
           <h3 class="evidence-title">统计合同</h3>
@@ -1227,7 +1567,7 @@ def _legacy_note(legacy_audit: dict[str, Any] | None) -> str:
     return (
         '<section class="section"><div class="section-head"><div>'
         '<h2 class="section-title">旧系统历史说明</h2>'
-        '<p class="section-sub">旧版盘中记录保留审计，但不计入固定 14:30 新合同</p>'
+        '<p class="section-sub">旧版盘中记录保留审计，但不计入固定 14:00 新合同</p>'
         "</div></div>"
         '<div class="notice amber">旧系统回补、盘后生成名单以及不同入场合同的记录，'
         "均不计入 2026 年 8 月起的真实影子统计。</div></section>"
@@ -1290,14 +1630,14 @@ def _decision_copy(
         return {
             "kicker": "模型尚未就绪",
             "title": "今天不授权候选",
-            "message": "固定 14:30 新合同仍在建立可部署模型和回测证据，当前不输出伪候选。",
+            "message": "固定 14:00 新合同仍在建立可部署模型和回测证据，当前不输出伪候选。",
             "color": "#9a6700",
         }
     if phase == "PRE_SIGNAL":
         return {
             "kicker": "等待决策",
-            "title": "14:30 生成一次名单",
-            "message": "14:00–14:25 只积累因果快照，不提前泄露或反复改写候选。",
+            "title": "14:00 生成一次名单",
+            "message": "13:30–13:55 只积累因果快照，不提前泄露或反复改写候选。",
             "color": "#0071e3",
         }
     if not live_visible or phase == "CLOSED":
@@ -1394,6 +1734,15 @@ def _evidence_item(label: str, value: str, css: str = "") -> str:
     )
 
 
+def _stock_cell(row: dict[str, Any]) -> str:
+    return (
+        '<div class="stock-inline">'
+        f'<span class="stock-code">{_e(row.get("ts_code"))}</span>'
+        f'<span class="stock-name-inline">{_e(row.get("name"))}</span>'
+        "</div>"
+    )
+
+
 def _compact_date(value: Any) -> str:
     text = str(value or "").strip().replace("-", "")
     return text[:8] if len(text) >= 8 and text[:8].isdigit() else ""
@@ -1402,6 +1751,10 @@ def _compact_date(value: Any) -> str:
 def _display_date(value: Any) -> str:
     text = _compact_date(value)
     return f"{text[:4]}-{text[4:6]}-{text[6:]}" if text else "—"
+
+
+def _display_month(value: Any) -> str:
+    return _month_label(value)
 
 
 def _display_datetime(value: Any) -> str:

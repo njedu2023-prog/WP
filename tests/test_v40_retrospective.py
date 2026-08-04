@@ -12,7 +12,7 @@ def pending(code: str, cohort: str) -> dict[str, object]:
     return {
         "trade_date": "20260731",
         "target_trade_date": "20260803",
-        "signal_slot": "14:30",
+        "signal_slot": "14:00",
         "ts_code": code,
         "candidate_cohort": cohort,
         "signal_price": 10.0,

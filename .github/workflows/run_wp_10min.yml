@@ -1,4 +1,4 @@
-name: Run WP V40 Fixed 14:30 Session
+name: Run WP V41 Fixed 14:00 Session
 
 on:
   workflow_dispatch:
@@ -7,9 +7,9 @@ on:
     paths:
       - scripts/trigger_wp_run.txt
   schedule:
-    # 05:40 UTC = 13:40 Asia/Shanghai. Starting early absorbs scheduler delay
-    # before the first completed warm bar at 14:02.
-    - cron: "40 5 * * 1-5"
+    # 05:10 UTC = 13:10 Asia/Shanghai. Starting early absorbs scheduler delay
+    # before the first completed causal warm bar at 13:32.
+    - cron: "10 5 * * 1-5"
 
 permissions:
   contents: write
@@ -23,7 +23,7 @@ concurrency:
 jobs:
   tail-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 100
+    timeout-minutes: 130
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -33,7 +33,7 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: pip install -r requirements.lock
-      - name: Run causal V40 fixed-decision session
+      - name: Run causal V41 fixed-decision session
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src

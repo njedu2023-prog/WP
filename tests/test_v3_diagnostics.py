@@ -10,7 +10,7 @@ from wp.v3.diagnostics import build_prediction_diagnostics, diagnostics_tables
 def _predictions() -> pd.DataFrame:
     rows = []
     for day in range(20):
-        for slot in ("14:30",):
+        for slot in ("14:00",):
             for stock in range(20):
                 score = stock / 20 + day / 2_000
                 positive = stock >= 12

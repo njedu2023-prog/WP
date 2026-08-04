@@ -12,13 +12,13 @@ from wp.v3.io import (
     atomic_write_json,
     file_sha256,
 )
-from wp.v3.v40 import evaluate_v40_fixed_1430
+from wp.v3.v40 import evaluate_v41_fixed_1400
 
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Replay the immutable V40 fixed-14:30 dual-cohort contract."
+            "Replay the immutable V41 fixed-14:00 dual-cohort contract."
         )
     )
     parser.add_argument("--config", default="config/wp_v3.yml")
@@ -38,7 +38,7 @@ def main() -> int:
     else:
         frame = pd.read_csv(source_path, low_memory=False)
     config = load_v3_config(args.config)
-    result = evaluate_v40_fixed_1430(
+    result = evaluate_v41_fixed_1400(
         frame,
         config,
         start_date=args.start_date,
@@ -46,12 +46,12 @@ def main() -> int:
         source_run_id=args.source_run_id,
     )
     output = Path(args.output_dir)
-    json_path = output / "json" / "wp_v40_backtest_202605_202607.json"
+    json_path = output / "json" / "wp_v41_backtest_202605_202607.json"
     qualified_path = (
-        output / "csv" / "wp_v40_backtest_qualified_202605_202607.csv"
+        output / "csv" / "wp_v41_backtest_qualified_202605_202607.csv"
     )
     observations_path = (
-        output / "csv" / "wp_v40_backtest_observations_202605_202607.csv"
+        output / "csv" / "wp_v41_backtest_observations_202605_202607.csv"
     )
     atomic_write_csv(result.qualified, qualified_path)
     atomic_write_csv(result.observations, observations_path)
@@ -65,7 +65,7 @@ def main() -> int:
     }
     atomic_write_json(json_path, summary)
     print(
-        "WP_V40_FIXED_1430_BACKTEST_RESULT="
+        "WP_V41_FIXED_1400_BACKTEST_RESULT="
         + json.dumps(
             {
                 "status": summary["status"],

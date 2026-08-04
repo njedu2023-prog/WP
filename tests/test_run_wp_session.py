@@ -4,7 +4,7 @@ from datetime import datetime
 from scripts import run_wp_session
 
 
-def test_auto_repair_before_final_slot_runs_continuous_session(monkeypatch):
+def test_auto_start_before_warmup_runs_continuous_session(monkeypatch):
     calls = []
     monkeypatch.setenv("WP_RUN_MODE", "auto")
     monkeypatch.setenv("WP_MODE", "live")
@@ -15,7 +15,7 @@ def test_auto_repair_before_final_slot_runs_continuous_session(monkeypatch):
             2026,
             7,
             27,
-            14,
+            13,
             23,
             tzinfo=run_wp_session.CN_TZ,
         ),
@@ -64,11 +64,11 @@ def test_push_after_missed_slot_runs_same_day_recovery(monkeypatch, tmp_path):
     run_wp_session.run_once_if_due()
 
     assert calls == [
-        ("14:30", {"late_recovery": True}),
+        ("14:00", {"late_recovery": True}),
         (
             None,
             {
-                "settlement_slot": "14:35",
+                "settlement_slot": "14:05",
                 "late_recovery": True,
             },
         ),
@@ -82,7 +82,7 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
     monkeypatch.setattr(
         run_wp_session,
         "now_cn",
-        lambda: datetime(2026, 7, 27, 14, 32, tzinfo=run_wp_session.CN_TZ),
+        lambda: datetime(2026, 7, 27, 14, 2, tzinfo=run_wp_session.CN_TZ),
     )
     source_path = tmp_path / "data" / "v3" / "latest" / "wp_v3_live_features.csv"
     source_path.parent.mkdir(parents=True)
@@ -94,7 +94,7 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
             source_path,
             {
                 "trade_date": "20260727",
-                "signal_slot": "14:30",
+                "signal_slot": "14:00",
             },
         ),
     )
@@ -112,12 +112,12 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
     run_wp_session.run_once()
 
     assert captured["WP_EXPECTED_TRADE_DATE"] == "20260727"
-    assert captured["WP_V3_SIGNAL_SLOT"] == "14:30"
+    assert captured["WP_V3_SIGNAL_SLOT"] == "14:00"
     assert captured["WP_V3_SOURCE_CSV"] == source_path.as_posix()
     assert captured["WP_MODE"] == "live"
 
 
-def test_1430_signal_is_built_at_1432_after_completed_bar_grace(
+def test_1400_signal_is_built_at_1402_after_completed_bar_grace(
     monkeypatch,
     tmp_path,
 ):
@@ -131,7 +131,7 @@ def test_1430_signal_is_built_at_1432_after_completed_bar_grace(
             7,
             27,
             14,
-            32,
+            2,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -145,7 +145,7 @@ def test_1430_signal_is_built_at_1432_after_completed_bar_grace(
         captured["built"] = True
         return source_path, {
             "trade_date": "20260727",
-            "signal_slot": "14:30",
+            "signal_slot": "14:00",
         }
 
     def fake_run(command, **kwargs):
@@ -153,7 +153,7 @@ def test_1430_signal_is_built_at_1432_after_completed_bar_grace(
             manifest = tmp_path / "outputs" / "json" / "wp_manifest.json"
             manifest.parent.mkdir(parents=True)
             manifest.write_text(
-                '{"report_revision":"1430"}\n',
+                '{"report_revision":"1400"}\n',
                 encoding="utf-8",
             )
         return SimpleNamespace(returncode=0)
@@ -165,12 +165,12 @@ def test_1430_signal_is_built_at_1432_after_completed_bar_grace(
     )
     monkeypatch.setattr(run_wp_session.subprocess, "run", fake_run)
 
-    run_wp_session.run_once("14:30")
+    run_wp_session.run_once("14:00")
 
     assert captured["built"] is True
 
 
-def test_1435_settlement_reuses_immutable_1430_snapshot(
+def test_1405_settlement_reuses_immutable_1400_snapshot(
     monkeypatch,
     tmp_path,
 ):
@@ -184,7 +184,7 @@ def test_1435_settlement_reuses_immutable_1430_snapshot(
             7,
             27,
             14,
-            37,
+            7,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -201,7 +201,7 @@ def test_1435_settlement_reuses_immutable_1430_snapshot(
         (
             '{"schema_version":"wp_candidate_ledger_v4",'
             '"sessions":[{"trade_date":"20260727",'
-            '"covered_slots":["14:30"],"candidates":[],'
+            '"covered_slots":["14:00"],"candidates":[],'
             '"observations":[]}]}\n'
         ),
         encoding="utf-8",
@@ -227,7 +227,7 @@ def test_1435_settlement_reuses_immutable_1430_snapshot(
     monkeypatch.setattr(
         run_wp_session,
         "build_live_input",
-        lambda **kwargs: calls.append(("unexpected_signal_rebuild", "14:30")),
+        lambda **kwargs: calls.append(("unexpected_signal_rebuild", "14:00")),
     )
 
     def fake_run(command, **kwargs):
@@ -235,19 +235,19 @@ def test_1435_settlement_reuses_immutable_1430_snapshot(
             manifest = tmp_path / "outputs" / "json" / "wp_manifest.json"
             manifest.parent.mkdir(parents=True, exist_ok=True)
             manifest.write_text(
-                '{"report_revision":"1435"}\n',
+                '{"report_revision":"1405"}\n',
                 encoding="utf-8",
             )
         return SimpleNamespace(returncode=0)
 
     monkeypatch.setattr(run_wp_session.subprocess, "run", fake_run)
 
-    run_wp_session.run_once(settlement_slot="14:35")
+    run_wp_session.run_once(settlement_slot="14:05")
 
-    assert calls == [("settle", "14:35")]
+    assert calls == [("settle", "14:05")]
 
 
-def test_1435_late_recovery_builds_signal_before_settlement(
+def test_1405_late_recovery_builds_signal_before_settlement(
     monkeypatch,
     tmp_path,
 ):
@@ -261,7 +261,7 @@ def test_1435_late_recovery_builds_signal_before_settlement(
             7,
             27,
             14,
-            37,
+            7,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -271,16 +271,16 @@ def test_1435_late_recovery_builds_signal_before_settlement(
     settlement_path = live_path.with_name("wp_v3_entry_settlement.csv")
 
     def fake_build_live_input(**kwargs):
-        calls.append("build-1430")
+        calls.append("build-1400")
         live_path.parent.mkdir(parents=True, exist_ok=True)
         live_path.write_text("ts_code\n600001.SH\n", encoding="utf-8")
         return live_path, {
             "trade_date": "20260727",
-            "signal_slot": "14:30",
+            "signal_slot": "14:00",
         }
 
     def fake_settlement(**kwargs):
-        calls.append("settle-1435")
+        calls.append("settle-1405")
         settlement_path.write_text(
             "ts_code\n600001.SH\n",
             encoding="utf-8",
@@ -310,7 +310,7 @@ def test_1435_late_recovery_builds_signal_before_settlement(
                     (
                         '{"schema_version":"wp_candidate_ledger_v4",'
                         '"sessions":[{"trade_date":"20260727",'
-                        '"covered_slots":["14:30"],"candidates":[],'
+                        '"covered_slots":["14:00"],"candidates":[],'
                         '"observations":[]}]}\n'
                     ),
                     encoding="utf-8",
@@ -337,11 +337,11 @@ def test_1435_late_recovery_builds_signal_before_settlement(
     )
     monkeypatch.setattr(run_wp_session.subprocess, "run", fake_run)
 
-    run_wp_session.run_once(settlement_slot="14:35")
+    run_wp_session.run_once(settlement_slot="14:05")
 
     assert calls[:4] == [
-        "build-1430",
+        "build-1400",
         "engine-1",
-        "settle-1435",
+        "settle-1405",
         "engine-2",
     ]

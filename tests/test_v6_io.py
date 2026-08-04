@@ -49,7 +49,7 @@ def test_slot_evidence_is_idempotent_but_rejects_changed_decisions(
 ):
     config = V3Config()
     features = pd.DataFrame(
-        [{"trade_date": "20260728", "signal_slot": "14:30", "ts_code": "600001.SH"}]
+        [{"trade_date": "20260728", "signal_slot": "14:00", "ts_code": "600001.SH"}]
     )
     predictions = features.assign(
         p_net_positive=0.61,
@@ -62,14 +62,14 @@ def test_slot_evidence_is_idempotent_but_rejects_changed_decisions(
         "schema_version": "wp_live_input_v7",
         "trade_date": "20260728",
         "target_trade_date": "20260729",
-        "signal_slot": "14:30",
-        "market_data_time": "2026-07-28T14:30:00+08:00",
-        "latest_bar_slot": "14:30",
+        "signal_slot": "14:00",
+        "market_data_time": "2026-07-28T14:00:00+08:00",
+        "latest_bar_slot": "14:00",
         "row_count": 1,
         "fresh_row_count": 1,
         "eligible_count": 1,
         "feature_version": config.model.feature_version,
-        "capture_completed_at": "2026-07-28T14:30:03+08:00",
+        "capture_completed_at": "2026-07-28T14:00:03+08:00",
     }
     inference_manifest = {
         "v3_model_fingerprint": "model-a",
@@ -92,13 +92,13 @@ def test_slot_evidence_is_idempotent_but_rejects_changed_decisions(
         predictions=predictions,
         source_manifest={
             **source_manifest,
-            "capture_completed_at": "2026-07-28T14:30:10+08:00",
+            "capture_completed_at": "2026-07-28T14:00:10+08:00",
         },
         inference_manifest=inference_manifest,
         config=config,
     )
 
-    evidence_dir = tmp_path / "audit" / "2026" / "20260728" / "1430"
+    evidence_dir = tmp_path / "audit" / "2026" / "20260728" / "1400"
     assert repeated["evidence_digest"] == first["evidence_digest"]
     assert verify_signal_evidence(evidence_dir)["evidence_digest"] == first[
         "evidence_digest"

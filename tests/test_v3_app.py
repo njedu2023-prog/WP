@@ -34,37 +34,37 @@ def test_data_age_is_computed_per_symbol_bar_not_global_latest_bar():
     assert result["data_age_seconds"].tolist() == [120.0, 720.0]
 
 
-def test_completed_1430_bar_capture_is_authorized_at_1432():
+def test_completed_1400_bar_capture_is_authorized_at_1402():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:30",
-        "market_data_time": "2026-07-27 14:30:00",
-        "capture_started_at": "2026-07-27T14:32:00+08:00",
-        "capture_completed_at": "2026-07-27T14:32:18+08:00",
+        "signal_slot": "14:00",
+        "market_data_time": "2026-07-27 14:00:00",
+        "capture_started_at": "2026-07-27T14:02:00+08:00",
+        "capture_completed_at": "2026-07-27T14:02:18+08:00",
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is True
 
 
-def test_stale_capture_cannot_masquerade_as_the_1430_signal():
+def test_stale_capture_cannot_masquerade_as_the_1400_signal():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:30",
-        "market_data_time": "2026-07-27 14:30:00",
-        "capture_started_at": "2026-07-27T14:37:01+08:00",
-        "capture_completed_at": "2026-07-27T14:37:30+08:00",
+        "signal_slot": "14:00",
+        "market_data_time": "2026-07-27 14:00:00",
+        "capture_started_at": "2026-07-27T14:07:01+08:00",
+        "capture_completed_at": "2026-07-27T14:07:30+08:00",
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is False
 
 
-def test_future_market_bar_cannot_be_backdated_to_the_1430_signal():
+def test_future_market_bar_cannot_be_backdated_to_the_1400_signal():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:30",
-        "market_data_time": "2026-07-27 14:31:00",
-        "capture_started_at": "2026-07-27T14:32:00+08:00",
-        "capture_completed_at": "2026-07-27T14:32:30+08:00",
+        "signal_slot": "14:00",
+        "market_data_time": "2026-07-27 14:01:00",
+        "capture_started_at": "2026-07-27T14:02:00+08:00",
+        "capture_completed_at": "2026-07-27T14:02:30+08:00",
     }
 
     assert _source_signal_authorized(manifest, V3Config()) is False
@@ -73,9 +73,9 @@ def test_future_market_bar_cannot_be_backdated_to_the_1430_signal():
 def test_same_day_recovery_is_authorized_only_as_non_prospective_evidence():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:30",
-        "market_data_time": "2026-07-27 14:30:00",
-        "latest_bar_slot": "14:30",
+        "signal_slot": "14:00",
+        "market_data_time": "2026-07-27 14:00:00",
+        "latest_bar_slot": "14:00",
         "capture_started_at": "2026-07-27T14:45:00+08:00",
         "capture_completed_at": "2026-07-27T15:03:00+08:00",
         "capture_contract": "retrospective_same_day_rt_min_daily",
@@ -84,7 +84,7 @@ def test_same_day_recovery_is_authorized_only_as_non_prospective_evidence():
         "source_api": "rt_min_daily",
         "recovered_at": "2026-07-27T15:03:00+08:00",
         "recovery_reason": "missed_scheduler",
-        "decision_reference_time": "2026-07-27T14:32:00+08:00",
+        "decision_reference_time": "2026-07-27T14:02:00+08:00",
         "row_count": 3000,
         "fresh_row_count": 3000,
         "open_universe_coverage": 0.95,
@@ -103,21 +103,21 @@ def test_same_day_recovery_is_authorized_only_as_non_prospective_evidence():
             3,
             tzinfo=ZoneInfo("Asia/Shanghai"),
         ),
-    ).strftime("%H:%M") == "14:32"
+    ).strftime("%H:%M") == "14:02"
 
 
 def test_recovery_cannot_be_marked_as_prospective():
     manifest = {
         "trade_date": "20260727",
-        "signal_slot": "14:30",
-        "market_data_time": "2026-07-27 14:30:00",
-        "latest_bar_slot": "14:30",
+        "signal_slot": "14:00",
+        "market_data_time": "2026-07-27 14:00:00",
+        "latest_bar_slot": "14:00",
         "capture_contract": "retrospective_same_day_rt_min_daily",
         "evidence_tier": "RECOVERED_SAME_DAY",
         "prospective_eligible": True,
         "source_api": "rt_min_daily",
         "recovered_at": "2026-07-27T15:03:00+08:00",
-        "decision_reference_time": "2026-07-27T14:32:00+08:00",
+        "decision_reference_time": "2026-07-27T14:02:00+08:00",
         "row_count": 3000,
         "fresh_row_count": 3000,
         "open_universe_coverage": 0.95,

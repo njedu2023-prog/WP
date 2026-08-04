@@ -28,18 +28,18 @@ except ModuleNotFoundError:  # pragma: no cover - package import in tests
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
-PREP_START = time(13, 40)
-RUN_START = time(14, 0)
+PREP_START = time(13, 10)
+RUN_START = time(13, 30)
 RUN_END = time(15, 0)
-LATE_RECOVERY_START = time(14, 37)
+LATE_RECOVERY_START = time(14, 7)
 LATE_RECOVERY_END = time(16, 10)
 WARMUP_SLOTS = {
-    "14:00",
-    "14:05",
-    "14:10",
-    "14:15",
-    "14:20",
-    "14:25",
+    "13:30",
+    "13:35",
+    "13:40",
+    "13:45",
+    "13:50",
+    "13:55",
 }
 MAX_SLOT_LATENESS_SECONDS = int(
     os.environ.get("WP_MAX_SLOT_LATENESS_SECONDS", "420")
@@ -78,7 +78,7 @@ def today_window(now: datetime) -> tuple[datetime, datetime] | None:
 
 def in_run_window(now: datetime) -> bool:
     today = now.date()
-    start = datetime.combine(today, RUN_START, CN_TZ)
+    start = datetime.combine(today, time(14, 0), CN_TZ)
     end = datetime.combine(today, time(15, 10), CN_TZ)
     return start <= now <= end
 
@@ -122,7 +122,7 @@ def _has_fixed_signal_session(trade_date: str) -> bool:
     )
     return any(
         str(session.get("trade_date") or "") == trade_date
-        and "14:30" in {
+        and "14:00" in {
             str(slot)
             for slot in session.get("covered_slots", [])
         }
@@ -146,9 +146,9 @@ def run_once(
     current = now_cn()
     if (
         settlement_slot is None
-        and time(14, 35) <= current.time() < time(14, 40)
+        and time(14, 5) <= current.time() < time(14, 10)
     ):
-        settlement_slot = "14:35"
+        settlement_slot = "14:05"
     live_path = Path("data/v3/latest/wp_v3_live_features.csv")
     manifest_path = Path("outputs/json/wp_manifest.json")
     manifest_before = (
@@ -159,7 +159,7 @@ def run_once(
         not live_path.exists()
         or not _has_fixed_signal_session(trade_date)
     ):
-        env["WP_V3_SIGNAL_SLOT"] = "14:30"
+        env["WP_V3_SIGNAL_SLOT"] = "14:00"
         source_path, source_manifest = build_live_input(
             root=Path.cwd(),
             env=env,
@@ -169,7 +169,7 @@ def run_once(
             source_manifest["trade_date"]
         )
         print(
-            "WP V40 late recovery rebuilt the immutable 14:30 "
+            "WP V41 late recovery rebuilt the immutable 14:00 "
             "snapshot before entry settlement."
         )
         subprocess.run(
@@ -191,18 +191,18 @@ def run_once(
             settlement_manifest["trade_date"]
         )
         print(
-            "WP V40 entry settlement ready: "
+            "WP V41 entry settlement ready: "
             f"slot={settlement_slot} "
             f"observed={settlement_manifest['observed_symbols']}/"
             f"{settlement_manifest['requested_symbols']}"
         )
     requested_signal = str(signal_slot or "")
     if (
-        requested_signal == "14:30"
+        requested_signal == "14:00"
         or (
             not requested_signal
             and settlement_slot is None
-            and time(14, 30) <= current.time() <= time(14, 37)
+            and time(14, 0) <= current.time() <= time(14, 7)
         )
     ):
         source_path, source_manifest = build_live_input(root=Path.cwd(), env=env)
@@ -210,17 +210,17 @@ def run_once(
         env["WP_EXPECTED_TRADE_DATE"] = str(source_manifest["trade_date"])
         env["WP_V3_SIGNAL_SLOT"] = str(source_manifest["signal_slot"])
         print(
-            "WP V40 causal source ready: "
+            "WP V41 causal source ready: "
             f"{source_path} slot={source_manifest['signal_slot']}"
         )
-    elif current.time() > time(14, 30) and live_path.exists():
+    elif current.time() > time(14, 0) and live_path.exists():
         env["WP_V3_SOURCE_CSV"] = live_path.as_posix()
         print(
-            "WP V40 reuses the immutable 14:30 feature snapshot for "
+            "WP V41 reuses the immutable 14:00 feature snapshot for "
             "settlement and close-state rendering."
         )
     else:
-        print("::warning::WP V40 live source is absent before 14:30.")
+        print("::warning::WP V41 live source is absent before 14:00.")
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
     manifest_after = manifest_path.read_bytes() if manifest_path.exists() else None
     if manifest_before == manifest_after:
@@ -253,10 +253,10 @@ def run_once_if_due() -> None:
     if same_day_recovery:
         print(
             "WP same-day recovery started: rebuilding immutable "
-            "14:30 signal and 14:35 entry benchmark from rt_min_daily."
+            "14:00 signal and 14:05 entry benchmark from rt_min_daily."
         )
-        run_once("14:30", late_recovery=True)
-        run_once(settlement_slot="14:35", late_recovery=True)
+        run_once("14:00", late_recovery=True)
+        run_once(settlement_slot="14:05", late_recovery=True)
         print(
             "WP same-day recovery completed as non-prospective evidence."
         )
@@ -294,8 +294,11 @@ def run_session() -> None:
 
     failures: list[str] = []
     schedule = [
+        datetime.combine(current.date(), time(13, minute), CN_TZ)
+        for minute in (30, 35, 40, 45, 50, 55)
+    ] + [
         datetime.combine(current.date(), time(14, minute), CN_TZ)
-        for minute in (0, 5, 10, 15, 20, 25, 30, 35, 40)
+        for minute in (0, 5, 10)
     ] + [datetime.combine(current.date(), time(15, 0), CN_TZ)]
     for scheduled_at in schedule:
         current = now_cn()
@@ -330,13 +333,13 @@ def run_session() -> None:
                     env=os.environ,
                 )
                 print(
-                    "WP V40 warmup snapshot ready: "
+                    "WP V41 warmup snapshot ready: "
                     f"slot={slot} rows={manifest['row_count']} "
                     f"coverage={manifest['tail_universe_coverage']:.2%}"
                 )
-            elif slot == "14:30":
+            elif slot == "14:00":
                 run_once(slot)
-            elif slot == "14:35":
+            elif slot == "14:05":
                 run_once(settlement_slot=slot)
             else:
                 run_once()
@@ -357,7 +360,7 @@ def main() -> None:
         return
     if mode == "auto":
         current = now_cn()
-        if current.time() <= time(14, 32):
+        if current.time() <= time(13, 32):
             run_session()
         else:
             run_once_if_due()

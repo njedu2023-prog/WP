@@ -22,17 +22,17 @@ LEGACY_SIGNAL_SLOTS = (
     "14:50",
 )
 DEFAULT_SIGNAL_SLOTS = (
-    "14:30",
+    "14:00",
 )
 
 
 @dataclass(frozen=True)
 class StrategyContract:
-    strategy_id: str = "wp_t1_net_profit_v40_1430"
-    model_family: str = "v15_seeded_1430_dual_cohort"
+    strategy_id: str = "wp_t1_net_profit_v41_1400"
+    model_family: str = "v41_1400_dual_cohort"
     timezone: str = "Asia/Shanghai"
     signal_slots: tuple[str, ...] = DEFAULT_SIGNAL_SLOTS
-    candidate_freeze_time: str = "14:40"
+    candidate_freeze_time: str = "14:10"
     clear_live_display_time: str = "15:00"
     exit_contract: str = "T+1_close"
     board_scope: str = "main_board"
@@ -43,7 +43,7 @@ class StrategyContract:
 class ExecutionContract:
     entry_price_contract: str = "next_5m_close_plus_slippage"
     entry_delay_minutes: int = 5
-    entry_execution_deadline: str = "14:35"
+    entry_execution_deadline: str = "14:05"
     entry_slippage_bps: float = 10.0
     round_trip_cost_bps: float = 25.0
     exit_order_contract: str = "T+1_14:57_down_limit_sell_for_close_auction"
@@ -145,7 +145,7 @@ class HistoryContract:
 class EvidenceContract:
     retrospective_start_date: str = "20260501"
     retrospective_end_date: str = "20260731"
-    live_shadow_start_date: str = "20260803"
+    live_shadow_start_date: str = "20260805"
     keep_cohort_statistics_separate: bool = True
 
 
@@ -198,8 +198,8 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("signal_slots cannot be empty")
     if tuple(sorted(config.strategy.signal_slots)) != config.strategy.signal_slots:
         raise ValueError("signal_slots must be strictly chronological")
-    if any(slot < "14:20" or slot > "14:50" for slot in config.strategy.signal_slots):
-        raise ValueError("all signal slots must remain inside 14:20-14:50")
+    if config.strategy.signal_slots != DEFAULT_SIGNAL_SLOTS:
+        raise ValueError("WP has one immutable signal slot: 14:00")
     if config.strategy.candidate_freeze_time <= config.strategy.signal_slots[-1]:
         raise ValueError("candidate freeze must occur after the final signal slot")
     if config.strategy.clear_live_display_time < config.strategy.candidate_freeze_time:

@@ -18,7 +18,7 @@ def candidate(
     return {
         "ts_code": code,
         "name": f"测试{code}",
-        "signal_slot": "14:30",
+        "signal_slot": "14:00",
         "signal_price": 10.0,
         "passes_policy": passes,
         "candidate_cohort": cohort,
@@ -54,8 +54,8 @@ def render(
     render_v3_dashboard(
         path,
         manifest={
-            "source_trade_date": "20260803",
-            "signal_slot": "14:30",
+            "source_trade_date": "20260805",
+            "signal_slot": "14:00",
             "session_phase": phase,
             "health_status": health_status,
             "live_display_allowed": phase != "CLOSED",
@@ -95,7 +95,7 @@ def test_closed_dashboard_has_no_actionable_list(tmp_path) -> None:
 
     assert "已收盘，不再显示可买名单" in text
     assert "尾盘候选与真实验证" not in text
-    assert "14:30 一次决策 · 14:35 可成交基准" not in text
+    assert "14:00 一次决策 · 14:05 可成交基准" not in text
     assert "冻结记录仍保留用于 T+1 收盘真值验证" not in text
     assert "15:00 后禁止新增候选" not in text
     assert "<h2 class=\"section-title\">合格候选</h2>" not in text
@@ -159,9 +159,8 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
     assert "固定展示 5 支最接近门槛" in text
     assert "2 支合格候选" in text
     assert "5 / 5" in text
-    assert "不记录人工是否买入" in text
     assert 'class="table-wrap dense-table"' in text
-    assert "不记录人工是否买入" in text
+    assert "不代表用户实际成交" in text
 
 
 def test_zero_qualified_is_explicit_valid_result(tmp_path) -> None:
@@ -207,11 +206,11 @@ def test_dashboard_keeps_retrospective_and_live_evidence_separate(
     )
 
     assert "2026 年 5–7 月新合同回测" in text
-    assert "2026 年 8 月起合格票真实影子运行" in text
-    assert "2026 年 8 月起观察票真实影子运行" in text
+    assert "2026-08-05 起合格票真实影子运行" in text
+    assert "2026-08-05 起观察票真实影子运行" in text
     assert "历史回测和旧系统回补均不计入 150 个交易日" in text
     assert "补算和历史回放不计入本块" in text
-    assert "只使用当日 14:30 前可见信息" in text
+    assert "只使用当日 14:00 前可见信息" in text
     assert "20" in text
 
 
@@ -223,12 +222,12 @@ def test_observation_shadow_stats_only_count_prospective_records(
         "schema_version": "wp_candidate_ledger_v4",
         "sessions": [
             {
-                "trade_date": "20260803",
+                "trade_date": "20260806",
                 "prospective_eligible": False,
                 "candidates": [],
                 "observations": [
                     {
-                        "trade_date": "20260803",
+                        "trade_date": "20260806",
                         "candidate_cohort": "OBSERVATION",
                         "prospective_eligible": False,
                         "truth_status": "verified",
@@ -238,12 +237,12 @@ def test_observation_shadow_stats_only_count_prospective_records(
                 ],
             },
             {
-                "trade_date": "20260804",
+                "trade_date": "20260805",
                 "prospective_eligible": True,
                 "candidates": [],
                 "observations": [
                     {
-                        "trade_date": "20260804",
+                        "trade_date": "20260805",
                         "candidate_cohort": "OBSERVATION",
                         "prospective_eligible": True,
                         "truth_status": "verified",
@@ -251,7 +250,7 @@ def test_observation_shadow_stats_only_count_prospective_records(
                         "net_positive": True,
                     },
                     {
-                        "trade_date": "20260804",
+                        "trade_date": "20260805",
                         "candidate_cohort": "OBSERVATION",
                         "prospective_eligible": True,
                         "truth_status": "verified",
@@ -263,7 +262,7 @@ def test_observation_shadow_stats_only_count_prospective_records(
         ],
     }
     text = render(path, phase="CLOSED", ledger=ledger)
-    start = text.index("2026 年 8 月起观察票真实影子运行")
+    start = text.index("2026-08-05 起观察票真实影子运行")
     block = text[start : text.index("</section>", start)]
 
     assert "已排除 1 支补算记录" in block
@@ -341,9 +340,9 @@ def test_dashboard_shows_full_retrospective_observation_metrics(
 
     assert '<h2 class="section-title">T+1 真实验证</h2>' in text
     assert "2026 年 8 月起 T+1 真实验证" not in text
-    assert "实时统计始于 2026-08-03" in text
-    assert "T 日 14:30 产生信号" in text
-    assert "14:35 影子入场" in text
+    assert "实时统计始于 2026-08-05" in text
+    assert "T 日 14:00 产生信号" in text
+    assert "14:05 影子入场" in text
     assert "T+1 收盘验证" in text
     assert "合格样本为 0 不是数据缺失" in text
     assert "62 个覆盖交易日内" in text
@@ -382,8 +381,9 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
         'aria-selected="true" data-tab="OBSERVATION"'
     ) == 2
     assert (
-        "实时统计始于 2026-08-03 · T 日 14:30 产生信号 · "
-        "14:35 影子入场 · T+1 收盘验证 · 不记录人工是否买入"
+        "实时统计始于 2026-08-05 · T 日 14:00 产生信号 · "
+        "14:05 影子入场 · T+1 收盘验证 · "
+        "旧合同单独标记且不合并统计"
         in text
     )
     assert (
@@ -402,6 +402,117 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
     )
     assert ".value.small" not in text
     assert ".dense-table td {\n      padding: 9px 10px;" in text
+
+
+def test_validation_groups_by_month_and_day_and_keeps_stock_inline(
+    tmp_path,
+) -> None:
+    path = tmp_path / "latest.html"
+
+    def observation(
+        trade_date: str,
+        target_date: str,
+        code: str,
+        name: str,
+        net_return: float,
+        *,
+        signal_slot: str = "14:00",
+        entry_slot: str = "14:05",
+    ) -> dict[str, object]:
+        return {
+            "trade_date": trade_date,
+            "target_trade_date": target_date,
+            "candidate_cohort": "OBSERVATION",
+            "ts_code": code,
+            "name": name,
+            "first_signal_time": signal_slot,
+            "entry_benchmark_slot": entry_slot,
+            "entry_price": 10.0,
+            "t1_close": 10.0 * (1.0 + net_return / 100.0),
+            "truth_status": "verified",
+            "net_return_pct": net_return,
+            "net_positive": net_return > 0,
+            "prospective_eligible": signal_slot == "14:00",
+        }
+
+    august = [
+        observation(
+            "20260805",
+            "20260806",
+            f"60008{index}.SH",
+            "特变电工" if index == 9 else f"测试{index}",
+            1.0,
+        )
+        for index in range(5, 10)
+    ]
+    september = [
+        observation(
+            "20260901",
+            "20260902",
+            f"00000{index}.SZ",
+            f"九月{index}",
+            2.0,
+        )
+        for index in range(1, 6)
+    ]
+    old_contract = [
+        observation(
+            "20260803",
+            "20260804",
+            "601919.SH",
+            "中远海控",
+            3.0,
+            signal_slot="14:30",
+            entry_slot="14:35",
+        )
+    ]
+    ledger = {
+        "schema_version": "wp_candidate_ledger_v4",
+        "sessions": [
+            {
+                "trade_date": "20260803",
+                "prospective_eligible": False,
+                "candidates": [],
+                "observations": old_contract,
+            },
+            {
+                "trade_date": "20260805",
+                "prospective_eligible": True,
+                "candidates": [],
+                "observations": august,
+            },
+            {
+                "trade_date": "20260901",
+                "prospective_eligible": True,
+                "candidates": [],
+                "observations": september,
+            },
+        ],
+    }
+
+    text = render(path, phase="CLOSED", ledger=ledger)
+
+    assert 'data-month-tab="202609-1400-1405"' in text
+    assert "2026-09 · 14:00" in text
+    assert "2026-08 · 14:00" in text
+    assert "2026-08 · 14:30 旧" in text
+    assert "旧 14:30 信号 / 14:35 入场合同" in text
+    assert "当月总收益" in text
+    assert "历史总收益" in text
+    assert "+2.000%" in text
+    assert "+3.020%" in text
+    assert "当日组合净收益" in text
+    assert "5 / 5" in text
+    assert 'aria-label="展开当日逐票验证"' in text
+    assert "data-collapse-panel hidden" in text
+    assert (
+        '<div class="stock-inline">'
+        '<span class="stock-code">600089.SH</span>'
+        '<span class="stock-name-inline">特变电工</span>'
+        "</div>"
+        in text
+    )
+    assert "group.querySelectorAll('[data-month-tab]')" in text
 
 
 def test_retrospective_backtest_is_collapsed_by_default(tmp_path) -> None:
@@ -450,7 +561,7 @@ def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
     )
 
     assert "今天不授权候选" in text
-    assert "固定 14:30 新合同仍在建立可部署模型和回测证据" in text
+    assert "固定 14:00 新合同仍在建立可部署模型和回测证据" in text
     assert "V15" in text
     assert "不能直接当作新系统盈利证据" in text
 
@@ -473,5 +584,5 @@ def test_legacy_rows_are_audit_only(tmp_path) -> None:
     text = path.read_text(encoding="utf-8")
 
     assert "旧系统历史说明" in text
-    assert "不计入固定 14:30 新合同" in text
+    assert "不计入固定 14:00 新合同" in text
     assert "不计入 2026 年 8 月起的真实影子统计" in text

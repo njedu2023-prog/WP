@@ -45,12 +45,12 @@ MINUTE_STORE_COLUMNS = (
     "slot_amount",
 )
 WARMUP_SLOTS = (
-    "14:00",
-    "14:05",
-    "14:10",
-    "14:15",
-    "14:20",
-    "14:25",
+    "13:30",
+    "13:35",
+    "13:40",
+    "13:45",
+    "13:50",
+    "13:55",
 )
 INDUSTRY_FIELDS = (
     "l1_code,l1_name,l2_code,l2_name,l3_code,l3_name,"
@@ -1918,6 +1918,13 @@ def _minute_value(value: str) -> int:
 
 
 def _observation_slots(signal_slots: tuple[str, ...]) -> tuple[str, ...]:
+    warmup_slots: list[str] = []
+    for slot in signal_slots:
+        signal_time = datetime.strptime(slot, "%H:%M")
+        warmup_slots.extend(
+            (signal_time - timedelta(minutes=offset)).strftime("%H:%M")
+            for offset in range(30, 0, -5)
+        )
     execution_slots = tuple(
         (
             datetime.strptime(slot, "%H:%M") + timedelta(minutes=5)
@@ -1925,7 +1932,7 @@ def _observation_slots(signal_slots: tuple[str, ...]) -> tuple[str, ...]:
         for slot in signal_slots
     )
     return tuple(
-        dict.fromkeys((*WARMUP_SLOTS, *signal_slots, *execution_slots))
+        dict.fromkeys((*warmup_slots, *signal_slots, *execution_slots))
     )
 
 

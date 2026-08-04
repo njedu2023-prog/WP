@@ -30,7 +30,7 @@ def main() -> int:
     manifest.setdefault("v3_state", "SHADOW_OBSERVATION")
     manifest.setdefault(
         "v3_message",
-        "固定 14:30 模型已冻结，等待下一交易日真实影子运行。",
+        "固定 14:00 模型已冻结，等待下一交易日真实影子运行。",
     )
     predictions = _read_csv(
         output / "csv" / "wp_v3_live_predictions.csv"
@@ -53,7 +53,7 @@ def main() -> int:
             output / "json" / "wp_legacy_history_audit.json"
         ),
         retrospective=_read_json(
-            output / "json" / "wp_v40_backtest_202605_202607.json"
+            output / "json" / "wp_v41_backtest_202605_202607.json"
         ),
         research_seed=_read_json(
             ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"

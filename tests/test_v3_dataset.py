@@ -107,7 +107,7 @@ def test_future_target_truth_is_pending_not_an_exit_failure():
             {
                 "trade_date": "20260731",
                 "target_trade_date": "20260803",
-                "signal_slot": "14:30",
+                "signal_slot": "14:00",
                 "ts_code": "600001.SH",
                 "board": "main_board",
                 "signal_price": 10.0,
@@ -351,17 +351,17 @@ def test_cold_session_without_five_observations_is_not_execution_eligible():
     assert bool(panel.loc[0, "execution_eligible"]) is False
 
 
-def test_fixed_1430_contract_ignores_legacy_early_slots():
+def test_fixed_1400_contract_ignores_legacy_early_slots():
     predictions = pd.DataFrame(
         [
-            {"trade_date": "20260723", "signal_slot": "14:30", "ts_code": "600001.SH", "passes_policy": True, "signal_price": 10.2},
+            {"trade_date": "20260723", "signal_slot": "14:00", "ts_code": "600001.SH", "passes_policy": True, "signal_price": 10.2},
             {"trade_date": "20260723", "signal_slot": "14:20", "ts_code": "600001.SH", "passes_policy": True, "signal_price": 10.0},
             {"trade_date": "20260723", "signal_slot": "14:25", "ts_code": "600002.SH", "passes_policy": False, "signal_price": 8.0},
         ]
     )
     selected = first_crossing_candidates(predictions, V3Config())
     assert selected[["ts_code", "signal_slot", "signal_price"]].to_dict("records") == [
-        {"ts_code": "600001.SH", "signal_slot": "14:30", "signal_price": 10.2}
+        {"ts_code": "600001.SH", "signal_slot": "14:00", "signal_price": 10.2}
     ]
 
 

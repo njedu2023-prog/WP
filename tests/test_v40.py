@@ -13,9 +13,9 @@ from wp.v3.v40_model import (
     V40_MODEL_SCHEMA_VERSION,
 )
 from wp.v3.v40 import (
-    V40Policy,
+    V41Policy,
     attach_v40_policy_gates,
-    evaluate_v40_fixed_1430,
+    evaluate_v41_fixed_1400,
 )
 
 
@@ -30,7 +30,7 @@ def row(
     rank: float = 0.99,
     risk_rank: float = 0.20,
     net_return: float = 1.0,
-    slot: str = "14:30",
+    slot: str = "14:00",
 ) -> dict[str, object]:
     return {
         "trade_date": date,
@@ -75,12 +75,12 @@ def two_day_frame() -> pd.DataFrame:
                     net_return=float(index - 2),
                 )
             )
-        rows.append(row(date, f"LATE{day_index}", slot="14:35"))
+        rows.append(row(date, f"LATE{day_index}", slot="14:05"))
     return pd.DataFrame(rows)
 
 
-def test_v40_uses_a_full_year_for_rare_exit_risk_only() -> None:
-    assert V40_MODEL_SCHEMA_VERSION == "wp_v40_fixed_1430_bundle_2"
+def test_v41_uses_a_full_year_for_rare_exit_risk_only() -> None:
+    assert V40_MODEL_SCHEMA_VERSION == "wp_v41_fixed_1400_bundle_1"
     assert META_TRAIN_DAYS == 126
     assert META_CALIBRATION_DAYS == 21
     assert RISK_TRAIN_DAYS == 252
@@ -88,8 +88,8 @@ def test_v40_uses_a_full_year_for_rare_exit_risk_only() -> None:
     assert PURGE_DAYS == 2
 
 
-def test_v40_has_all_passers_and_exactly_five_separate_observations() -> None:
-    result = evaluate_v40_fixed_1430(
+def test_v41_has_all_passers_and_exactly_five_separate_observations() -> None:
+    result = evaluate_v41_fixed_1400(
         two_day_frame(),
         V3Config(),
         start_date="20260501",
@@ -107,9 +107,9 @@ def test_v40_has_all_passers_and_exactly_five_separate_observations() -> None:
     assert result.observations["candidate_cohort"].eq("OBSERVATION").all()
 
 
-def test_v40_selection_does_not_use_future_truth() -> None:
+def test_v41_selection_does_not_use_future_truth() -> None:
     source = two_day_frame()
-    first = evaluate_v40_fixed_1430(
+    first = evaluate_v41_fixed_1400(
         source,
         V3Config(),
         start_date="20260501",
@@ -119,7 +119,7 @@ def test_v40_selection_does_not_use_future_truth() -> None:
     changed["net_return_pct"] = -changed["net_return_pct"] * 100.0
     changed["entry_fillable"] = ~changed["entry_fillable"]
     changed["exit_fillable"] = ~changed["exit_fillable"]
-    second = evaluate_v40_fixed_1430(
+    second = evaluate_v41_fixed_1400(
         changed,
         V3Config(),
         start_date="20260501",
@@ -131,7 +131,7 @@ def test_v40_selection_does_not_use_future_truth() -> None:
     assert first.observations[identity].equals(second.observations[identity])
 
 
-def test_v40_zero_qualified_is_valid_and_does_not_lower_gate() -> None:
+def test_v41_zero_qualified_is_valid_and_does_not_lower_gate() -> None:
     source = pd.DataFrame(
         [
             row(
@@ -142,7 +142,7 @@ def test_v40_zero_qualified_is_valid_and_does_not_lower_gate() -> None:
             for index in range(6)
         ]
     )
-    result = evaluate_v40_fixed_1430(
+    result = evaluate_v41_fixed_1400(
         source,
         V3Config(),
         start_date="20260504",
@@ -150,15 +150,15 @@ def test_v40_zero_qualified_is_valid_and_does_not_lower_gate() -> None:
     )
 
     assert result.qualified.empty
-    assert len(result.observations) == V40Policy().observation_count
+    assert len(result.observations) == V41Policy().observation_count
     assert (
         result.summary["interpretation"]["conclusion"]
         == "NO_QUALIFIED_EVENTS"
     )
 
 
-def test_v40_reports_incomplete_source_and_truth_honestly() -> None:
-    result = evaluate_v40_fixed_1430(
+def test_v41_reports_incomplete_source_and_truth_honestly() -> None:
+    result = evaluate_v41_fixed_1400(
         two_day_frame(),
         V3Config(),
         start_date="20260501",
@@ -174,7 +174,7 @@ def test_v40_reports_incomplete_source_and_truth_honestly() -> None:
     )
 
 
-def test_v40_observation_shortfall_is_integrity_failure() -> None:
+def test_v41_observation_shortfall_is_integrity_failure() -> None:
     source = pd.DataFrame(
         [
             row("20260504", "Q"),
@@ -182,7 +182,7 @@ def test_v40_observation_shortfall_is_integrity_failure() -> None:
             row("20260504", "O2", probability=0.49),
         ]
     )
-    result = evaluate_v40_fixed_1430(
+    result = evaluate_v41_fixed_1400(
         source,
         V3Config(),
         start_date="20260504",
@@ -199,15 +199,15 @@ def test_live_and_retrospective_use_the_same_observation_ranking() -> None:
     config = V3Config()
     source = two_day_frame().loc[
         lambda frame: frame["trade_date"].eq("20260504")
-        & frame["signal_slot"].eq("14:30")
+        & frame["signal_slot"].eq("14:00")
     ].copy()
-    historical = evaluate_v40_fixed_1430(
+    historical = evaluate_v41_fixed_1400(
         source,
         config,
         start_date="20260504",
         end_date="20260504",
     )
-    live_scored = attach_v40_policy_gates(source, V40Policy())
+    live_scored = attach_v40_policy_gates(source, V41Policy())
     live_scored["passes_freshness"] = True
     live_scored["model_fingerprint"] = "v40-test"
     live = select_live_cohorts(live_scored, config)
@@ -225,7 +225,7 @@ def test_live_observations_never_include_stale_market_data() -> None:
             for index in range(6)
         ]
     )
-    live_scored = attach_v40_policy_gates(source, V40Policy())
+    live_scored = attach_v40_policy_gates(source, V41Policy())
     live_scored["passes_freshness"] = True
     live_scored.loc[live_scored["ts_code"].eq("O0"), "passes_freshness"] = False
     live_scored["model_fingerprint"] = "v40-test"

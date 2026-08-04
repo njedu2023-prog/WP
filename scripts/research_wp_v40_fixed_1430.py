@@ -32,9 +32,9 @@ from wp.v3.sharding import (
     SHARD_SCHEMA_VERSION,
 )
 from wp.v3.v40 import (
-    V40Policy,
+    V41Policy,
     attach_v40_policy_gates,
-    evaluate_v40_fixed_1430,
+    evaluate_v41_fixed_1400,
     v40_historical_gate,
 )
 from wp.v3.v40_model import (
@@ -55,8 +55,8 @@ IDENTITY = ["trade_date", "signal_slot", "ts_code"]
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description=(
-            "Build strict nested-OOS V40 evidence and a forward-only "
-            "fixed-14:30 deployable shadow bundle."
+            "Build strict nested-OOS V41 evidence and a forward-only "
+            "fixed-14:00 deployable shadow bundle."
         )
     )
     parser.add_argument("--config", required=True)
@@ -87,7 +87,7 @@ def main() -> int:
         require_label=False,
     )
     print(
-        "[wp-v40] aggregate source "
+        "[wp-v41] aggregate source "
         f"raw_rows={len(raw):,} "
         f"raw_folds={raw['fold'].nunique()} "
         f"execution_eligible={int(_boolean(raw['execution_eligible']).sum()):,} "
@@ -99,7 +99,7 @@ def main() -> int:
     )
     if frontier.empty:
         raise RuntimeError(
-            "V40 candidate frontier is empty after execution pruning"
+            "V41 candidate frontier is empty after execution pruning"
         )
     frontier = attach_original_features(
         frontier,
@@ -154,7 +154,7 @@ def main() -> int:
             }
             fold_audit.append(audit)
             print(
-                "[wp-v40] skipped "
+                "[wp-v41] skipped "
                 + json.dumps(
                     audit,
                     ensure_ascii=False,
@@ -211,7 +211,7 @@ def main() -> int:
             }
             fold_audit.append(audit)
             print(
-                "[wp-v40] skipped "
+                "[wp-v41] skipped "
                 + json.dumps(
                     audit,
                     ensure_ascii=False,
@@ -221,10 +221,10 @@ def main() -> int:
             )
             continue
         scored = risk.predict(meta.predict(test))
-        scored["v40_outer_fold"] = int(fold)
+        scored["v41_outer_fold"] = int(fold)
         scored = attach_v40_policy_gates(
             scored,
-            V40Policy(
+            V41Policy(
                 observation_count=config.strategy.observation_count
             ),
         )
@@ -245,13 +245,13 @@ def main() -> int:
             }
         )
         print(
-            f"[wp-v40] fold={fold} test={base_row['test_start']}.."
+            f"[wp-v41] fold={fold} test={base_row['test_start']}.."
             f"{base_row['test_end']} rows={len(test):,}",
             flush=True,
         )
     if not scored_frames:
         raise RuntimeError(
-            "V40 produced no strictly out-of-sample fold; audit="
+            "V41 produced no strictly out-of-sample fold; audit="
             + json.dumps(
                 fold_audit,
                 ensure_ascii=False,
@@ -270,7 +270,7 @@ def main() -> int:
         .unique()
         .tolist()
     )
-    result = evaluate_v40_fixed_1430(
+    result = evaluate_v41_fixed_1400(
         scored_all,
         config,
         start_date=args.start_date,
@@ -305,22 +305,22 @@ def main() -> int:
     save_v40_bundle(deployable, model_path)
     metadata = v40_bundle_metadata(deployable)
     summary["model"] = metadata
-    atomic_write_json(output / "wp_v40_model_metadata.json", metadata)
+    atomic_write_json(output / "wp_v41_model_metadata.json", metadata)
     atomic_write_parquet(
         scored_all,
-        output / "wp_v40_scored_oos_frontier.parquet",
+        output / "wp_v41_scored_oos_frontier.parquet",
     )
     atomic_write_json(
-        output / "wp_v40_backtest_202605_202607.json",
+        output / "wp_v41_backtest_202605_202607.json",
         summary,
     )
     atomic_write_csv(
         result.qualified,
-        output / "wp_v40_backtest_qualified_202605_202607.csv",
+        output / "wp_v41_backtest_qualified_202605_202607.csv",
     )
     atomic_write_csv(
         result.observations,
-        output / "wp_v40_backtest_observations_202605_202607.csv",
+        output / "wp_v41_backtest_observations_202605_202607.csv",
     )
 
     outputs_json = Path("outputs/json")
@@ -328,17 +328,17 @@ def main() -> int:
     outputs_json.mkdir(parents=True, exist_ok=True)
     outputs_csv.mkdir(parents=True, exist_ok=True)
     atomic_write_json(
-        outputs_json / "wp_v40_backtest_202605_202607.json",
+        outputs_json / "wp_v41_backtest_202605_202607.json",
         summary,
     )
     atomic_write_csv(
         result.qualified,
-        outputs_csv / "wp_v40_backtest_qualified_202605_202607.csv",
+        outputs_csv / "wp_v41_backtest_qualified_202605_202607.csv",
     )
     atomic_write_csv(
         result.observations,
         outputs_csv
-        / "wp_v40_backtest_observations_202605_202607.csv",
+        / "wp_v41_backtest_observations_202605_202607.csv",
     )
     registry = load_registry(args.registry)
     register_research_model(
@@ -367,7 +367,7 @@ def main() -> int:
         "registry_status": record["status"],
     }
     print(
-        "WP_V40_RESEARCH_RESULT="
+        "WP_V41_RESEARCH_RESULT="
         + json.dumps(
             marker,
             ensure_ascii=False,
@@ -458,7 +458,7 @@ def attach_original_features(
             .to_dict(orient="records")
         )
         raise RuntimeError(
-            "V40 causal feature panel contains duplicate identities: "
+            "V41 causal feature panel contains duplicate identities: "
             f"{examples}"
         )
     matched = requested.merge(
@@ -468,14 +468,14 @@ def attach_original_features(
         validate="one_to_one",
     )
     if len(matched) != len(requested):
-        raise RuntimeError("V40 feature join changed identity count")
+        raise RuntimeError("V41 feature join changed identity count")
     completely_missing = [
         column
         for column in missing_features
         if matched[column].notna().sum() == 0
     ]
     if len(completely_missing) == len(missing_features):
-        raise RuntimeError("V40 matched no original causal features")
+        raise RuntimeError("V41 matched no original causal features")
     return frontier.merge(
         matched,
         on=IDENTITY,

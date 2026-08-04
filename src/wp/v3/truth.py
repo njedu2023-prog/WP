@@ -256,7 +256,7 @@ def run_v3_close_validation(
     )
     predictions = _read_csv(output / "csv" / "wp_v3_live_predictions.csv")
     retrospective = _read_json(
-        output / "json" / "wp_v40_backtest_202605_202607.json"
+        output / "json" / "wp_v41_backtest_202605_202607.json"
     )
     research_seed = _read_json(
         ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"

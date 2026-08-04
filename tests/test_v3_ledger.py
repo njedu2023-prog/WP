@@ -62,25 +62,25 @@ def _dual_cohort_predictions() -> pd.DataFrame:
     return pd.concat(frames, ignore_index=True)
 
 
-def test_ledger_locks_fixed_1430_signal_and_separates_both_cohorts():
+def test_ledger_locks_fixed_1400_signal_and_separates_both_cohorts():
     ledger = empty_shadow_ledger()
     config = V3Config()
     record_shadow_slot(
         ledger,
         _dual_cohort_predictions(),
         trade_date="20260723",
-        signal_slot="14:30",
+        signal_slot="14:00",
         config=config,
     )
     session = ledger["sessions"][0]
     candidate = session["candidates"][0]
-    assert candidate["first_signal_time"] == "14:30"
+    assert candidate["first_signal_time"] == "14:00"
     assert candidate["first_signal_price"] == 10.0
     assert candidate["last_signal_price"] == 10.0
     assert candidate["appearance_count"] == 1
     assert candidate["policy_fingerprint"] == "policy-a"
     assert candidate["baseline_all_in_cost_bps"] == 35.0
-    assert candidate["entry_benchmark_slot"] == "14:35"
+    assert candidate["entry_benchmark_slot"] == "14:05"
     assert candidate["entry_benchmark_status"] == "PENDING"
     assert candidate["candidate_cohort"] == "QUALIFIED"
     assert candidate["is_user_trade"] is False
@@ -93,7 +93,7 @@ def test_ledger_locks_fixed_1430_signal_and_separates_both_cohorts():
     assert all(
         row["candidate_cohort"] == "OBSERVATION"
         and row["is_user_trade"] is False
-        and row["entry_benchmark_slot"] == "14:35"
+        and row["entry_benchmark_slot"] == "14:05"
         for row in session["observations"]
     )
     assert session["policy_fingerprint"] == "policy-a"
@@ -107,17 +107,17 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
         ledger,
         _prediction(10.0),
         trade_date="20260723",
-        signal_slot="14:30",
+        signal_slot="14:00",
         config=config,
     )
     settlement = pd.DataFrame(
         [
             {
                 "ts_code": "600001.SH",
-                "entry_benchmark_slot": "14:35",
+                "entry_benchmark_slot": "14:05",
                 "entry_benchmark_price": 10.2,
                 "entry_benchmark_amount": 20_000_000,
-                "entry_benchmark_bar_time": "2026-07-23 14:35:00",
+                "entry_benchmark_bar_time": "2026-07-23 14:05:00",
                 "data_age_seconds": 0,
                 "up_limit": 11.0,
             }
@@ -127,7 +127,7 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
         ledger,
         settlement,
         trade_date="20260723",
-        settlement_slot="14:35",
+        settlement_slot="14:05",
         config=config,
     )
     candidate = ledger["sessions"][0]["candidates"][0]
@@ -143,7 +143,7 @@ def test_entry_benchmark_is_settled_once_from_the_exact_next_slot():
             ledger,
             changed,
             trade_date="20260723",
-            settlement_slot="14:35",
+            settlement_slot="14:05",
             config=config,
         )
 
@@ -155,7 +155,7 @@ def test_freeze_fails_integrity_when_dual_cohort_entries_are_pending():
         ledger,
         _dual_cohort_predictions(),
         trade_date="20260723",
-        signal_slot="14:30",
+        signal_slot="14:00",
         config=config,
     )
     freeze_shadow_session(
@@ -174,17 +174,17 @@ def test_freeze_reports_observation_shortfall_without_fabrication():
         ledger,
         _prediction(10.0),
         trade_date="20260723",
-        signal_slot="14:30",
+        signal_slot="14:00",
         config=config,
     )
     settlement = pd.DataFrame(
         [
             {
                 "ts_code": "600001.SH",
-                "entry_benchmark_slot": "14:35",
+                "entry_benchmark_slot": "14:05",
                 "entry_benchmark_price": 10.2,
                 "entry_benchmark_amount": 20_000_000,
-                "entry_benchmark_bar_time": "2026-07-23 14:35:00",
+                "entry_benchmark_bar_time": "2026-07-23 14:05:00",
                 "data_age_seconds": 0,
                 "up_limit": 11.0,
             }
@@ -194,7 +194,7 @@ def test_freeze_reports_observation_shortfall_without_fabrication():
         ledger,
         settlement,
         trade_date="20260723",
-        settlement_slot="14:35",
+        settlement_slot="14:05",
         config=config,
     )
     freeze_shadow_session(
@@ -216,7 +216,7 @@ def test_frozen_session_rejects_new_candidates():
             ledger,
             _prediction(10.0),
             trade_date="20260723",
-            signal_slot="14:30",
+            signal_slot="14:00",
             config=config,
         )
 
@@ -229,12 +229,12 @@ def test_repeating_the_same_slot_is_idempotent():
             ledger,
             _prediction(10.0),
             trade_date="20260723",
-            signal_slot="14:30",
+            signal_slot="14:00",
             config=config,
         )
     candidate = ledger["sessions"][0]["candidates"][0]
     assert candidate["appearance_count"] == 1
-    assert ledger["sessions"][0]["covered_slots"] == ["14:30"]
+    assert ledger["sessions"][0]["covered_slots"] == ["14:00"]
 
 
 def test_same_day_recovery_is_immutable_and_non_prospective():
@@ -244,7 +244,7 @@ def test_same_day_recovery_is_immutable_and_non_prospective():
         ledger,
         _dual_cohort_predictions(),
         trade_date="20260723",
-        signal_slot="14:30",
+        signal_slot="14:00",
         config=config,
         evidence_tier="RECOVERED_SAME_DAY",
         prospective_eligible=False,

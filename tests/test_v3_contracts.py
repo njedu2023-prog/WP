@@ -14,10 +14,10 @@ CN_TZ = ZoneInfo("Asia/Shanghai")
 
 def test_signal_window_and_closed_state_are_immutable():
     config = V3Config()
-    assert session_phase(datetime(2026, 7, 27, 14, 29, tzinfo=CN_TZ), config) == "PRE_SIGNAL"
-    assert session_phase(datetime(2026, 7, 27, 14, 30, tzinfo=CN_TZ), config) == "SIGNAL"
-    assert session_phase(datetime(2026, 7, 27, 14, 31, tzinfo=CN_TZ), config) == "NO_NEW_SIGNAL"
-    assert session_phase(datetime(2026, 7, 27, 14, 40, tzinfo=CN_TZ), config) == "FROZEN"
+    assert session_phase(datetime(2026, 7, 27, 13, 59, tzinfo=CN_TZ), config) == "PRE_SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 0, tzinfo=CN_TZ), config) == "SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 1, tzinfo=CN_TZ), config) == "NO_NEW_SIGNAL"
+    assert session_phase(datetime(2026, 7, 27, 14, 10, tzinfo=CN_TZ), config) == "FROZEN"
     assert session_phase(datetime(2026, 7, 27, 15, 0, tzinfo=CN_TZ), config) == "CLOSED"
 
 

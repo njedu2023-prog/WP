@@ -28,7 +28,7 @@ PAGES_MANIFEST_URL = os.environ.get(
 )
 MAX_PAGE_LAG_MIN = float(os.environ.get("WP_MONITOR_MAX_PAGE_LAG_MIN", "10"))
 ACCEPTED_HEALTH_STATUSES = {"ok", "无符合条件股票"}
-ACCEPTED_SOURCE_MODES = {"direct_tushare_v40"}
+ACCEPTED_SOURCE_MODES = {"direct_tushare_v41"}
 ACTIVE_RUN_STATUSES = {"queued", "in_progress", "waiting", "pending"}
 
 
@@ -37,11 +37,11 @@ def now_cn() -> datetime:
 
 
 def in_trade_window(current: datetime) -> bool:
-    return time(14, 30) <= current.time() <= time(15, 2)
+    return time(14, 0) <= current.time() <= time(15, 2)
 
 
 def in_session_start_window(current: datetime) -> bool:
-    return time(14, 0) <= current.time() < time(14, 30)
+    return time(13, 10) <= current.time() < time(14, 0)
 
 
 def in_close_finalize_window(current: datetime) -> bool:
@@ -162,13 +162,13 @@ def wp_health(manifest: dict[str, Any], slot: datetime) -> tuple[bool, list[str]
         reasons.append(f"source_mode={source_mode or 'missing'}")
     if source_trade_date != slot.strftime("%Y%m%d"):
         reasons.append(f"source_trade_date={source_trade_date or 'missing'}")
-    if slot.time() == time(14, 30):
+    if slot.time() == time(14, 0):
         if coverage is None or coverage < slot:
             reasons.append(
                 f"coverage={coverage.strftime('%Y-%m-%d %H:%M:%S') if coverage else 'missing'}"
             )
-    elif slot.time() == time(14, 35):
-        if str(manifest.get("entry_settlement_slot") or "") != "14:35":
+    elif slot.time() == time(14, 5):
+        if str(manifest.get("entry_settlement_slot") or "") != "14:05":
             reasons.append(
                 f"entry_settlement_slot="
                 f"{manifest.get('entry_settlement_slot') or 'missing'}"
@@ -178,7 +178,7 @@ def wp_health(manifest: dict[str, Any], slot: datetime) -> tuple[bool, list[str]
                 f"pending_entry_benchmark_count="
                 f"{manifest.get('pending_entry_benchmark_count')}"
             )
-    elif slot.time() == time(14, 40):
+    elif slot.time() == time(14, 10):
         if str(manifest.get("session_phase")) != "FROZEN":
             reasons.append(
                 f"session_phase={manifest.get('session_phase') or 'missing'}"
@@ -279,7 +279,7 @@ def monitor(current: datetime | None = None) -> int:
             print("Monitor passed: WP tail session is active before signal time.")
             return 0
         return repair_or_wait(
-            reason="WP decision session is not active before the 14:30 decision",
+            reason="WP decision session is not active before the 14:00 decision",
             runs=runs,
             token=github_token,
         )

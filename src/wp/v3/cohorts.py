@@ -6,7 +6,7 @@ from typing import Any
 import pandas as pd
 
 from .contracts import V3Config
-from .v40 import V40Policy, select_v40_cohorts
+from .v40 import V41Policy, select_v40_cohorts
 
 
 QUALIFIED = "QUALIFIED"
@@ -120,7 +120,7 @@ def select_live_cohorts(
     if v40:
         qualified, observations, _ = select_v40_cohorts(
             frame,
-            V40Policy(
+            V41Policy(
                 observation_count=config.strategy.observation_count
             ),
         )

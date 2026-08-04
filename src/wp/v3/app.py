@@ -252,9 +252,9 @@ def run_v3() -> dict[str, Any]:
         "source_scheduled_slot": signal_slot,
         "market_data_time": source_manifest.get("market_data_time"),
         "source_mode": (
-            "direct_tushare_v40_same_day_recovery"
+            "direct_tushare_v41_same_day_recovery"
             if source_recovery_authorized
-            else "direct_tushare_v40"
+            else "direct_tushare_v41"
         ),
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
@@ -398,7 +398,7 @@ def run_v3() -> dict[str, Any]:
         },
     )
     retrospective = _read_json(
-        output / "json" / "wp_v40_backtest_202605_202607.json"
+        output / "json" / "wp_v41_backtest_202605_202607.json"
     )
     research_seed = _read_json(
         ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"
@@ -705,7 +705,7 @@ def _write_not_ready(
         output / "json" / "wp_legacy_history_audit.json"
     )
     retrospective = _read_json(
-        output / "json" / "wp_v40_backtest_202605_202607.json"
+        output / "json" / "wp_v41_backtest_202605_202607.json"
     )
     research_seed = _read_json(
         ROOT / "config" / "wp_v15_frozen_shadow_candidate.json"
@@ -801,13 +801,13 @@ def _missing_input_state(
         return (
             "MODEL_NOT_READY",
             "model_not_ready",
-            "V40 可部署模型尚未发布，合格候选保持关闭；不会用旧模型冒充。",
+            "V41 可部署模型尚未发布，合格候选保持关闭；不会用旧模型冒充。",
         )
     if phase == "PRE_SIGNAL":
         return (
             model_status,
             "ok",
-            "模型已就绪，等待 14:30 固定时点生成当日双队列决策。",
+            "模型已就绪，等待 14:00 固定时点生成当日双队列决策。",
         )
     if phase == "CLOSED":
         return (

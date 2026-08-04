@@ -12,7 +12,7 @@ from .overlay import performance_summary
 
 
 IDENTITY_COLUMNS = ("trade_date", "signal_slot", "ts_code")
-FIXED_SIGNAL_SLOT = "14:30"
+FIXED_SIGNAL_SLOT = "14:00"
 
 
 @dataclass(frozen=True)
@@ -29,7 +29,7 @@ class V40Policy:
     @property
     def policy_id(self) -> str:
         return (
-            "v40-1430-"
+            "v41-1400-"
             f"p{self.probability_min:.2f}-"
             f"e{self.expected_return_min_pct:.2f}-"
             f"s{self.severe_loss_max:.2f}-"
@@ -152,14 +152,14 @@ def evaluate_v40_fixed_1430(
         else "INCOMPLETE"
     )
     summary = {
-        "schema_version": "wp_v40_fixed_1430_backtest_1",
+        "schema_version": "wp_v41_fixed_1400_backtest_1",
         "status": status,
         "research_only": True,
         "production_authorized": False,
         "objective": (
-            "At 14:30 publish every fixed-gate qualified candidate and five "
+            "At 14:00 publish every fixed-gate qualified candidate and five "
             "separate near-gate research observations, then evaluate the "
-            "immutable 14:35 entry benchmark against the T+1 close after costs."
+            "immutable 14:05 entry benchmark against the T+1 close after costs."
         ),
         "evidence_contract": {
             "retrospective_start_date": _date(start_date),
@@ -174,14 +174,14 @@ def evaluate_v40_fixed_1430(
         "policy_change_disclosure": {
             "seed": "V15 forward-risk research",
             "changes": [
-                "fixed signal time changed to 14:30 only",
+                "fixed signal time changed to 14:00 only",
                 "V15 daily top-three cap removed",
                 "all fixed-gate passers form the qualified cohort",
                 "five non-qualified names form a separate research cohort",
             ],
             "consequence": (
-                "V15 performance cannot be reused as V40 performance; this "
-                "fixed-14:30 contract requires its own retrospective and "
+                "V15 and V40 performance cannot be reused as V41 performance; "
+                "this fixed-14:00 contract requires its own retrospective and "
                 "forward shadow evidence."
             ),
         },
@@ -246,6 +246,13 @@ def evaluate_v40_fixed_1430(
         observations=observations.reset_index(drop=True),
         summary=summary,
     )
+
+
+# Compatibility names remain importable for old archives. New production code
+# uses the V41 names so a 14:00 result cannot be mistaken for V40 evidence.
+V41Policy = V40Policy
+V41Backtest = V40Backtest
+evaluate_v41_fixed_1400 = evaluate_v40_fixed_1430
 
 
 def attach_v40_policy_gates(

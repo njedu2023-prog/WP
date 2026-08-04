@@ -14,9 +14,9 @@ from .registry import load_registry, model_record, save_registry
 from .v40 import refresh_v40_backtest_summary, v40_historical_gate
 
 
-QUALIFIED_CSV = "wp_v40_backtest_qualified_202605_202607.csv"
-OBSERVATION_CSV = "wp_v40_backtest_observations_202605_202607.csv"
-SUMMARY_JSON = "wp_v40_backtest_202605_202607.json"
+QUALIFIED_CSV = "wp_v41_backtest_qualified_202605_202607.csv"
+OBSERVATION_CSV = "wp_v41_backtest_observations_202605_202607.csv"
+SUMMARY_JSON = "wp_v41_backtest_202605_202607.json"
 
 
 def finalize_v40_retrospective(

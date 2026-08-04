@@ -22,12 +22,12 @@ from .meta_alpha import (
 )
 from .model import ModelBundle, predict_bundle
 from .v40 import (
-    V40Policy,
+    V41Policy,
     attach_v40_policy_gates,
 )
 
 
-V40_MODEL_SCHEMA_VERSION = "wp_v40_fixed_1430_bundle_2"
+V40_MODEL_SCHEMA_VERSION = "wp_v41_fixed_1400_bundle_1"
 META_TRAIN_DAYS = 126
 META_CALIBRATION_DAYS = 21
 # Exit failures are rare. Keep one full trading year so every fitted risk
@@ -53,7 +53,7 @@ class V40ModelBundle:
     training_rows: int
     training_data_digest: str
     top_per_base_score: int
-    policy: V40Policy
+    policy: V41Policy
     base_bundle: ModelBundle
     meta_bundle: MetaAlphaBundle
     exit_risk_bundle: ExitFailureRiskBundle
@@ -128,7 +128,7 @@ def train_v40_bundle(
         risk_calibration,
         random_seed=config.model.random_seed + 40_200,
     )
-    policy = V40Policy(
+    policy = V41Policy(
         observation_count=config.strategy.observation_count
     )
     contract = policy_fingerprint(config)
@@ -191,7 +191,7 @@ def train_v40_bundle(
         policy_fingerprint=learned_policy,
         model_version=(
             model_version
-            or f"wpv40-{calibration_end}-{fingerprint[:8]}"
+            or f"wpv41-{calibration_end}-{fingerprint[:8]}"
         ),
         feature_version=config.model.feature_version,
         trained_at=datetime.now(timezone.utc).isoformat(),
@@ -319,9 +319,9 @@ def save_v40_bundle(bundle: V40ModelBundle, path: str | Path) -> None:
 def load_v40_bundle(path: str | Path) -> V40ModelBundle:
     bundle = joblib.load(Path(path))
     if not isinstance(bundle, V40ModelBundle):
-        raise TypeError("model artifact is not a WP V40 bundle")
+        raise TypeError("model artifact is not a WP V41 bundle")
     if bundle.schema_version != V40_MODEL_SCHEMA_VERSION:
-        raise ValueError("unsupported WP V40 model bundle schema")
+        raise ValueError("unsupported WP V41 model bundle schema")
     return bundle
 
 
@@ -360,13 +360,13 @@ def _segments(
     needed = train_days + PURGE_DAYS + calibration_days
     if len(dates) < needed:
         raise ValueError(
-            f"V40 model requires {needed} labelled dates; received {len(dates)}"
+            f"V41 model requires {needed} labelled dates; received {len(dates)}"
         )
     selected = dates[-needed:]
     train = selected[:train_days]
     calibration = selected[train_days + PURGE_DAYS :]
     if len(calibration) != calibration_days:
-        raise AssertionError("invalid V40 calibration segment")
+        raise AssertionError("invalid V41 calibration segment")
     return train, calibration
 
 

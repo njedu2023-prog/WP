@@ -9,18 +9,18 @@ from scripts import monitor_wp_system as monitor
 CN_TZ = ZoneInfo("Asia/Shanghai")
 
 
-def _manifest(slot: str = "2026-07-16 14:35:00") -> dict:
+def _manifest(slot: str = "2026-07-16 14:05:00") -> dict:
     return {
         "health_status": "ok",
-        "source_mode": "direct_tushare_v40",
+        "source_mode": "direct_tushare_v41",
         "source_trade_date": "20260716",
         "source_scheduled_slot": slot,
         "source_generated_at": "2026-07-16 14:37:00",
-        "market_data_time": "2026-07-16 14:35:00",
+        "market_data_time": "2026-07-16 14:05:00",
         "wp_run_time": "2026-07-16 14:38:00",
         "report_revision": "2026-07-16 14:38:00",
         "direct_fallback_used": False,
-        "entry_settlement_slot": "14:35",
+        "entry_settlement_slot": "14:05",
         "pending_entry_benchmark_count": 0,
         "session_phase": "NO_NEW_SIGNAL",
         "observation_count": 5,
@@ -30,7 +30,7 @@ def _manifest(slot: str = "2026-07-16 14:35:00") -> dict:
 
 
 def test_direct_manifest_covers_due_slot():
-    slot = datetime(2026, 7, 16, 14, 35, tzinfo=CN_TZ)
+    slot = datetime(2026, 7, 16, 14, 5, tzinfo=CN_TZ)
 
     ok, reasons = monitor.wp_health(_manifest(), slot)
 
@@ -39,7 +39,7 @@ def test_direct_manifest_covers_due_slot():
 
 
 def test_monitor_rejects_legacy_fallback_even_when_timestamp_is_fresh():
-    slot = datetime(2026, 7, 16, 14, 35, tzinfo=CN_TZ)
+    slot = datetime(2026, 7, 16, 14, 5, tzinfo=CN_TZ)
     manifest = _manifest()
     manifest["source_mode"] = "upstream_fallback"
     manifest["direct_fallback_used"] = True
@@ -52,8 +52,8 @@ def test_monitor_rejects_legacy_fallback_even_when_timestamp_is_fresh():
 
 
 def test_monitor_dispatches_direct_repair_for_missed_slot(monkeypatch):
-    current = datetime(2026, 7, 16, 14, 37, tzinfo=CN_TZ)
-    stale = _manifest("2026-07-16 14:25:00")
+    current = datetime(2026, 7, 16, 14, 7, tzinfo=CN_TZ)
+    stale = _manifest("2026-07-16 13:55:00")
     dispatched = []
     monkeypatch.setenv("GITHUB_TOKEN", "token")
     monkeypatch.setenv("TUSHARE_TOKEN", "tushare")
@@ -73,7 +73,7 @@ def test_monitor_dispatches_direct_repair_for_missed_slot(monkeypatch):
 
 
 def test_monitor_accepts_matching_pages_revision(monkeypatch):
-    current = datetime(2026, 7, 16, 14, 37, tzinfo=CN_TZ)
+    current = datetime(2026, 7, 16, 14, 7, tzinfo=CN_TZ)
     manifest = _manifest()
     monkeypatch.setenv("GITHUB_TOKEN", "token")
     monkeypatch.setenv("TUSHARE_TOKEN", "tushare")
@@ -90,7 +90,7 @@ def test_monitor_accepts_matching_pages_revision(monkeypatch):
 
 
 def test_monitor_repairs_missing_session_before_signal_window(monkeypatch):
-    current = datetime(2026, 7, 16, 14, 3, tzinfo=CN_TZ)
+    current = datetime(2026, 7, 16, 13, 53, tzinfo=CN_TZ)
     dispatched = []
     monkeypatch.setenv("GITHUB_TOKEN", "token")
     monkeypatch.setenv("TUSHARE_TOKEN", "tushare")
