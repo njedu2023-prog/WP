@@ -284,6 +284,38 @@ def render_v3_dashboard(
       vertical-align: middle;
       white-space: nowrap;
     }}
+    .dense-section .section-head {{
+      min-height: 54px;
+      padding: 11px 16px;
+    }}
+    .dense-section .section-title {{ font-size: 15px; }}
+    .dense-section .section-sub {{ font-size: 11px; }}
+    .dense-section .count {{ font-size: 17px; }}
+    .dense-section .metric {{ padding: 12px 14px; }}
+    .dense-section .metric-value {{ font-size: 17px; }}
+    .dense-table table {{ font-size: 13px; }}
+    .dense-table th {{
+      padding: 7px 10px;
+      font-size: 11px;
+    }}
+    .dense-table td {{
+      padding: 9px 10px;
+      line-height: 1.25;
+    }}
+    .dense-table .stock {{ font-size: 13px; }}
+    .dense-table .stock-name {{
+      margin-top: 1px;
+      font-size: 10px;
+    }}
+    .dense-table .tag {{
+      padding: 1px 5px;
+      font-size: 10px;
+    }}
+    .dense-table .reason {{
+      max-width: 300px;
+      font-size: 11px;
+      line-height: 1.35;
+    }}
     tbody tr:last-child td {{ border-bottom: 0; }}
     tbody tr:hover {{ background: #fbfbfd; }}
     .stock {{ font-weight: 700; }}
@@ -510,22 +542,22 @@ def render_v3_dashboard(
         show=not live_visible,
     )}
 
-    <section class="section" data-tab-group>
+    <section class="section dense-section" data-tab-group>
       <div class="section-head">
         <div>
           <h2 class="section-title">T+1 真实验证</h2>
-          <p class="section-sub">这里只统计 8 月 3 日起盘中实时形成的影子记录，不记录人工是否买入；5–7 月历史回测见下方</p>
+          <p class="section-sub">实时统计始于 2026-08-03 · T 日 14:30 产生信号 · 14:35 影子入场 · T+1 收盘验证 · 不记录人工是否买入</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
-          <button class="active" type="button" role="tab" aria-selected="true" data-tab="QUALIFIED">合格</button>
-          <button type="button" role="tab" aria-selected="false" data-tab="OBSERVATION">观察</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="QUALIFIED">合格</button>
+          <button class="active" type="button" role="tab" aria-selected="true" data-tab="OBSERVATION">观察</button>
         </div>
       </div>
-      <div role="tabpanel" data-tab-panel="QUALIFIED">
+      <div role="tabpanel" data-tab-panel="QUALIFIED" hidden>
         {_metric_strip(qualified_stats)}
         {_validation_table(records, "QUALIFIED")}
       </div>
-      <div role="tabpanel" data-tab-panel="OBSERVATION" hidden>
+      <div role="tabpanel" data-tab-panel="OBSERVATION">
         {_metric_strip(observation_stats)}
         <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
         {_validation_table(records, "OBSERVATION")}
@@ -659,7 +691,7 @@ def _live_sections(
         )
     )
     return f"""
-    <section class="section">
+    <section class="section dense-section">
       <div class="section-head">
         <div>
           <h2 class="section-title">合格候选</h2>
@@ -669,7 +701,7 @@ def _live_sections(
       </div>
       {qualified_body}
     </section>
-    <section class="section">
+    <section class="section dense-section">
       <div class="section-head">
         <div>
           <h2 class="section-title">研究观察</h2>
@@ -699,7 +731,7 @@ def _closed_day_section(
     else:
         body = _cohort_table(rows, "HISTORY")
     return f"""
-    <section class="section">
+    <section class="section dense-section">
       <div class="section-head">
         <div>
           <h2 class="section-title">今日冻结证据</h2>
@@ -751,7 +783,7 @@ def _cohort_table(
         )
     heading = "组别" if cohort == "HISTORY" else "状态"
     return (
-        '<div class="table-wrap"><table><thead><tr>'
+        '<div class="table-wrap dense-table"><table><thead><tr>'
         f"<th>{heading}</th><th>股票</th><th>信号</th><th>信号价</th>"
         "<th>14:35 基准价</th><th>盈利概率下界</th>"
         "<th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th>"
@@ -808,7 +840,7 @@ def _validation_table(
             "</tr>"
         )
     return (
-        '<div class="table-wrap"><table><thead><tr>'
+        '<div class="table-wrap dense-table"><table><thead><tr>'
         "<th>信号日</th><th>验证日</th><th>股票</th><th>入场价</th>"
         "<th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th>"
         "</tr></thead><tbody>"
