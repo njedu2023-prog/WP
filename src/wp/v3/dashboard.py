@@ -323,6 +323,13 @@ def render_v3_dashboard(
       font-size: inherit;
       font-weight: 500;
     }}
+    .probability-pair {{
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      white-space: nowrap;
+    }}
+    .probability-separator {{ color: var(--faint); }}
     .positive {{ color: var(--red); font-weight: 700; }}
     .negative {{ color: var(--green); font-weight: 700; }}
     .neutral {{ color: var(--muted); }}
@@ -635,12 +642,14 @@ def render_v3_dashboard(
         live_visible=live_visible,
         config=config,
         manifest=manifest,
+        retrospective=retrospective,
     )}
 
     {_closed_day_section(
         current_session,
         trade_date=trade_date,
         show=not live_visible,
+        retrospective=retrospective,
     )}
 
     <section class="section dense-section" data-tab-group>
@@ -745,6 +754,7 @@ def _live_sections(
     live_visible: bool,
     config: V3Config,
     manifest: dict[str, Any],
+    retrospective: dict[str, Any],
 ) -> str:
     if not live_visible:
         return ""
@@ -800,6 +810,7 @@ def _live_sections(
         <div class="count">{len(observations)} / {config.strategy.observation_count}</div>
       </div>
       <div class="{observation_notice_class}">{_e(observation_notice)}</div>
+      {_rank_evidence_notice(retrospective)}
       {observation_body}
     </section>
     """
@@ -810,6 +821,7 @@ def _closed_day_section(
     *,
     trade_date: str,
     show: bool,
+    retrospective: dict[str, Any],
 ) -> str:
     if not show or not session:
         return ""
@@ -817,6 +829,13 @@ def _closed_day_section(
         _compact_date(session.get("trade_date")) or trade_date
     )
     rows = session_records(session)
+    has_observations = any(
+        str(row.get("candidate_cohort") or "") == "OBSERVATION"
+        for row in rows
+    )
+    rank_notice = (
+        _rank_evidence_notice(retrospective) if has_observations else ""
+    )
     if not rows:
         body = (
             '<div class="empty"><strong>当日无合格信号</strong>'
@@ -833,6 +852,7 @@ def _closed_day_section(
         </div>
         <div class="count">{len(rows)}</div>
       </div>
+      {rank_notice}
       {body}
     </section>
     """
@@ -847,11 +867,7 @@ def _cohort_table(
     rows = []
     for row in records:
         record_cohort = str(row.get("candidate_cohort") or "QUALIFIED")
-        status = (
-            '<span class="tag good">合格</span>'
-            if record_cohort == "QUALIFIED"
-            else '<span class="tag warn">研究观察</span>'
-        )
+        status = _cohort_status_tag(row, record_cohort)
         reason = (
             "全部固定门槛通过"
             if record_cohort == "QUALIFIED"
@@ -868,7 +884,7 @@ def _cohort_table(
             f"<td>{_e(row.get('first_signal_time') or '14:00')}</td>"
             f"<td>{_price(row.get('first_signal_price'))}</td>"
             f"<td>{_price(row.get('entry_price'))}</td>"
-            f"<td>{_pct(row.get('p_net_positive_lower'))}</td>"
+            f"<td>{_probability_pair(row)}</td>"
             f"<td>{_return_pct(row.get('expected_utility_lower_pct'))}</td>"
             f"<td>{_return_pct(row.get('downside_q10_pct'))}</td>"
             f"<td class='reason'>{_e(reason)}</td>"
@@ -878,11 +894,68 @@ def _cohort_table(
     return (
         '<div class="table-wrap dense-table"><table><thead><tr>'
         f"<th>{heading}</th><th>股票</th><th>信号</th><th>信号价</th>"
-        "<th>入场基准价</th><th>盈利概率下界</th>"
+        "<th>入场基准价</th><th>校准概率 / 保守概率</th>"
         "<th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
+    )
+
+
+def _cohort_status_tag(row: dict[str, Any], cohort: str) -> str:
+    if cohort == "QUALIFIED":
+        return '<span class="tag good">合格</span>'
+    rank = int(_float(row.get("cohort_rank")) or 0)
+    label = f"观察 {rank}" if rank > 0 else "观察"
+    return f'<span class="tag warn">{_e(label)}</span>'
+
+
+def _probability_pair(row: dict[str, Any]) -> str:
+    calibrated = _float(row.get("meta_p_positive"))
+    conservative = _float(row.get("meta_p_positive_lower"))
+    if conservative is None:
+        conservative = _float(row.get("base_p_net_positive_lower"))
+    if calibrated is None:
+        legacy_probability = _float(row.get("p_net_positive_lower"))
+        return (
+            '<span class="probability-pair" '
+            'title="旧记录只有旧模型概率档位，没有可追溯的独立保守下界">'
+            f"<span>{_pct(legacy_probability)}</span>"
+            '<span class="probability-separator">/</span><span>—</span></span>'
+        )
+    if conservative is None:
+        conservative = _float(row.get("p_net_positive_lower"))
+    return (
+        '<span class="probability-pair" '
+        'title="前者为平滑校准后的盈利概率；后者扣除模型分歧和按交易日估计的校准安全垫">'
+        f"<span>{_pct(calibrated)}</span>"
+        '<span class="probability-separator">/</span>'
+        f"<span>{_pct(conservative)}</span></span>"
+    )
+
+
+def _rank_evidence_notice(retrospective: dict[str, Any]) -> str:
+    summary = retrospective.get("summary") or retrospective
+    evidence = summary.get("observations", {}).get("rank_evidence", {})
+    status = str(evidence.get("status") or "")
+    if status == "CONFIRMED":
+        return (
+            '<div class="notice">样本外排序已确认：第1至第5名的收益整体'
+            "随名次下降。名次可作为人工查看顺序，但仍不是买入建议。</div>"
+        )
+    if status == "NOT_CONFIRMED":
+        return (
+            '<div class="notice amber">样本外排序未确认：第1名只表示更接近'
+            "固定门槛，不代表比第5名更容易赚钱。</div>"
+        )
+    if status == "INSUFFICIENT_DATA":
+        return (
+            '<div class="notice amber">排序样本尚不足：观察 1–5 仅表示接近'
+            "固定门槛的顺序，不具有已验证的盈利先后含义。</div>"
+        )
+    return (
+        '<div class="notice amber">排序验证正在重建：当前观察名次只表示接近'
+        "固定门槛，不应解释为盈利概率排名。</div>"
     )
 
 
@@ -1071,6 +1144,13 @@ def _validation_detail_table(records: list[dict[str, Any]]) -> str:
     rows = []
     for row in records:
         verified = str(row.get("truth_status") or "") == "verified"
+        cohort = str(row.get("candidate_cohort") or "")
+        rank = int(_float(row.get("cohort_rank")) or 0)
+        rank_label = (
+            f'<span class="tag warn">观察 {_e(rank)}</span>'
+            if cohort == "OBSERVATION" and rank > 0
+            else ""
+        )
         status = (
             '<span class="tag good">已验证</span>'
             if verified
@@ -1083,6 +1163,7 @@ def _validation_detail_table(records: list[dict[str, Any]]) -> str:
         )
         rows.append(
             "<tr>"
+            f"<td>{rank_label}</td>"
             f"<td>{_stock_cell(row)}</td>"
             f"<td>{_price(row.get('entry_price'))}</td>"
             f"<td>{_price(row.get('t1_close'))}</td>"
@@ -1092,7 +1173,7 @@ def _validation_detail_table(records: list[dict[str, Any]]) -> str:
         )
     return (
         '<div class="table-wrap dense-table"><table><thead><tr>'
-        "<th>股票</th><th>入场价</th>"
+        "<th>名次</th><th>股票</th><th>入场价</th>"
         "<th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th>"
         "</tr></thead><tbody>"
         + "".join(rows)

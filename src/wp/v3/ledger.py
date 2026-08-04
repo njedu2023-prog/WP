@@ -614,8 +614,16 @@ def _candidate_record(
         "p_net_positive_direct",
         "p_net_positive_component_product",
         "p_net_positive_model_gap",
+        "base_p_net_positive",
+        "base_p_net_positive_lower",
         "p_net_positive",
         "p_net_positive_lower",
+        "meta_p_positive_raw",
+        "meta_p_positive_tree_raw",
+        "meta_p_positive_linear_raw",
+        "meta_p_positive",
+        "meta_p_positive_lower",
+        "meta_probability_calibration_margin",
         "p_conditional_severe_loss",
         "p_severe_loss_direct",
         "p_severe_loss_component_product",
@@ -711,6 +719,16 @@ def _candidate_record(
         ),
         "p_net_positive": _float(row.get("p_net_positive")),
         "p_net_positive_lower": _float(row.get("p_net_positive_lower")),
+        "meta_p_positive": _float(row.get("meta_p_positive")),
+        "meta_p_positive_lower": _float(
+            row.get("meta_p_positive_lower")
+        ),
+        "meta_probability_calibration_margin": _float(
+            row.get("meta_probability_calibration_margin")
+        ),
+        "base_p_net_positive_lower": _float(
+            row.get("base_p_net_positive_lower")
+        ),
         "p_severe_loss": _float(row.get("p_severe_loss")),
         "conditional_expected_net_return_pct": _float(
             row.get("conditional_expected_net_return_pct")

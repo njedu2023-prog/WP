@@ -16,6 +16,7 @@ from wp.v3.v40 import (
     V41Policy,
     attach_v40_policy_gates,
     evaluate_v41_fixed_1400,
+    observation_rank_evidence,
 )
 
 
@@ -80,7 +81,7 @@ def two_day_frame() -> pd.DataFrame:
 
 
 def test_v41_uses_a_full_year_for_rare_exit_risk_only() -> None:
-    assert V40_MODEL_SCHEMA_VERSION == "wp_v41_fixed_1400_bundle_1"
+    assert V40_MODEL_SCHEMA_VERSION == "wp_v41_fixed_1400_bundle_2"
     assert META_TRAIN_DAYS == 126
     assert META_CALIBRATION_DAYS == 21
     assert RISK_TRAIN_DAYS == 252
@@ -233,3 +234,54 @@ def test_live_observations_never_include_stale_market_data() -> None:
 
     assert len(live.observations) == config.strategy.observation_count
     assert "O0" not in set(live.observations["ts_code"])
+
+
+def test_observation_rank_requires_matched_day_economic_evidence() -> None:
+    rows = []
+    dates = pd.bdate_range("2026-05-04", periods=40)
+    for day, date in enumerate(dates, start=1):
+        common_move = ((day % 5) - 2) * 0.04
+        for rank in range(1, 6):
+            record = row(
+                date.strftime("%Y%m%d"),
+                f"R{rank}-{day}",
+                net_return=1.20 - 0.40 * (rank - 1) + common_move,
+            )
+            record["candidate_cohort"] = "OBSERVATION"
+            record["cohort_rank"] = rank
+            rows.append(record)
+
+    evidence = observation_rank_evidence(
+        pd.DataFrame(rows),
+        V3Config(),
+    )
+
+    assert evidence["status"] == "CONFIRMED"
+    assert evidence["ranking_is_actionable"] is True
+    assert evidence["matched_day_test"]["complete_days"] == 40
+    assert evidence["matched_day_test"]["slope_upper_pct_per_rank"] < 0.0
+    assert evidence["matched_day_test"]["rank1_minus_rank5_lower_pct"] > 0.0
+
+
+def test_observation_rank_is_not_actionable_without_ordered_returns() -> None:
+    rows = []
+    rank_returns = {1: 0.10, 2: 0.40, 3: -0.10, 4: 0.30, 5: 0.20}
+    dates = pd.bdate_range("2026-07-01", periods=40)
+    for day, date in enumerate(dates, start=1):
+        for rank, net_return in rank_returns.items():
+            record = row(
+                date.strftime("%Y%m%d"),
+                f"R{rank}-{day}",
+                net_return=net_return,
+            )
+            record["candidate_cohort"] = "OBSERVATION"
+            record["cohort_rank"] = rank
+            rows.append(record)
+
+    evidence = observation_rank_evidence(
+        pd.DataFrame(rows),
+        V3Config(),
+    )
+
+    assert evidence["status"] == "NOT_CONFIRMED"
+    assert evidence["ranking_is_actionable"] is False

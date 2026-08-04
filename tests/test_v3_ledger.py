@@ -34,6 +34,14 @@ def _prediction(
                 "p_conditional_net_positive": 0.68,
                 "p_net_positive": 0.67,
                 "p_net_positive_lower": 0.58,
+                "base_p_net_positive": 0.64,
+                "base_p_net_positive_lower": 0.55,
+                "meta_p_positive_raw": 0.69,
+                "meta_p_positive_tree_raw": 0.72,
+                "meta_p_positive_linear_raw": 0.63,
+                "meta_p_positive": 0.67,
+                "meta_p_positive_lower": 0.56,
+                "meta_probability_calibration_margin": 0.03,
                 "expected_utility_pct": 0.8,
                 "conditional_expected_net_return_pct": 1.0,
                 "downside_q10_pct": -2.0,
@@ -84,6 +92,15 @@ def test_ledger_locks_fixed_1400_signal_and_separates_both_cohorts():
     assert candidate["entry_benchmark_status"] == "PENDING"
     assert candidate["candidate_cohort"] == "QUALIFIED"
     assert candidate["is_user_trade"] is False
+    assert candidate["meta_p_positive"] == 0.67
+    assert candidate["meta_p_positive_lower"] == 0.56
+    assert candidate["base_p_net_positive_lower"] == 0.55
+    assert (
+        candidate["qualification_evidence"][
+            "meta_probability_calibration_margin"
+        ]
+        == 0.03
+    )
     assert "first_signal_features" in candidate
     assert "qualification_evidence" in candidate
     assert len(session["observations"]) == 5

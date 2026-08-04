@@ -14,6 +14,7 @@ def candidate(
     cohort: str,
     passes: bool,
     probability_lower: float,
+    rank: int | None = None,
 ) -> dict[str, object]:
     return {
         "ts_code": code,
@@ -33,6 +34,9 @@ def candidate(
         "p_exit_fill_given_entry": 0.995,
         "p_net_positive": 0.70,
         "p_net_positive_lower": probability_lower,
+        "meta_p_positive": 0.70,
+        "meta_p_positive_lower": probability_lower,
+        "cohort_rank": rank,
         "expected_utility_pct": 0.8,
         "expected_utility_lower_pct": 0.4,
         "selection_score": probability_lower,
@@ -187,6 +191,7 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
             cohort="OBSERVATION",
             passes=False,
             probability_lower=0.53 - index * 0.01,
+            rank=index,
         )
         for index in range(1, 6)
     )
@@ -194,6 +199,13 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
         path,
         phase="SIGNAL",
         predictions=pd.DataFrame(rows),
+        retrospective={
+            "summary": {
+                "observations": {
+                    "rank_evidence": {"status": "NOT_CONFIRMED"}
+                }
+            }
+        },
     )
 
     assert "<h2 class=\"section-title\">合格候选</h2>" in text
@@ -203,6 +215,10 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
     assert "2 支合格候选" in text
     assert "5 / 5" in text
     assert 'class="table-wrap dense-table"' in text
+    assert "校准概率 / 保守概率" in text
+    assert "70.0%" in text
+    assert "观察 1" in text
+    assert "样本外排序未确认" in text
     assert "不代表用户实际成交" in text
 
 
@@ -215,6 +231,7 @@ def test_zero_qualified_is_explicit_valid_result(tmp_path) -> None:
                 cohort="OBSERVATION",
                 passes=False,
                 probability_lower=0.53 - index * 0.01,
+                rank=index,
             )
             for index in range(1, 6)
         ]
@@ -376,6 +393,7 @@ def test_validation_groups_by_month_and_day_and_keeps_stock_inline(
         name: str,
         net_return: float,
         *,
+        rank: int = 1,
         signal_slot: str = "14:00",
         entry_slot: str = "14:05",
     ) -> dict[str, object]:
@@ -383,6 +401,7 @@ def test_validation_groups_by_month_and_day_and_keeps_stock_inline(
             "trade_date": trade_date,
             "target_trade_date": target_date,
             "candidate_cohort": "OBSERVATION",
+            "cohort_rank": rank,
             "ts_code": code,
             "name": name,
             "first_signal_time": signal_slot,
@@ -402,6 +421,7 @@ def test_validation_groups_by_month_and_day_and_keeps_stock_inline(
             f"60008{index}.SH",
             "特变电工" if index == 9 else f"测试{index}",
             1.0,
+            rank=index - 4,
         )
         for index in range(5, 10)
     ]
@@ -412,6 +432,7 @@ def test_validation_groups_by_month_and_day_and_keeps_stock_inline(
             f"00000{index}.SZ",
             f"九月{index}",
             2.0,
+            rank=index,
         )
         for index in range(1, 6)
     ]

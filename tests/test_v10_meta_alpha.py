@@ -17,6 +17,7 @@ from scripts.research_wp_v10_meta import (
 from wp.v3.meta_alpha import (
     META_FEATURE_COLUMNS,
     MetaPolicy,
+    ProbabilityCalibrator,
     apply_meta_policy,
     attach_meta_context,
     fit_meta_alpha,
@@ -132,9 +133,49 @@ def test_meta_model_produces_finite_oos_scores() -> None:
     assert "data_age_seconds" not in bundle.feature_columns
     assert "p_entry_fill" not in bundle.feature_columns
     assert scored["meta_p_positive"].between(0.001, 0.999).all()
+    assert scored["meta_p_positive_lower"].between(0.001, 0.999).all()
+    assert (
+        scored["meta_p_positive_lower"] <= scored["meta_p_positive"]
+    ).all()
+    assert scored["meta_p_positive"].nunique() > 20
+    assert scored["meta_p_positive_raw"].nunique() > 20
+    assert np.isfinite(scored["meta_probability_calibration_margin"]).all()
     assert scored["meta_p_severe_loss"].between(0.001, 0.999).all()
     assert np.isfinite(scored["meta_expected_net_return_pct"]).all()
     assert np.isfinite(scored["meta_score"]).all()
+
+
+def test_platt_calibration_preserves_resolution_and_builds_a_lower_bound() -> None:
+    raw = np.linspace(0.10, 0.90, 240)
+    target = (
+        raw
+        + 0.12 * np.sin(np.arange(len(raw)) / 7.0)
+        > 0.52
+    ).astype(int)
+    dates = np.asarray(
+        [f"2026{index // 20 + 1:02d}{index % 20 + 1:02d}" for index in range(240)]
+    )
+    weights = np.ones(len(raw), dtype=float)
+    calibrator = ProbabilityCalibrator(method="platt").fit(
+        raw,
+        target,
+        weights,
+        dates=dates,
+        margin_seed=17,
+    )
+
+    point = calibrator.predict(raw)
+    lower = calibrator.predict_lower(
+        raw,
+        member_probabilities=np.column_stack(
+            [np.clip(raw - 0.04, 0.001, 0.999), raw]
+        ),
+    )
+
+    assert np.unique(np.round(point, 8)).size > 200
+    assert np.all(np.diff(point) >= 0)
+    assert (lower <= point).all()
+    assert calibrator.one_sided_margin >= 0.0
 
 
 def test_research_summary_serializes_numpy_scalars() -> None:

@@ -27,7 +27,7 @@ from .v40 import (
 )
 
 
-V40_MODEL_SCHEMA_VERSION = "wp_v41_fixed_1400_bundle_1"
+V40_MODEL_SCHEMA_VERSION = "wp_v41_fixed_1400_bundle_2"
 META_TRAIN_DAYS = 126
 META_CALIBRATION_DAYS = 21
 # Exit failures are rare. Keep one full trading year so every fitted risk
@@ -232,6 +232,29 @@ def predict_v40_bundle(
         )
     ].copy()
     fixed = attach_v40_policy_gates(fixed, bundle.policy)
+    fixed["base_p_net_positive"] = pd.to_numeric(
+        fixed["p_net_positive"],
+        errors="coerce",
+    )
+    fixed["base_p_net_positive_lower"] = pd.to_numeric(
+        fixed["p_net_positive_lower"],
+        errors="coerce",
+    )
+    fixed["p_net_positive"] = pd.to_numeric(
+        fixed["meta_p_positive"],
+        errors="coerce",
+    )
+    fixed["p_net_positive_lower"] = pd.concat(
+        [
+            fixed["p_net_positive"],
+            fixed["base_p_net_positive_lower"],
+            pd.to_numeric(
+                fixed["meta_p_positive_lower"],
+                errors="coerce",
+            ),
+        ],
+        axis=1,
+    ).min(axis=1)
     fresh = pd.to_numeric(
         fixed.get(
             "data_age_seconds",
@@ -255,9 +278,9 @@ def predict_v40_bundle(
         "passes_round_trip_fill"
     ]
     fixed["passes_probability"] = fixed["passes_meta_probability"]
-    fixed["passes_probability_lower"] = fixed[
-        "passes_meta_probability"
-    ]
+    fixed["passes_probability_lower"] = fixed["p_net_positive_lower"].ge(
+        bundle.policy.probability_min
+    )
     fixed["passes_conditional_probability"] = fixed[
         "passes_meta_probability"
     ]
@@ -275,7 +298,6 @@ def predict_v40_bundle(
     fixed["passes_downside"] = True
     fixed["passes_stability"] = True
     fixed["passes_prior_oos_evidence"] = True
-    fixed["p_net_positive_lower"] = fixed["meta_p_positive"]
     fixed["expected_utility_lower_pct"] = fixed[
         "meta_expected_net_return_pct"
     ]
@@ -344,6 +366,21 @@ def v40_bundle_metadata(bundle: V40ModelBundle) -> dict[str, Any]:
         "policy": bundle.policy.as_dict(),
         "base_model_fingerprint": bundle.base_bundle.fingerprint,
         "meta_feature_columns": list(bundle.meta_bundle.feature_columns),
+        "probability_calibration": {
+            "method": bundle.meta_bundle.probability_calibrator.method,
+            "one_sided_margin": (
+                bundle.meta_bundle.probability_calibrator.one_sided_margin
+            ),
+            "policy_gate_contract": (
+                "The frozen V41 gate continues to use the calibrated point "
+                "probability. The conservative estimate is audit evidence "
+                "until a separately designed and confirmed policy adopts it."
+            ),
+            "lower_bound_contract": (
+                "minimum of calibrated meta-model members, day-clustered "
+                "calibration margin, and base ensemble lower estimate"
+            ),
+        },
         "exit_risk_feature_columns": list(
             bundle.exit_risk_bundle.feature_columns
         ),

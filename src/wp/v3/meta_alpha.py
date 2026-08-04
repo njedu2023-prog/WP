@@ -130,37 +130,132 @@ class MetaPolicy:
 @dataclass
 class ProbabilityCalibrator:
     model: IsotonicRegression | None = None
+    platt_model: LogisticRegression | None = None
     constant: float | None = None
+    method: str = "isotonic"
+    one_sided_margin: float = 0.0
 
     def fit(
         self,
         raw_probability: np.ndarray,
         target: np.ndarray,
         sample_weight: np.ndarray,
+        *,
+        dates: np.ndarray | None = None,
+        margin_seed: int = 20_260_804,
     ) -> "ProbabilityCalibrator":
-        values = np.asarray(raw_probability, dtype=float)
+        values = np.clip(
+            np.asarray(raw_probability, dtype=float),
+            0.001,
+            0.999,
+        )
         labels = np.asarray(target, dtype=int)
         if len(labels) == 0:
             raise ValueError("calibration labels are empty")
         if len(np.unique(labels)) < 2:
             self.constant = float(np.average(labels, weights=sample_weight))
             self.model = None
+            self.platt_model = None
+            self.one_sided_margin = _clustered_overconfidence_margin(
+                np.full(len(labels), self.constant, dtype=float),
+                labels,
+                dates=dates,
+                sample_weight=sample_weight,
+                seed=margin_seed,
+            )
             return self
-        self.model = IsotonicRegression(
-            y_min=0.001,
-            y_max=0.999,
-            out_of_bounds="clip",
-        )
-        self.model.fit(values, labels, sample_weight=sample_weight)
+        if self.method == "platt":
+            self.platt_model = LogisticRegression(
+                C=1.0,
+                max_iter=2_000,
+                solver="lbfgs",
+            )
+            self.platt_model.fit(
+                _probability_logit(values),
+                labels,
+                sample_weight=sample_weight,
+            )
+            self.model = None
+        elif self.method == "isotonic":
+            self.model = IsotonicRegression(
+                y_min=0.001,
+                y_max=0.999,
+                out_of_bounds="clip",
+            )
+            self.model.fit(values, labels, sample_weight=sample_weight)
+            self.platt_model = None
+        else:
+            raise ValueError(f"unknown probability calibration method: {self.method}")
         self.constant = None
+        self.one_sided_margin = _clustered_overconfidence_margin(
+            self.predict(values),
+            labels,
+            dates=dates,
+            sample_weight=sample_weight,
+            seed=margin_seed,
+        )
         return self
 
     def predict(self, raw_probability: np.ndarray) -> np.ndarray:
-        values = np.asarray(raw_probability, dtype=float)
+        values = np.clip(
+            np.asarray(raw_probability, dtype=float),
+            0.001,
+            0.999,
+        )
+        if self.constant is not None:
+            return np.full(
+                len(values),
+                np.clip(self.constant, 0.001, 0.999),
+                dtype=float,
+            )
+        if self.method == "platt" and self.platt_model is not None:
+            return np.clip(
+                np.asarray(
+                    self.platt_model.predict_proba(
+                        _probability_logit(values)
+                    )[:, 1],
+                    dtype=float,
+                ),
+                0.001,
+                0.999,
+            )
         if self.model is None:
             constant = 0.5 if self.constant is None else self.constant
-            return np.full(len(values), constant, dtype=float)
-        return np.asarray(self.model.predict(values), dtype=float)
+            return np.full(
+                len(values),
+                np.clip(constant, 0.001, 0.999),
+                dtype=float,
+            )
+        return np.clip(
+            np.asarray(self.model.predict(values), dtype=float),
+            0.001,
+            0.999,
+        )
+
+    def predict_lower(
+        self,
+        raw_probability: np.ndarray,
+        *,
+        member_probabilities: np.ndarray | None = None,
+    ) -> np.ndarray:
+        point = self.predict(raw_probability)
+        conservative = point.copy()
+        if member_probabilities is not None:
+            members = np.asarray(member_probabilities, dtype=float)
+            if members.ndim != 2 or members.shape[0] != len(point):
+                raise ValueError("member probabilities must be rows by members")
+            calibrated_members = np.column_stack(
+                [self.predict(members[:, index]) for index in range(members.shape[1])]
+            )
+            conservative = np.minimum(
+                conservative,
+                calibrated_members.min(axis=1),
+            )
+        return np.clip(
+            conservative - max(float(self.one_sided_margin), 0.0),
+            0.001,
+            0.999,
+        )
 
 
 @dataclass
@@ -177,17 +272,35 @@ class MetaAlphaBundle:
     def predict(self, frame: pd.DataFrame) -> pd.DataFrame:
         scored = frame.copy()
         features = meta_feature_matrix(scored, self.feature_columns)
-        raw_probability = _blended_probability(
+        tree_probability, linear_probability = _probability_components(
             self.probability_tree,
             self.probability_linear,
             features,
         )
+        raw_probability = _blend_probability_components(
+            tree_probability,
+            linear_probability,
+        )
         raw_severe = self.severe_tree.predict_proba(features)[:, 1]
         raw_return = self.return_tree.predict(features)
+        scored["meta_p_positive_raw"] = raw_probability
+        scored["meta_p_positive_tree_raw"] = tree_probability
+        scored["meta_p_positive_linear_raw"] = linear_probability
         scored["meta_p_positive"] = np.clip(
             self.probability_calibrator.predict(raw_probability),
             0.001,
             0.999,
+        )
+        scored["meta_p_positive_lower"] = (
+            self.probability_calibrator.predict_lower(
+                raw_probability,
+                member_probabilities=np.column_stack(
+                    [tree_probability, linear_probability]
+                ),
+            )
+        )
+        scored["meta_probability_calibration_margin"] = float(
+            self.probability_calibrator.one_sided_margin
         )
         scored["meta_p_severe_loss"] = np.clip(
             self.severe_calibrator.predict(raw_severe),
@@ -443,10 +556,12 @@ def fit_meta_alpha(
     )
     linear.fit(x_train, y_train, model__sample_weight=train_weight)
     raw_calibration = _blended_probability(tree, linear, x_calibration)
-    probability_calibrator = ProbabilityCalibrator().fit(
+    probability_calibrator = ProbabilityCalibrator(method="platt").fit(
         raw_calibration,
         y_calibration.to_numpy(),
         calibration_weight,
+        dates=calibration["trade_date"].astype(str).to_numpy(),
+        margin_seed=random_seed + 10,
     )
 
     severe_train = _severe_target(train)
@@ -753,13 +868,84 @@ def _blended_probability(
     linear: Pipeline,
     features: pd.DataFrame,
 ) -> np.ndarray:
-    tree_probability = tree.predict_proba(features)[:, 1]
-    linear_probability = linear.predict_proba(features)[:, 1]
+    tree_probability, linear_probability = _probability_components(
+        tree,
+        linear,
+        features,
+    )
+    return _blend_probability_components(tree_probability, linear_probability)
+
+
+def _probability_components(
+    tree: HistGradientBoostingClassifier,
+    linear: Pipeline,
+    features: pd.DataFrame,
+) -> tuple[np.ndarray, np.ndarray]:
+    return (
+        np.asarray(tree.predict_proba(features)[:, 1], dtype=float),
+        np.asarray(linear.predict_proba(features)[:, 1], dtype=float),
+    )
+
+
+def _blend_probability_components(
+    tree_probability: np.ndarray,
+    linear_probability: np.ndarray,
+) -> np.ndarray:
     return np.clip(
         0.65 * tree_probability + 0.35 * linear_probability,
         0.001,
         0.999,
     )
+
+
+def _probability_logit(values: np.ndarray) -> np.ndarray:
+    clipped = np.clip(np.asarray(values, dtype=float), 0.001, 0.999)
+    return np.log(clipped / (1.0 - clipped)).reshape(-1, 1)
+
+
+def _clustered_overconfidence_margin(
+    probability: np.ndarray,
+    target: np.ndarray,
+    *,
+    dates: np.ndarray | None,
+    sample_weight: np.ndarray,
+    seed: int,
+    samples: int = 2_000,
+) -> float:
+    values = np.asarray(probability, dtype=float)
+    labels = np.asarray(target, dtype=float)
+    weights = np.asarray(sample_weight, dtype=float)
+    date_values = (
+        np.asarray(dates).astype(str)
+        if dates is not None
+        else np.arange(len(values)).astype(str)
+    )
+    calibration = pd.DataFrame(
+        {
+            "trade_date": date_values,
+            "weighted_residual": weights * (values - labels),
+            "weight": weights,
+        }
+    )
+    clustered = calibration.groupby("trade_date", sort=True).agg(
+        residual_sum=("weighted_residual", "sum"),
+        weight_sum=("weight", "sum"),
+    )
+    day_residual = (
+        clustered["residual_sum"]
+        / clustered["weight_sum"].replace(0.0, np.nan)
+    ).dropna()
+    if day_residual.empty:
+        return 0.0
+    rng = np.random.default_rng(seed)
+    choices = rng.integers(
+        0,
+        len(day_residual),
+        size=(samples, len(day_residual)),
+        endpoint=False,
+    )
+    bootstrap_mean = day_residual.to_numpy(dtype=float)[choices].mean(axis=1)
+    return float(max(np.quantile(bootstrap_mean, 0.95), 0.0))
 
 
 def _day_equal_weights(frame: pd.DataFrame) -> np.ndarray:

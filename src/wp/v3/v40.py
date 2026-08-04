@@ -85,6 +85,11 @@ def evaluate_v40_fixed_1430(
         bootstrap_samples=4_000,
         seed=config.model.random_seed + 40_002,
     )
+    rank_evidence = observation_rank_evidence(
+        observations,
+        config,
+        expected_ranks=active_policy.observation_count,
+    )
     source_dates = sorted(source["trade_date"].astype(str).unique())
     expected_dates = (
         sorted(
@@ -152,7 +157,7 @@ def evaluate_v40_fixed_1430(
         else "INCOMPLETE"
     )
     summary = {
-        "schema_version": "wp_v41_fixed_1400_backtest_1",
+        "schema_version": "wp_v41_fixed_1400_backtest_2",
         "status": status,
         "research_only": True,
         "production_authorized": False,
@@ -234,6 +239,7 @@ def evaluate_v40_fixed_1430(
         },
         "observations": {
             "metrics": observation_metrics,
+            "rank_evidence": rank_evidence,
         },
         "monthly": monthly,
         "interpretation": _interpretation(
@@ -385,6 +391,16 @@ def refresh_v40_backtest_summary(
     )
     refreshed.setdefault("qualified", {})["metrics"] = qualified_metrics
     refreshed.setdefault("observations", {})["metrics"] = observation_metrics
+    refreshed["observations"]["rank_evidence"] = observation_rank_evidence(
+        observations,
+        config,
+        expected_ranks=int(
+            refreshed.get("integrity", {}).get(
+                "observation_target_per_day",
+                V41Policy().observation_count,
+            )
+        ),
+    )
     existing_months = {
         str(row.get("month")): dict(row)
         for row in refreshed.get("monthly", [])
@@ -579,6 +595,258 @@ def _select_cohorts(
         _concat(observation_frames, empty),
         audits,
     )
+
+
+def observation_rank_evidence(
+    observations: pd.DataFrame,
+    config: V3Config,
+    *,
+    expected_ranks: int = 5,
+    minimum_events_per_rank: int = 30,
+    minimum_days_per_rank: int = 20,
+) -> dict[str, Any]:
+    frame = observations.copy()
+    frame["cohort_rank"] = pd.to_numeric(
+        frame.get(
+            "cohort_rank",
+            pd.Series(index=frame.index, dtype=float),
+        ),
+        errors="coerce",
+    )
+    frame["net_return_pct"] = pd.to_numeric(
+        frame.get(
+            "net_return_pct",
+            pd.Series(index=frame.index, dtype=float),
+        ),
+        errors="coerce",
+    )
+    frame = frame.dropna(subset=["cohort_rank", "net_return_pct"])
+    by_rank: list[dict[str, Any]] = []
+    for rank in range(1, expected_ranks + 1):
+        rank_frame = frame.loc[frame["cohort_rank"].eq(rank)].copy()
+        metrics = performance_summary(
+            rank_frame,
+            config,
+            bootstrap_samples=800,
+            seed=config.model.random_seed + 41_000 + rank,
+        )
+        stress_50 = metrics.get("stress", {}).get("50bps", {})
+        by_rank.append(
+            {
+                "rank": rank,
+                "events": metrics.get("events"),
+                "trade_days": metrics.get("trade_days"),
+                "win_rate": metrics.get("win_rate"),
+                "win_rate_day_clustered_lower": metrics.get(
+                    "win_rate_day_clustered_lower"
+                ),
+                "mean_net_return_pct": metrics.get("mean_net_return_pct"),
+                "mean_net_return_day_clustered_lower_pct": metrics.get(
+                    "mean_net_return_day_clustered_lower_pct"
+                ),
+                "mean_net_return_day_clustered_upper_pct": metrics.get(
+                    "mean_net_return_day_clustered_upper_pct"
+                ),
+                "profit_factor": metrics.get("profit_factor"),
+                "stress_50bps_mean_net_return_pct": stress_50.get(
+                    "mean_net_return_pct"
+                ),
+            }
+        )
+
+    complete = all(
+        int(row.get("events") or 0) >= minimum_events_per_rank
+        and int(row.get("trade_days") or 0) >= minimum_days_per_rank
+        for row in by_rank
+    )
+    means = [_optional_float(row.get("mean_net_return_pct")) for row in by_rank]
+    win_rates = [_optional_float(row.get("win_rate")) for row in by_rank]
+    finite_means = all(value is not None for value in means)
+    finite_win_rates = all(value is not None for value in win_rates)
+    return_pairs = (
+        sum(
+            float(means[index]) >= float(means[index + 1])
+            for index in range(len(means) - 1)
+        )
+        if finite_means
+        else 0
+    )
+    win_pairs = (
+        sum(
+            float(win_rates[index]) >= float(win_rates[index + 1])
+            for index in range(len(win_rates) - 1)
+        )
+        if finite_win_rates
+        else 0
+    )
+    spearman = _rank_return_spearman(means)
+    rank_spread = (
+        float(means[0]) - float(means[-1])
+        if finite_means and means
+        else None
+    )
+    matched = _matched_rank_evidence(
+        frame,
+        expected_ranks=expected_ranks,
+        seed=config.model.random_seed + 41_100,
+    )
+    confirmed = bool(
+        complete
+        and finite_means
+        and finite_win_rates
+        and matched["complete_days"] >= minimum_days_per_rank
+        and return_pairs >= max(expected_ranks - 2, 0)
+        and win_pairs >= max(expected_ranks - 3, 0)
+        and spearman is not None
+        and spearman <= -0.70
+        and rank_spread is not None
+        and rank_spread > 0.0
+        and _optional_float(matched["slope_upper_pct_per_rank"]) is not None
+        and float(matched["slope_upper_pct_per_rank"]) < 0.0
+        and _optional_float(
+            matched["rank1_minus_rank5_lower_pct"]
+        )
+        is not None
+        and float(matched["rank1_minus_rank5_lower_pct"]) > 0.0
+    )
+    if not complete:
+        status = "INSUFFICIENT_DATA"
+        conclusion = (
+            "每个名次尚未达到最少样本和交易日要求；名次只表示接近门槛。"
+        )
+    elif confirmed:
+        status = "CONFIRMED"
+        conclusion = (
+            "第1至第5名的样本外收益整体随名次下降，观察优先级具有统计支持。"
+        )
+    else:
+        status = "NOT_CONFIRMED"
+        conclusion = (
+            "样本外收益未形成稳定的名次单调性；不得把第1名解释为更可能盈利。"
+        )
+    return {
+        "status": status,
+        "ranking_is_actionable": confirmed,
+        "selection_meaning": (
+            "distance-to-fixed-gates and causal meta-score priority"
+        ),
+        "minimum_events_per_rank": minimum_events_per_rank,
+        "minimum_days_per_rank": minimum_days_per_rank,
+        "adjacent_return_pairs_in_order": return_pairs,
+        "adjacent_win_rate_pairs_in_order": win_pairs,
+        "required_adjacent_pairs": max(expected_ranks - 1, 0),
+        "rank_return_spearman": spearman,
+        "rank1_minus_rank5_mean_net_return_pct": rank_spread,
+        "matched_day_test": matched,
+        "by_rank": by_rank,
+        "conclusion": conclusion,
+    }
+
+
+def _matched_rank_evidence(
+    frame: pd.DataFrame,
+    *,
+    expected_ranks: int,
+    seed: int,
+    samples: int = 2_000,
+    block_days: int = 5,
+) -> dict[str, Any]:
+    if frame.empty:
+        return _empty_matched_rank_evidence()
+    pivot = frame.pivot_table(
+        index="trade_date",
+        columns="cohort_rank",
+        values="net_return_pct",
+        aggfunc="first",
+    )
+    expected = list(range(1, expected_ranks + 1))
+    pivot = pivot.reindex(columns=expected).dropna(how="any")
+    if pivot.empty:
+        return _empty_matched_rank_evidence()
+
+    returns = pivot.to_numpy(dtype=float)
+    ranks = np.arange(1, expected_ranks + 1, dtype=float)
+    centred = ranks - ranks.mean()
+    denominator = float(np.square(centred).sum())
+    daily_slopes = returns @ centred / denominator
+    daily_spreads = returns[:, 0] - returns[:, -1]
+
+    rng = np.random.default_rng(seed)
+    block_length = max(1, min(int(block_days), len(pivot)))
+    blocks_per_sample = int(np.ceil(len(pivot) / block_length))
+    starts = rng.integers(
+        0,
+        len(pivot),
+        size=(samples, blocks_per_sample),
+        endpoint=False,
+    )
+    offsets = np.arange(block_length, dtype=int)
+    choices = (
+        (starts[:, :, None] + offsets[None, None, :]) % len(pivot)
+    ).reshape(samples, -1)[:, : len(pivot)]
+    slope_samples = daily_slopes[choices].mean(axis=1)
+    spread_samples = daily_spreads[choices].mean(axis=1)
+    return {
+        "complete_days": int(len(pivot)),
+        "slope_mean_pct_per_rank": float(daily_slopes.mean()),
+        "slope_lower_pct_per_rank": float(
+            np.quantile(slope_samples, 0.025)
+        ),
+        "slope_upper_pct_per_rank": float(
+            np.quantile(slope_samples, 0.975)
+        ),
+        "probability_slope_negative": float((slope_samples < 0.0).mean()),
+        "rank1_minus_rank5_mean_pct": float(daily_spreads.mean()),
+        "rank1_minus_rank5_lower_pct": float(
+            np.quantile(spread_samples, 0.025)
+        ),
+        "rank1_minus_rank5_upper_pct": float(
+            np.quantile(spread_samples, 0.975)
+        ),
+        "probability_rank1_beats_rank5": float(
+            (spread_samples > 0.0).mean()
+        ),
+        "bootstrap_samples": int(samples),
+        "block_days": int(block_length),
+    }
+
+
+def _empty_matched_rank_evidence() -> dict[str, Any]:
+    return {
+        "complete_days": 0,
+        "slope_mean_pct_per_rank": None,
+        "slope_lower_pct_per_rank": None,
+        "slope_upper_pct_per_rank": None,
+        "probability_slope_negative": None,
+        "rank1_minus_rank5_mean_pct": None,
+        "rank1_minus_rank5_lower_pct": None,
+        "rank1_minus_rank5_upper_pct": None,
+        "probability_rank1_beats_rank5": None,
+        "bootstrap_samples": 0,
+        "block_days": 0,
+    }
+
+
+def _rank_return_spearman(values: list[float | None]) -> float | None:
+    if len(values) < 2 or any(value is None for value in values):
+        return None
+    ranked_returns = pd.Series(
+        [float(value) for value in values],
+        dtype=float,
+    ).rank(method="average")
+    if ranked_returns.nunique() < 2:
+        return 0.0
+    rank_numbers = pd.Series(range(1, len(values) + 1), dtype=float)
+    correlation = rank_numbers.corr(ranked_returns, method="pearson")
+    return _optional_float(correlation)
+
+
+def _optional_float(value: Any) -> float | None:
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if np.isfinite(number) else None
 
 
 def _month_summary(
