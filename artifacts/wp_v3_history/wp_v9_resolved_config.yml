@@ -1,10 +1,10 @@
 strategy:
-  strategy_id: wp_t1_net_profit_v40_1430
-  model_family: v15_seeded_1430_dual_cohort
+  strategy_id: wp_t1_net_profit_v41_1400
+  model_family: v41_1400_dual_cohort
   timezone: Asia/Shanghai
   signal_slots:
-  - '14:30'
-  candidate_freeze_time: '14:40'
+  - '14:00'
+  candidate_freeze_time: '14:10'
   clear_live_display_time: '15:00'
   exit_contract: T+1_close
   board_scope: main_board
@@ -12,7 +12,7 @@ strategy:
 execution:
   entry_price_contract: next_5m_close_plus_slippage
   entry_delay_minutes: 5
-  entry_execution_deadline: '14:35'
+  entry_execution_deadline: '14:05'
   entry_slippage_bps: 10
   round_trip_cost_bps: 25
   exit_order_contract: T+1_14:57_down_limit_sell_for_close_auction
@@ -122,5 +122,5 @@ history:
 evidence:
   retrospective_start_date: '20260501'
   retrospective_end_date: '20260731'
-  live_shadow_start_date: '20260803'
+  live_shadow_start_date: '20260805'
   keep_cohort_statistics_separate: true
