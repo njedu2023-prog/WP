@@ -195,6 +195,38 @@
       vertical-align: middle;
       white-space: nowrap;
     }
+    .dense-section .section-head {
+      min-height: 54px;
+      padding: 11px 16px;
+    }
+    .dense-section .section-title { font-size: 15px; }
+    .dense-section .section-sub { font-size: 11px; }
+    .dense-section .count { font-size: 17px; }
+    .dense-section .metric { padding: 12px 14px; }
+    .dense-section .metric-value { font-size: 17px; }
+    .dense-table table { font-size: 13px; }
+    .dense-table th {
+      padding: 7px 10px;
+      font-size: 11px;
+    }
+    .dense-table td {
+      padding: 9px 10px;
+      line-height: 1.25;
+    }
+    .dense-table .stock { font-size: 13px; }
+    .dense-table .stock-name {
+      margin-top: 1px;
+      font-size: 10px;
+    }
+    .dense-table .tag {
+      padding: 1px 5px;
+      font-size: 10px;
+    }
+    .dense-table .reason {
+      max-width: 300px;
+      font-size: 11px;
+      line-height: 1.35;
+    }
     tbody tr:last-child td { border-bottom: 0; }
     tbody tr:hover { background: #fbfbfd; }
     .stock { font-weight: 700; }
@@ -410,7 +442,7 @@
     
 
     
-    <section class="section">
+    <section class="section dense-section">
       <div class="section-head">
         <div>
           <h2 class="section-title">今日冻结证据</h2>
@@ -418,29 +450,29 @@
         </div>
         <div class="count">5</div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>组别</th><th>股票</th><th>信号</th><th>信号价</th><th>14:35 基准价</th><th>盈利概率下界</th><th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th></tr></thead><tbody><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>000333.SZ</div><div class='stock-name'>美的集团</div></td><td>14:30</td><td>85.12</td><td>85.27</td><td>47.7%</td><td><span class="negative">-0.09%</span></td><td><span class="negative">-2.04%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>600089.SH</div><div class='stock-name'>特变电工</div></td><td>14:30</td><td>21.39</td><td>21.38</td><td>47.7%</td><td><span class="negative">-0.12%</span></td><td><span class="negative">-2.28%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>600030.SH</div><div class='stock-name'>中信证券</div></td><td>14:30</td><td>28.06</td><td>28.05</td><td>47.7%</td><td><span class="negative">-0.19%</span></td><td><span class="negative">-1.54%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>601318.SH</div><div class='stock-name'>中国平安</div></td><td>14:30</td><td>53.94</td><td>53.99</td><td>47.7%</td><td><span class="negative">-0.25%</span></td><td><span class="negative">-1.79%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足、元模型横截面排名不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>600900.SH</div><div class='stock-name'>长江电力</div></td><td>14:30</td><td>28.26</td><td>28.29</td><td>47.7%</td><td><span class="negative">-0.22%</span></td><td><span class="negative">-1.79%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足、元模型横截面排名不足</td></tr></tbody></table></div>
+      <div class="table-wrap dense-table"><table><thead><tr><th>组别</th><th>股票</th><th>信号</th><th>信号价</th><th>14:35 基准价</th><th>盈利概率下界</th><th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th></tr></thead><tbody><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>000333.SZ</div><div class='stock-name'>美的集团</div></td><td>14:30</td><td>85.12</td><td>85.27</td><td>47.7%</td><td><span class="negative">-0.09%</span></td><td><span class="negative">-2.04%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>600089.SH</div><div class='stock-name'>特变电工</div></td><td>14:30</td><td>21.39</td><td>21.38</td><td>47.7%</td><td><span class="negative">-0.12%</span></td><td><span class="negative">-2.28%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>600030.SH</div><div class='stock-name'>中信证券</div></td><td>14:30</td><td>28.06</td><td>28.05</td><td>47.7%</td><td><span class="negative">-0.19%</span></td><td><span class="negative">-1.54%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>601318.SH</div><div class='stock-name'>中国平安</div></td><td>14:30</td><td>53.94</td><td>53.99</td><td>47.7%</td><td><span class="negative">-0.25%</span></td><td><span class="negative">-1.79%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足、元模型横截面排名不足</td></tr><tr><td><span class="tag warn">研究观察</span></td><td><div class='stock'>600900.SH</div><div class='stock-name'>长江电力</div></td><td>14:30</td><td>28.26</td><td>28.29</td><td>47.7%</td><td><span class="negative">-0.22%</span></td><td><span class="negative">-1.79%</span></td><td class='reason'>元模型盈利概率不足、元模型期望收益不足、元模型横截面排名不足</td></tr></tbody></table></div>
     </section>
     
 
-    <section class="section" data-tab-group>
+    <section class="section dense-section" data-tab-group>
       <div class="section-head">
         <div>
           <h2 class="section-title">T+1 真实验证</h2>
-          <p class="section-sub">这里只统计 8 月 3 日起盘中实时形成的影子记录，不记录人工是否买入；5–7 月历史回测见下方</p>
+          <p class="section-sub">实时统计始于 2026-08-03 · T 日 14:30 产生信号 · 14:35 影子入场 · T+1 收盘验证 · 不记录人工是否买入</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
-          <button class="active" type="button" role="tab" aria-selected="true" data-tab="QUALIFIED">合格</button>
-          <button type="button" role="tab" aria-selected="false" data-tab="OBSERVATION">观察</button>
+          <button type="button" role="tab" aria-selected="false" data-tab="QUALIFIED">合格</button>
+          <button class="active" type="button" role="tab" aria-selected="true" data-tab="OBSERVATION">观察</button>
         </div>
       </div>
-      <div role="tabpanel" data-tab-panel="QUALIFIED">
+      <div role="tabpanel" data-tab-panel="QUALIFIED" hidden>
         <div class="metric-grid"><div class="metric"><div class="label">样本</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">已验证</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">覆盖交易日</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">胜率</div><div class="metric-value ">—</div></div><div class="metric"><div class="label">平均净收益</div><div class="metric-value neutral">—</div></div></div>
         <div class="empty"><strong>暂无验证记录</strong>新合同尚未形成该组的可验证样本。</div>
       </div>
-      <div role="tabpanel" data-tab-panel="OBSERVATION" hidden>
+      <div role="tabpanel" data-tab-panel="OBSERVATION">
         <div class="metric-grid"><div class="metric"><div class="label">样本</div><div class="metric-value ">10</div></div><div class="metric"><div class="label">已验证</div><div class="metric-value ">0</div></div><div class="metric"><div class="label">覆盖交易日</div><div class="metric-value ">2</div></div><div class="metric"><div class="label">胜率</div><div class="metric-value ">—</div></div><div class="metric"><div class="label">平均净收益</div><div class="metric-value neutral">—</div></div></div>
         <div class="notice amber">研究观察用于检验门槛附近股票的真实结果，不与正式策略胜率、收益或晋级门槛合并。</div>
-        <div class="table-wrap"><table><thead><tr><th>信号日</th><th>验证日</th><th>股票</th><th>入场价</th><th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th></tr></thead><tbody><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>601318.SH</div><div class='stock-name'>中国平安</div></td><td>53.99</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>600900.SH</div><div class='stock-name'>长江电力</div></td><td>28.29</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>600089.SH</div><div class='stock-name'>特变电工</div></td><td>21.38</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>600030.SH</div><div class='stock-name'>中信证券</div></td><td>28.05</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>000333.SZ</div><div class='stock-name'>美的集团</div></td><td>85.27</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>601919.SH</div><div class='stock-name'>中远海控</div></td><td>15.70</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>601138.SH</div><div class='stock-name'>工业富联</div></td><td>55.97</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002475.SZ</div><div class='stock-name'>立讯精密</div></td><td>53.67</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002202.SZ</div><div class='stock-name'>金风科技</div></td><td>19.21</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002050.SZ</div><div class='stock-name'>三花智控</div></td><td>38.30</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr></tbody></table></div>
+        <div class="table-wrap dense-table"><table><thead><tr><th>信号日</th><th>验证日</th><th>股票</th><th>入场价</th><th>T+1 收盘</th><th>净收益</th><th>结果</th><th>状态</th></tr></thead><tbody><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>601318.SH</div><div class='stock-name'>中国平安</div></td><td>53.99</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>600900.SH</div><div class='stock-name'>长江电力</div></td><td>28.29</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>600089.SH</div><div class='stock-name'>特变电工</div></td><td>21.38</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>600030.SH</div><div class='stock-name'>中信证券</div></td><td>28.05</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-04</td><td>2026-08-05</td><td><div class='stock'>000333.SZ</div><div class='stock-name'>美的集团</div></td><td>85.27</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>601919.SH</div><div class='stock-name'>中远海控</div></td><td>15.70</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>601138.SH</div><div class='stock-name'>工业富联</div></td><td>55.97</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002475.SZ</div><div class='stock-name'>立讯精密</div></td><td>53.67</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002202.SZ</div><div class='stock-name'>金风科技</div></td><td>19.21</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr><tr><td>2026-08-03</td><td>2026-08-04</td><td><div class='stock'>002050.SZ</div><div class='stock-name'>三花智控</div></td><td>38.30</td><td>—</td><td>—</td><td>待验证</td><td><span class="tag">待 T+1 收盘</span></td></tr></tbody></table></div>
       </div>
     </section>
 
