@@ -90,7 +90,7 @@ def test_monitor_accepts_matching_pages_revision(monkeypatch):
 
 
 def test_monitor_repairs_missing_session_before_signal_window(monkeypatch):
-    current = datetime(2026, 7, 16, 13, 53, tzinfo=CN_TZ)
+    current = datetime(2026, 7, 16, 13, 56, tzinfo=CN_TZ)
     dispatched = []
     monkeypatch.setenv("GITHUB_TOKEN", "token")
     monkeypatch.setenv("TUSHARE_TOKEN", "tushare")

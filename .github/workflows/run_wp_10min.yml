@@ -6,10 +6,6 @@ on:
     branches: [main]
     paths:
       - scripts/trigger_wp_run.txt
-  schedule:
-    # 05:10 UTC = 13:10 Asia/Shanghai. Starting early absorbs scheduler delay
-    # before the first completed causal warm bar at 13:32.
-    - cron: "10 5 * * 1-5"
 
 permissions:
   contents: write
@@ -23,7 +19,7 @@ concurrency:
 jobs:
   tail-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 130
+    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -33,7 +29,18 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: pip install -r requirements.lock
-      - name: Run causal V41 fixed-decision session
+      - name: Restore causal reference cache
+        uses: actions/cache@v4
+        with:
+          path: data/v3/cache
+          key: wp-v41-live-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/**/*.py') }}-${{ github.run_id }}
+          restore-keys: |
+            wp-v41-live-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/**/*.py') }}-
+      - name: Verify exact V41 runtime package
+        run: python scripts/check_wp_runtime_readiness.py
+        env:
+          PYTHONPATH: src
+      - name: Run exact 14:00 signal and 14:05 settlement
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
@@ -41,7 +48,7 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'auto' }}
+          WP_RUN_MODE: exact
           WP_SCHEDULE_GRACE_SECONDS: "120"
-          WP_MAX_SLOT_LATENESS_SECONDS: "420"
+          WP_MAX_CAPTURE_LATENESS_SECONDS: "45"
           LOKY_MAX_CPU_COUNT: "2"

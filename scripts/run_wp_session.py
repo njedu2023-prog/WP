@@ -16,33 +16,23 @@ try:
     from build_wp_v3_live_input import (
         build_live_input,
         capture_entry_settlement_input,
-        capture_warmup_input,
     )
 except ModuleNotFoundError:  # pragma: no cover - package import in tests
     from scripts.build_wp_v3_live_input import (
         build_live_input,
         capture_entry_settlement_input,
-        capture_warmup_input,
     )
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
-PREP_START = time(13, 10)
-RUN_START = time(13, 30)
+PREP_START = time(13, 55)
+RUN_START = time(14, 0)
 RUN_END = time(15, 0)
 LATE_RECOVERY_START = time(14, 7)
 LATE_RECOVERY_END = time(16, 10)
-WARMUP_SLOTS = {
-    "13:30",
-    "13:35",
-    "13:40",
-    "13:45",
-    "13:50",
-    "13:55",
-}
-MAX_SLOT_LATENESS_SECONDS = int(
-    os.environ.get("WP_MAX_SLOT_LATENESS_SECONDS", "420")
+MAX_CAPTURE_LATENESS_SECONDS = int(
+    os.environ.get("WP_MAX_CAPTURE_LATENESS_SECONDS", "45")
 )
 LIVE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
@@ -286,20 +276,11 @@ def run_session() -> None:
         print(f"Skip WP session outside trading session prep/window: {current:%Y-%m-%d %H:%M:%S}")
         return
 
-    start_dt, _ = window
-    if current < start_dt:
-        wait_seconds = max(0.0, (start_dt - current).total_seconds())
-        print(f"Wait until WP session start: {start_dt:%Y-%m-%d %H:%M:%S}, wait={wait_seconds:.0f}s")
-        time_module.sleep(wait_seconds)
-
     failures: list[str] = []
     schedule = [
-        datetime.combine(current.date(), time(13, minute), CN_TZ)
-        for minute in (30, 35, 40, 45, 50, 55)
-    ] + [
-        datetime.combine(current.date(), time(14, minute), CN_TZ)
-        for minute in (0, 5, 10)
-    ] + [datetime.combine(current.date(), time(15, 0), CN_TZ)]
+        datetime.combine(current.date(), slot, CN_TZ)
+        for slot in (time(14, 0), time(14, 5), time(14, 10), time(15, 0))
+    ]
     for scheduled_at in schedule:
         current = now_cn()
         capture_at = scheduled_at + timedelta(seconds=SCHEDULE_GRACE_SECONDS)
@@ -311,35 +292,32 @@ def run_session() -> None:
             )
             time_module.sleep(wait_seconds)
         started_at = now_cn()
-        lateness = (started_at - scheduled_at).total_seconds()
-        if lateness > MAX_SLOT_LATENESS_SECONDS:
+        capture_lateness = (started_at - capture_at).total_seconds()
+        if capture_lateness > MAX_CAPTURE_LATENESS_SECONDS:
             message = (
                 f"missed anchored slot {scheduled_at:%H:%M}; "
-                f"lateness={lateness:.0f}s"
+                f"capture_lateness={capture_lateness:.0f}s"
             )
             failures.append(message)
             print(f"::error::{message}")
+            if scheduled_at.time() == time(14, 0):
+                break
             continue
         print(
             f"WP completed-bar iteration {scheduled_at:%H:%M} started: "
-            f"{started_at:%Y-%m-%d %H:%M:%S}; lateness={lateness:.0f}s"
+            f"{started_at:%Y-%m-%d %H:%M:%S}; "
+            f"capture_lateness={capture_lateness:.0f}s"
         )
         try:
             slot = scheduled_at.strftime("%H:%M")
-            if slot in WARMUP_SLOTS:
-                manifest = capture_warmup_input(
-                    observation_slot=slot,
-                    root=Path.cwd(),
-                    env=os.environ,
-                )
-                print(
-                    "WP V41 warmup snapshot ready: "
-                    f"slot={slot} rows={manifest['row_count']} "
-                    f"coverage={manifest['tail_universe_coverage']:.2%}"
-                )
-            elif slot == "14:00":
+            if slot == "14:00":
                 run_once(slot)
             elif slot == "14:05":
+                if not _has_fixed_signal_session(trade_date):
+                    raise RuntimeError(
+                        "immutable 14:00 signal is absent; "
+                        "14:05 settlement is forbidden"
+                    )
                 run_once(settlement_slot=slot)
             else:
                 run_once()
@@ -347,6 +325,8 @@ def run_session() -> None:
             message = f"{scheduled_at:%H:%M} failed: {error}"
             failures.append(message)
             print(f"::error::{message}")
+            if slot == "14:00":
+                break
 
     print(f"WP session completed: {now_cn():%Y-%m-%d %H:%M:%S}")
     if failures:
@@ -355,12 +335,12 @@ def run_session() -> None:
 
 def main() -> None:
     mode = os.environ.get("WP_RUN_MODE", "once").strip().lower()
-    if mode == "session":
+    if mode in {"session", "exact"}:
         run_session()
         return
     if mode == "auto":
         current = now_cn()
-        if current.time() <= time(13, 32):
+        if current.time() <= time(14, 0):
             run_session()
         else:
             run_once_if_due()

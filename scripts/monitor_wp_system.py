@@ -41,7 +41,7 @@ def in_trade_window(current: datetime) -> bool:
 
 
 def in_session_start_window(current: datetime) -> bool:
-    return time(13, 10) <= current.time() < time(14, 0)
+    return time(13, 55) <= current.time() < time(14, 0)
 
 
 def in_close_finalize_window(current: datetime) -> bool:

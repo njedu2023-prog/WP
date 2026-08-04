@@ -1,5 +1,7 @@
 from types import SimpleNamespace
-from datetime import datetime
+from datetime import datetime, timedelta
+
+import pytest
 
 from scripts import run_wp_session
 
@@ -34,6 +36,137 @@ def test_auto_start_before_warmup_runs_continuous_session(monkeypatch):
     run_wp_session.main()
 
     assert calls == ["run_session"]
+
+
+def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
+    calls = []
+    clock = {
+        "now": datetime(
+            2026,
+            8,
+            5,
+            13,
+            56,
+            tzinfo=run_wp_session.CN_TZ,
+        )
+    }
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: clock["now"],
+    )
+    monkeypatch.setattr(
+        run_wp_session.time_module,
+        "sleep",
+        lambda seconds: clock.__setitem__(
+            "now",
+            clock["now"] + timedelta(seconds=seconds),
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_fixed_signal_session",
+        lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once",
+        lambda signal_slot=None, **kwargs: calls.append(
+            (signal_slot, kwargs)
+        ),
+    )
+
+    run_wp_session.run_session()
+
+    assert calls == [
+        ("14:00", {}),
+        (None, {"settlement_slot": "14:05"}),
+        (None, {}),
+        (None, {}),
+    ]
+
+
+def test_exact_session_rejects_late_signal_instead_of_backfilling(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: datetime(
+            2026,
+            8,
+            5,
+            14,
+            3,
+            tzinfo=run_wp_session.CN_TZ,
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once",
+        lambda *args, **kwargs: calls.append((args, kwargs)),
+    )
+
+    with pytest.raises(RuntimeError, match="missed anchored slot 14:00"):
+        run_wp_session.run_session()
+
+    assert calls == []
+
+
+def test_exact_session_still_freezes_and_closes_after_settlement_failure(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+    clock = {
+        "now": datetime(
+            2026,
+            8,
+            5,
+            13,
+            56,
+            tzinfo=run_wp_session.CN_TZ,
+        )
+    }
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(run_wp_session, "now_cn", lambda: clock["now"])
+    monkeypatch.setattr(
+        run_wp_session.time_module,
+        "sleep",
+        lambda seconds: clock.__setitem__(
+            "now",
+            clock["now"] + timedelta(seconds=seconds),
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_fixed_signal_session",
+        lambda trade_date: True,
+    )
+
+    def fake_run_once(signal_slot=None, **kwargs):
+        calls.append((signal_slot, kwargs))
+        if kwargs.get("settlement_slot") == "14:05":
+            raise RuntimeError("settlement unavailable")
+
+    monkeypatch.setattr(run_wp_session, "run_once", fake_run_once)
+
+    with pytest.raises(RuntimeError, match="settlement unavailable"):
+        run_wp_session.run_session()
+
+    assert calls == [
+        ("14:00", {}),
+        (None, {"settlement_slot": "14:05"}),
+        (None, {}),
+        (None, {}),
+    ]
 
 
 def test_push_after_missed_slot_runs_same_day_recovery(monkeypatch, tmp_path):
