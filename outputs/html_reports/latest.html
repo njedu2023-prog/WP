@@ -348,6 +348,11 @@
       border-top: 1px solid var(--line-soft);
     }
     .evidence-shadow .evidence-list { margin-top: 0; }
+    .evidence-shadow-wide { display: block; }
+    .evidence-shadow-wide .evidence-list {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin-top: 14px;
+    }
     .segment {
       display: inline-flex;
       padding: 2px;
@@ -387,6 +392,9 @@
       .split { grid-template-columns: 1fr; }
       .split > div:first-child { border-right: 0; border-bottom: 1px solid var(--line-soft); }
       .evidence-shadow { grid-template-columns: 1fr; }
+      .evidence-shadow-wide .evidence-list {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
     }
     @media (max-width: 640px) {
       .topbar-inner, .page { width: min(100% - 24px, 1240px); }
@@ -501,13 +509,26 @@
       </div>
       <div class="evidence-shadow">
         <div>
-          <h3 class="evidence-title">2026 年 8 月起真实影子运行</h3>
+          <h3 class="evidence-title">2026 年 8 月起合格票真实影子运行</h3>
           <p class="evidence-copy">只累计盘中实时形成、绑定模型指纹并完成真值验证的记录。历史回测和旧系统回补均不计入 150 个交易日。</p>
         </div>
         <div class="evidence-list">
           <div class="evidence-item"><span class="label">已运行交易日</span><strong class="">0</strong></div>
           <div class="evidence-item"><span class="label">合格候选日</span><strong class="">0</strong></div>
           <div class="evidence-item"><span class="label">已验证候选</span><strong class="">0</strong></div>
+        </div>
+      </div>
+      <div class="evidence-shadow evidence-shadow-wide">
+        <div>
+          <h3 class="evidence-title">2026 年 8 月起观察票真实影子运行</h3>
+          <p class="evidence-copy">只统计当日 14:30 前瞻产生、14:35 锁定影子入场价并在 T+1 收盘取得真值的观察票。补算和历史回放不计入本块；已排除 10 支补算记录，仍可在上方逐票查看。</p>
+        </div>
+        <div class="evidence-list">
+          <div class="evidence-item"><span class="label">前瞻观察样本</span><strong class="">0</strong></div>
+          <div class="evidence-item"><span class="label">已验证</span><strong class="">0</strong></div>
+          <div class="evidence-item"><span class="label">覆盖交易日</span><strong class="">0</strong></div>
+          <div class="evidence-item"><span class="label">胜率</span><strong class="">—</strong></div>
+          <div class="evidence-item"><span class="label">平均净收益</span><strong class="neutral">—</strong></div>
         </div>
       </div>
       <div class="notice amber"><strong>V15 仅作为研究种子：</strong> 55 支 / 29 日，平均净收益 +0.455%。V15 使用多个早段时点和每日 Top3，与当前固定 14:30、合格不限数量的合同不同，不能直接当作新系统盈利证据。</div>
