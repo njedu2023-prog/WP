@@ -207,10 +207,81 @@ def test_dashboard_keeps_retrospective_and_live_evidence_separate(
     )
 
     assert "2026 年 5–7 月新合同回测" in text
-    assert "2026 年 8 月起真实影子运行" in text
+    assert "2026 年 8 月起合格票真实影子运行" in text
+    assert "2026 年 8 月起观察票真实影子运行" in text
     assert "历史回测和旧系统回补均不计入 150 个交易日" in text
+    assert "补算和历史回放不计入本块" in text
     assert "只使用当日 14:30 前可见信息" in text
     assert "20" in text
+
+
+def test_observation_shadow_stats_only_count_prospective_records(
+    tmp_path,
+) -> None:
+    path = tmp_path / "latest.html"
+    ledger = {
+        "schema_version": "wp_candidate_ledger_v4",
+        "sessions": [
+            {
+                "trade_date": "20260803",
+                "prospective_eligible": False,
+                "candidates": [],
+                "observations": [
+                    {
+                        "trade_date": "20260803",
+                        "candidate_cohort": "OBSERVATION",
+                        "prospective_eligible": False,
+                        "truth_status": "verified",
+                        "net_return_pct": 99.0,
+                        "net_positive": True,
+                    }
+                ],
+            },
+            {
+                "trade_date": "20260804",
+                "prospective_eligible": True,
+                "candidates": [],
+                "observations": [
+                    {
+                        "trade_date": "20260804",
+                        "candidate_cohort": "OBSERVATION",
+                        "prospective_eligible": True,
+                        "truth_status": "verified",
+                        "net_return_pct": 1.0,
+                        "net_positive": True,
+                    },
+                    {
+                        "trade_date": "20260804",
+                        "candidate_cohort": "OBSERVATION",
+                        "prospective_eligible": True,
+                        "truth_status": "verified",
+                        "net_return_pct": -0.5,
+                        "net_positive": False,
+                    },
+                ],
+            },
+        ],
+    }
+    text = render(path, phase="CLOSED", ledger=ledger)
+    start = text.index("2026 年 8 月起观察票真实影子运行")
+    block = text[start : text.index("</section>", start)]
+
+    assert "已排除 1 支补算记录" in block
+    assert (
+        '<span class="label">前瞻观察样本</span>'
+        '<strong class="">2</strong>' in block
+    )
+    assert (
+        '<span class="label">已验证</span>'
+        '<strong class="">2</strong>' in block
+    )
+    assert (
+        '<span class="label">覆盖交易日</span>'
+        '<strong class="">1</strong>' in block
+    )
+    assert "50.0%" in block
+    assert "+0.250%" in block
+    assert "99.000%" not in block
 
 
 def test_dashboard_shows_full_retrospective_observation_metrics(
