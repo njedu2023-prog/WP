@@ -160,6 +160,7 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
     assert "2 支合格候选" in text
     assert "5 / 5" in text
     assert "不记录人工是否买入" in text
+    assert 'class="table-wrap dense-table"' in text
     assert "不记录人工是否买入" in text
 
 
@@ -269,7 +270,10 @@ def test_dashboard_shows_full_retrospective_observation_metrics(
 
     assert '<h2 class="section-title">T+1 真实验证</h2>' in text
     assert "2026 年 8 月起 T+1 真实验证" not in text
-    assert "这里只统计 8 月 3 日起盘中实时形成的影子记录" in text
+    assert "实时统计始于 2026-08-03" in text
+    assert "T 日 14:30 产生信号" in text
+    assert "14:35 影子入场" in text
+    assert "T+1 收盘验证" in text
     assert "合格样本为 0 不是数据缺失" in text
     assert "62 个覆盖交易日内" in text
     assert "研究观察" in text
@@ -298,10 +302,19 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
         },
     )
 
-    assert '<section class="section" data-tab-group>' in text
+    assert '<section class="section dense-section" data-tab-group>' in text
     assert '<div class="retrospective-tabs" data-tab-group>' in text
     assert text.count('data-tab="QUALIFIED">合格</button>') == 2
     assert text.count('data-tab="OBSERVATION">观察</button>') == 2
+    assert text.count(
+        'class="active" type="button" role="tab" '
+        'aria-selected="true" data-tab="OBSERVATION"'
+    ) == 2
+    assert (
+        "实时统计始于 2026-08-03 · T 日 14:30 产生信号 · "
+        "14:35 影子入场 · T+1 收盘验证 · 不记录人工是否买入"
+        in text
+    )
     assert (
         '<div role="tabpanel" data-tab-panel="QUALIFIED" hidden>'
         in text
@@ -317,6 +330,7 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
         in text
     )
     assert ".value.small" not in text
+    assert ".dense-table td {\n      padding: 9px 10px;" in text
 
 
 def test_retrospective_backtest_is_collapsed_by_default(tmp_path) -> None:
