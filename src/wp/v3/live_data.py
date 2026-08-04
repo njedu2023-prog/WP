@@ -208,6 +208,8 @@ def build_live_feature_frame(
         ].astype(str)
     )
     replay = pd.DataFrame()
+    direct_replay = pd.DataFrame()
+    direct_replay_codes: list[str] = []
     if late_recovery:
         replay = _fetch_rt_min_daily_replay(
             client,
@@ -241,6 +243,20 @@ def build_live_feature_frame(
         raise RuntimeError(
             f"live all-market rt_min has no completed {signal_slot} bar"
         )
+    if not late_recovery:
+        direct_replay_codes = _direct_replay_candidate_codes(
+            current_minute,
+            base=base,
+            config=config,
+        )
+        if direct_replay_codes:
+            direct_replay = _fetch_rt_min_daily_replay(
+                client,
+                trade_date=trade_date,
+                through_slot=signal_slot,
+                ts_codes=direct_replay_codes,
+                workers=config.history.minute_fetch_workers,
+            )
     requested_time = pd.Timestamp(
         f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {signal_slot}:00"
     )
@@ -298,11 +314,9 @@ def build_live_feature_frame(
             .isin(observation_slots)
         ].copy()
     else:
-        tail = _load_rt_min_session_snapshots(
-            client,
-            trade_date=trade_date,
-            observation_slot=signal_slot,
-            current=current_minute,
+        tail = _merge_direct_replay_tail(
+            current_minute,
+            direct_replay=direct_replay,
             observation_slots=observation_slots,
         )
     snapshots = _slot_features(tail, signal_slot)
@@ -383,11 +397,80 @@ def build_live_feature_frame(
         "eligible_count": int(snapshots["execution_eligible"].sum()),
         "feature_version": config.model.feature_version,
         "market_data_source": (
-            "rt_min_daily" if late_recovery else "rt_min"
+            "rt_min_daily"
+            if late_recovery
+            else "rt_min+selective_rt_min_daily"
         ),
+        "direct_replay_candidate_count": len(direct_replay_codes),
+        "direct_replay_row_count": int(len(direct_replay)),
         **quality,
     }
     return snapshots, manifest
+
+
+def _direct_replay_candidate_codes(
+    current_minute: pd.DataFrame,
+    *,
+    base: pd.DataFrame,
+    config: V3Config,
+) -> list[str]:
+    if current_minute.empty or base.empty:
+        return []
+    probe = (
+        current_minute[
+            ["ts_code", "close", "slot_amount"]
+        ]
+        .rename(columns={"close": "signal_price"})
+        .merge(
+            base[
+                [
+                    "ts_code",
+                    "adj_factor",
+                    "board",
+                    "is_st",
+                    "listing_days",
+                    "prev_20d_amount",
+                    "up_limit",
+                    "down_limit",
+                ]
+            ],
+            on="ts_code",
+            how="inner",
+        )
+    )
+    probe["distance_to_up_limit_pct"] = (
+        pd.to_numeric(probe["up_limit"], errors="coerce")
+        / pd.to_numeric(probe["signal_price"], errors="coerce")
+        - 1.0
+    ) * 100.0
+    probe["distance_to_down_limit_pct"] = (
+        pd.to_numeric(probe["signal_price"], errors="coerce")
+        / pd.to_numeric(probe["down_limit"], errors="coerce")
+        - 1.0
+    ) * 100.0
+    eligible = execution_eligibility(probe, config)
+    return sorted(probe.loc[eligible, "ts_code"].dropna().astype(str).unique())
+
+
+def _merge_direct_replay_tail(
+    current_minute: pd.DataFrame,
+    *,
+    direct_replay: pd.DataFrame,
+    observation_slots: tuple[str, ...],
+) -> pd.DataFrame:
+    tail = pd.concat(
+        [current_minute, direct_replay],
+        ignore_index=True,
+    )
+    tail_slots = pd.to_datetime(
+        tail["trade_time"],
+        errors="coerce",
+    ).dt.strftime("%H:%M")
+    return (
+        tail.loc[tail_slots.isin(observation_slots)]
+        .sort_values(["ts_code", "trade_time"], kind="stable")
+        .drop_duplicates(["ts_code", "trade_time"], keep="last")
+    )
 
 
 def capture_live_minute_snapshot(

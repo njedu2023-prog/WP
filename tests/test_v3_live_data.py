@@ -5,8 +5,10 @@ import pandas as pd
 from wp.v3.history import _normalize_historical_minutes, _slot_features
 from wp.v3.live_data import (
     capture_entry_settlement_frame,
+    _direct_replay_candidate_codes,
     _fetch_rt_min_daily_replay,
     _load_rt_min_session_snapshots,
+    _merge_direct_replay_tail,
     _normalize_rt_k_day,
     _normalize_rt_min,
 )
@@ -189,6 +191,79 @@ def test_same_day_replay_discards_bars_after_the_requested_slot(tmp_path):
         pd.to_datetime(replay["trade_time"]).dt.strftime("%H:%M").tolist()
         == ["14:25", "14:30"]
     )
+
+
+def test_direct_start_replays_only_currently_executable_codes():
+    current = pd.concat(
+        [
+            _normalize_rt_min(
+                _rt_min_bar(10.0, 20_000_000, "14:00:00"),
+                trade_date="20260721",
+            ),
+            _normalize_rt_min(
+                _rt_min_bar(10.0, 2_000_000, "14:00:00").assign(
+                    code="600001.SH"
+                ),
+                trade_date="20260721",
+            ),
+        ],
+        ignore_index=True,
+    )
+    base = pd.DataFrame(
+        [
+            {
+                "ts_code": code,
+                "adj_factor": 1.0,
+                "board": "main_board",
+                "is_st": False,
+                "listing_days": 1_000,
+                "prev_20d_amount": 100_000_000,
+                "up_limit": 11.0,
+                "down_limit": 9.0,
+            }
+            for code in ("600000.SH", "600001.SH")
+        ]
+    )
+
+    assert _direct_replay_candidate_codes(
+        current,
+        base=base,
+        config=V3Config(),
+    ) == ["600000.SH"]
+
+
+def test_direct_start_merges_causal_history_without_duplicate_signal_bar():
+    current = _normalize_rt_min(
+        _rt_min_bar(10.4, 20_000_000, "14:00:00"),
+        trade_date="20260721",
+    )
+    replay = pd.concat(
+        [
+            _normalize_rt_min(
+                _rt_min_bar(
+                    10.0 + index * 0.1,
+                    10_000_000,
+                    f"{slot}:00",
+                ),
+                trade_date="20260721",
+            )
+            for index, slot in enumerate(
+                ("13:40", "13:45", "13:50", "13:55", "14:00")
+            )
+        ],
+        ignore_index=True,
+    )
+
+    tail = _merge_direct_replay_tail(
+        current,
+        direct_replay=replay,
+        observation_slots=("13:40", "13:45", "13:50", "13:55", "14:00"),
+    )
+    features = _slot_features(tail, "14:00")
+
+    assert len(tail) == 5
+    assert features.loc[0, "intraday_snapshot_count"] == 5
+    assert features.loc[0, "slot_close"] == 10.4
 
 
 def test_recovered_settlement_uses_scheduled_freshness_reference(tmp_path):

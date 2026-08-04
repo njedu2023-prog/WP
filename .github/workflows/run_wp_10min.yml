@@ -29,6 +29,20 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: pip install -r requirements.lock
+      - name: Restore frozen V41 reference data
+        uses: actions/cache/restore@v4
+        with:
+          path: .cache/wp_v3_tushare
+          key: wp-v41-raw-runtime-${{ github.run_id }}
+          restore-keys: |
+            wp-v41-raw-
+      - name: Seed the live causal cache
+        shell: bash
+        run: |
+          mkdir -p data/v3/cache
+          if [[ -d .cache/wp_v3_tushare ]]; then
+            cp -a .cache/wp_v3_tushare/. data/v3/cache/
+          fi
       - name: Restore causal reference cache
         uses: actions/cache@v4
         with:
