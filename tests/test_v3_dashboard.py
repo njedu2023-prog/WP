@@ -103,6 +103,49 @@ def test_closed_dashboard_has_no_actionable_list(tmp_path) -> None:
     assert "T+1 真实验证" in text
 
 
+def test_data_status_has_a_wide_non_wrapping_column(tmp_path) -> None:
+    path = tmp_path / "latest.html"
+    text = render(path, phase="CLOSED")
+
+    assert "minmax(260px, .9fr)" in text
+    assert ".status-fact:last-child .value {" in text
+    assert "white-space: nowrap;" in text
+
+
+def test_closed_dashboard_labels_frozen_evidence_with_signal_date(
+    tmp_path,
+) -> None:
+    path = tmp_path / "latest.html"
+    ledger = {
+        "schema_version": "wp_candidate_ledger_v4",
+        "sessions": [
+            {
+                "trade_date": "20260805",
+                "candidates": [],
+                "observations": [
+                    {
+                        **candidate(
+                            "600001.SH",
+                            cohort="OBSERVATION",
+                            passes=False,
+                            probability_lower=0.53,
+                        ),
+                        "trade_date": "20260805",
+                        "first_signal_time": "14:00",
+                        "first_signal_price": 10.0,
+                        "entry_price": 10.01,
+                    }
+                ],
+            }
+        ],
+    }
+
+    text = render(path, phase="CLOSED", ledger=ledger)
+
+    assert "D 日冻结证据 · 2026-08-05" in text
+    assert "今日冻结证据" not in text
+
+
 def test_research_ready_is_not_reported_as_integrity_failure(tmp_path) -> None:
     path = tmp_path / "latest.html"
     text = render(
@@ -185,7 +228,7 @@ def test_zero_qualified_is_explicit_valid_result(tmp_path) -> None:
     assert "5 / 5" in text
 
 
-def test_dashboard_keeps_retrospective_and_live_evidence_separate(
+def test_dashboard_omits_research_evidence_block_from_frontend(
     tmp_path,
 ) -> None:
     path = tmp_path / "latest.html"
@@ -205,85 +248,13 @@ def test_dashboard_keeps_retrospective_and_live_evidence_separate(
         },
     )
 
-    assert "2026 年 5–7 月新合同回测" in text
-    assert "2026-08-05 起合格票真实影子运行" in text
-    assert "2026-08-05 起观察票真实影子运行" in text
-    assert "历史回测和旧系统回补均不计入 150 个交易日" in text
-    assert "补算和历史回放不计入本块" in text
-    assert "只使用当日 14:00 前可见信息" in text
-    assert "20" in text
+    assert "证据与上线边界" not in text
+    assert "2026 年 5–7 月新合同回测" not in text
+    assert "2026-08-05 起合格票真实影子运行" not in text
+    assert "2026-08-05 起观察票真实影子运行" not in text
 
 
-def test_observation_shadow_stats_only_count_prospective_records(
-    tmp_path,
-) -> None:
-    path = tmp_path / "latest.html"
-    ledger = {
-        "schema_version": "wp_candidate_ledger_v4",
-        "sessions": [
-            {
-                "trade_date": "20260806",
-                "prospective_eligible": False,
-                "candidates": [],
-                "observations": [
-                    {
-                        "trade_date": "20260806",
-                        "candidate_cohort": "OBSERVATION",
-                        "prospective_eligible": False,
-                        "truth_status": "verified",
-                        "net_return_pct": 99.0,
-                        "net_positive": True,
-                    }
-                ],
-            },
-            {
-                "trade_date": "20260805",
-                "prospective_eligible": True,
-                "candidates": [],
-                "observations": [
-                    {
-                        "trade_date": "20260805",
-                        "candidate_cohort": "OBSERVATION",
-                        "prospective_eligible": True,
-                        "truth_status": "verified",
-                        "net_return_pct": 1.0,
-                        "net_positive": True,
-                    },
-                    {
-                        "trade_date": "20260805",
-                        "candidate_cohort": "OBSERVATION",
-                        "prospective_eligible": True,
-                        "truth_status": "verified",
-                        "net_return_pct": -0.5,
-                        "net_positive": False,
-                    },
-                ],
-            },
-        ],
-    }
-    text = render(path, phase="CLOSED", ledger=ledger)
-    start = text.index("2026-08-05 起观察票真实影子运行")
-    block = text[start : text.index("</section>", start)]
-
-    assert "已排除 1 支补算记录" in block
-    assert (
-        '<span class="label">前瞻观察样本</span>'
-        '<strong class="">2</strong>' in block
-    )
-    assert (
-        '<span class="label">已验证</span>'
-        '<strong class="">2</strong>' in block
-    )
-    assert (
-        '<span class="label">覆盖交易日</span>'
-        '<strong class="">1</strong>' in block
-    )
-    assert "50.0%" in block
-    assert "+0.250%" in block
-    assert "99.000%" not in block
-
-
-def test_dashboard_shows_full_retrospective_observation_metrics(
+def test_dashboard_keeps_live_validation_contract_without_research_block(
     tmp_path,
 ) -> None:
     path = tmp_path / "latest.html"
@@ -344,19 +315,8 @@ def test_dashboard_shows_full_retrospective_observation_metrics(
     assert "T 日 14:00 产生信号" in text
     assert "14:05 影子入场" in text
     assert "T+1 收盘验证" in text
-    assert "合格样本为 0 不是数据缺失" in text
-    assert "62 个覆盖交易日内" in text
-    assert "研究观察" in text
-    assert "305" in text
-    assert "61 / 62" in text
-    assert "44.3%" in text
-    assert "-0.356%" in text
-    assert "0.65" in text
-    assert "-0.505%" in text
-    assert "90" in text
-    assert "18 / 18" in text
-    assert "31.1%" in text
-    assert "-0.804%" in text
+    assert "证据与上线边界" not in text
+    assert "305" not in text
 
 
 def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
@@ -373,13 +333,13 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
     )
 
     assert '<section class="section dense-section" data-tab-group>' in text
-    assert '<div class="retrospective-tabs" data-tab-group>' in text
-    assert text.count('data-tab="QUALIFIED">合格</button>') == 2
-    assert text.count('data-tab="OBSERVATION">观察</button>') == 2
+    assert '<div class="retrospective-tabs" data-tab-group>' not in text
+    assert text.count('data-tab="QUALIFIED">合格</button>') == 1
+    assert text.count('data-tab="OBSERVATION">观察</button>') == 1
     assert text.count(
         'class="active" type="button" role="tab" '
         'aria-selected="true" data-tab="OBSERVATION"'
-    ) == 2
+    ) == 1
     assert (
         "实时统计始于 2026-08-05 · T 日 14:00 产生信号 · "
         "14:05 影子入场 · T+1 收盘验证 · "
@@ -515,7 +475,7 @@ def test_validation_groups_by_month_and_day_and_keeps_stock_inline(
     assert "group.querySelectorAll('[data-month-tab]')" in text
 
 
-def test_retrospective_backtest_is_collapsed_by_default(tmp_path) -> None:
+def test_retrospective_backtest_is_not_rendered(tmp_path) -> None:
     path = tmp_path / "latest.html"
     text = render(
         path,
@@ -527,21 +487,11 @@ def test_retrospective_backtest_is_collapsed_by_default(tmp_path) -> None:
         },
     )
 
-    assert 'class="collapse-toggle"' in text
-    assert 'aria-expanded="false"' in text
-    assert 'aria-controls="retrospective-backtest-content"' in text
-    assert '<span aria-hidden="true" data-collapse-icon>+</span>' in text
-    assert (
-        '<div id="retrospective-backtest-content" '
-        "data-collapse-panel hidden>"
-        in text
-    )
-    assert "panel.hidden = !expanded" in text
-    assert "expanded ? '−' : '+'" in text
-    assert "border-radius: 50%" in text
+    assert "retrospective-backtest-content" not in text
+    assert "2026 年 5–7 月新合同回测" not in text
 
 
-def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
+def test_v15_seed_is_not_rendered_on_frontend(tmp_path) -> None:
     path = tmp_path / "latest.html"
     text = render(
         path,
@@ -562,8 +512,7 @@ def test_v15_is_disclosed_as_seed_not_v40_performance(tmp_path) -> None:
 
     assert "今天不授权候选" in text
     assert "固定 14:00 新合同仍在建立可部署模型和回测证据" in text
-    assert "V15" in text
-    assert "不能直接当作新系统盈利证据" in text
+    assert "V15" not in text
 
 
 def test_legacy_rows_are_audit_only(tmp_path) -> None:
