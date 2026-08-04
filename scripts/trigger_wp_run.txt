@@ -3,3 +3,4 @@
 2026-08-02 12:08:01 +08:00 target_slot=2026-08-02 12:08:01 mode=once reason=refresh_v40_retrospective_cohorts
 2026-08-03 15:16:48 :z target_trade_date=20260803 target_slot=14:30 mode=same_day_recovery reason=missed_scheduler
 2026-08-03 15:48:45 +08:00 target_trade_date=20260803 target_slot=14:30 mode=same_day_recovery reason=evidence_universe_fix
+2026-08-04 14:50:33 +08:00 target_trade_date=20260804 target_slot=14:30 mode=same_day_recovery reason=missed_scheduler
