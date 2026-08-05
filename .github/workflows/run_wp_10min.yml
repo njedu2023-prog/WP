@@ -54,7 +54,7 @@ jobs:
         run: python scripts/check_wp_runtime_readiness.py
         env:
           PYTHONPATH: src
-      - name: Run exact 14:00 signal and 14:05 settlement
+      - name: Run exact 14:00 session or labeled same-day recovery
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
@@ -62,7 +62,7 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_RUN_MODE: exact
+          WP_RUN_MODE: auto
           WP_SCHEDULE_GRACE_SECONDS: "120"
           WP_MAX_CAPTURE_LATENESS_SECONDS: "45"
           LOKY_MAX_CPU_COUNT: "2"
