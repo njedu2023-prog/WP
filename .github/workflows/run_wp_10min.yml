@@ -29,27 +29,21 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: pip install -r requirements.lock
-      - name: Restore frozen V41 reference data
-        uses: actions/cache/restore@v4
-        with:
-          path: .cache/wp_v3_tushare
-          key: wp-v41-raw-runtime-${{ github.run_id }}
-          restore-keys: |
-            wp-v41-raw-
-      - name: Seed the live causal cache
-        shell: bash
-        run: |
-          mkdir -p data/v3/cache
-          if [[ -d .cache/wp_v3_tushare ]]; then
-            cp -a .cache/wp_v3_tushare/. data/v3/cache/
-          fi
-      - name: Restore causal reference cache
+      - name: Restore compact V41 runtime references
         uses: actions/cache@v4
         with:
-          path: data/v3/cache
-          key: wp-v41-live-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/**/*.py') }}-${{ github.run_id }}
+          path: |
+            data/v3/cache/trade_cal
+            data/v3/cache/daily
+            data/v3/cache/daily_basic
+            data/v3/cache/adj_factor
+            data/v3/cache/stk_limit
+            data/v3/cache/stock_basic
+            data/v3/cache/index_member_all
+          key: wp-v41-runtime-ref-v1-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/history.py', 'src/wp/v3/live_data.py') }}-${{ github.run_id }}
           restore-keys: |
-            wp-v41-live-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/**/*.py') }}-
+            wp-v41-runtime-ref-v1-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/history.py', 'src/wp/v3/live_data.py') }}-
+            wp-v41-runtime-ref-v1-${{ runner.os }}-
       - name: Verify exact V41 runtime package
         run: python scripts/check_wp_runtime_readiness.py
         env:
@@ -66,3 +60,15 @@ jobs:
           WP_SCHEDULE_GRACE_SECONDS: "120"
           WP_MAX_CAPTURE_LATENESS_SECONDS: "45"
           LOKY_MAX_CPU_COUNT: "2"
+      - name: Prune and report compact runtime references
+        run: |
+          python scripts/prune_wp_runtime_cache.py
+          du -ch \
+            data/v3/cache/trade_cal \
+            data/v3/cache/daily \
+            data/v3/cache/daily_basic \
+            data/v3/cache/adj_factor \
+            data/v3/cache/stk_limit \
+            data/v3/cache/stock_basic \
+            data/v3/cache/index_member_all \
+            2>/dev/null | tail -n 1 || true

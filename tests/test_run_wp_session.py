@@ -88,6 +88,67 @@ def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
     ]
 
 
+def test_exact_session_prewarms_compact_references_before_signal(
+    monkeypatch,
+    tmp_path,
+):
+    events = []
+    clock = {
+        "now": datetime(
+            2026,
+            8,
+            5,
+            13,
+            50,
+            tzinfo=run_wp_session.CN_TZ,
+        )
+    }
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("TUSHARE_TOKEN", "test-token")
+    monkeypatch.setattr(run_wp_session, "now_cn", lambda: clock["now"])
+    monkeypatch.setattr(run_wp_session, "is_trade_day", lambda *_: True)
+    monkeypatch.setattr(
+        run_wp_session,
+        "warm_live_reference_input",
+        lambda **_: events.append(("warm", clock["now"])) or {
+            "prior_trade_date_start": "20260617",
+            "prior_trade_date_end": "20260804",
+            "prior_trade_date_count": 35,
+            "stock_basic_rows": 5_000,
+        },
+    )
+    monkeypatch.setattr(
+        run_wp_session.time_module,
+        "sleep",
+        lambda seconds: clock.__setitem__(
+            "now",
+            clock["now"] + timedelta(seconds=seconds),
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_fixed_signal_session",
+        lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once",
+        lambda signal_slot=None, **kwargs: events.append(
+            (signal_slot, kwargs)
+        ),
+    )
+
+    run_wp_session.run_session()
+
+    assert events[0][0] == "warm"
+    assert events[1:] == [
+        ("14:00", {}),
+        (None, {"settlement_slot": "14:05"}),
+        (None, {}),
+        (None, {}),
+    ]
+
+
 def test_exact_session_rejects_late_signal_instead_of_backfilling(
     monkeypatch,
     tmp_path,

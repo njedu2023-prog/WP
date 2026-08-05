@@ -17,6 +17,7 @@ from wp.v3.live_data import (
     build_live_feature_frame,
     capture_entry_settlement_frame,
     capture_live_minute_snapshot,
+    warm_live_reference_cache,
 )
 
 
@@ -118,6 +119,29 @@ def build_live_input(
     atomic_write_csv(frame, csv_path)
     atomic_write_json(json_path, manifest)
     return csv_path, manifest
+
+
+def warm_live_reference_input(
+    *,
+    root: Path = ROOT,
+    env: dict[str, str] | None = None,
+) -> dict:
+    environment = env or os.environ
+    token = environment.get("TUSHARE_TOKEN", "").strip()
+    if not token:
+        raise RuntimeError("TUSHARE_TOKEN is required for V41 reference warmup")
+    now = datetime.now(CN_TZ)
+    trade_date = (
+        environment.get("WP_EXPECTED_TRADE_DATE", "").strip()
+        or now.strftime("%Y%m%d")
+    )
+    config = load_v3_config(root / "config" / "wp_v3.yml")
+    client = TushareHistoryClient(
+        ts.pro_api(token),
+        root / "data" / "v3" / "cache",
+        page_size=config.history.tushare_page_size,
+    )
+    return warm_live_reference_cache(client, trade_date=trade_date)
 
 
 def capture_warmup_input(

@@ -36,6 +36,90 @@ RTK_FIELDS = "ts_code,pre_close,open,trade_time"
 RTK_WILDCARDS = "6*.SH,0*.SZ"
 
 
+def warm_live_reference_cache(
+    client: TushareHistoryClient,
+    *,
+    trade_date: str,
+) -> dict[str, Any]:
+    """Populate only the rolling reference queries needed by the live build."""
+    calendar_start = (
+        datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)
+    ).strftime("%Y%m%d")
+    calendar_end = (
+        datetime.strptime(trade_date, "%Y%m%d") + timedelta(days=10)
+    ).strftime("%Y%m%d")
+    calendar = client.query(
+        "trade_cal",
+        cache_key=f"{calendar_start}_{calendar_end}_sse",
+        exchange="SSE",
+        start_date=calendar_start,
+        end_date=calendar_end,
+        is_open="1",
+        fields="exchange,cal_date,is_open,pretrade_date",
+    )
+    open_dates = sorted(
+        calendar.loc[
+            calendar["is_open"].astype(str).eq("1"),
+            "cal_date",
+        ].astype(str)
+    )
+    prior_dates = [date for date in open_dates if date < trade_date][-35:]
+    future_dates = [date for date in open_dates if date > trade_date]
+    if len(prior_dates) < 22 or not future_dates:
+        raise RuntimeError(
+            "insufficient trading calendar depth for live reference warmup"
+        )
+
+    for date in prior_dates:
+        client.query(
+            "daily",
+            cache_key=date,
+            trade_date=date,
+            fields=DAILY_FIELDS,
+        )
+        client.query(
+            "daily_basic",
+            cache_key=date,
+            trade_date=date,
+            fields=DAILY_BASIC_FIELDS,
+        )
+        client.query(
+            "adj_factor",
+            cache_key=date,
+            trade_date=date,
+            fields=ADJ_FIELDS,
+        )
+
+    client.query(
+        "adj_factor",
+        cache_key=trade_date,
+        trade_date=trade_date,
+        fields=ADJ_FIELDS,
+    )
+    client.query(
+        "stk_limit",
+        cache_key=trade_date,
+        trade_date=trade_date,
+        fields=LIMIT_FIELDS,
+    )
+    stock_basic = _load_stock_basic(client, cache_suffix=trade_date)
+    industry_intervals = _load_industry_intervals(
+        client,
+        include_history=False,
+        cache_suffix=trade_date,
+    )
+    return {
+        "schema_version": "wp_v41_runtime_reference_1",
+        "trade_date": trade_date,
+        "target_trade_date": future_dates[0],
+        "prior_trade_date_count": len(prior_dates),
+        "prior_trade_date_start": prior_dates[0],
+        "prior_trade_date_end": prior_dates[-1],
+        "stock_basic_rows": int(len(stock_basic)),
+        "industry_symbol_count": int(len(industry_intervals)),
+    }
+
+
 def build_live_feature_frame(
     client: TushareHistoryClient,
     *,

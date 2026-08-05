@@ -16,17 +16,19 @@ try:
     from build_wp_v3_live_input import (
         build_live_input,
         capture_entry_settlement_input,
+        warm_live_reference_input,
     )
 except ModuleNotFoundError:  # pragma: no cover - package import in tests
     from scripts.build_wp_v3_live_input import (
         build_live_input,
         capture_entry_settlement_input,
+        warm_live_reference_input,
     )
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
 SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
-PREP_START = time(13, 55)
+PREP_START = time(13, 45)
 RUN_START = time(14, 0)
 RUN_END = time(15, 0)
 LATE_RECOVERY_START = time(14, 7)
@@ -275,6 +277,19 @@ def run_session() -> None:
     if window is None:
         print(f"Skip WP session outside trading session prep/window: {current:%Y-%m-%d %H:%M:%S}")
         return
+
+    if token:
+        warmed = warm_live_reference_input(
+            root=Path.cwd(),
+            env=os.environ.copy(),
+        )
+        print(
+            "WP compact runtime references ready: "
+            f"{warmed['prior_trade_date_start']}.."
+            f"{warmed['prior_trade_date_end']} "
+            f"dates={warmed['prior_trade_date_count']} "
+            f"stocks={warmed['stock_basic_rows']}"
+        )
 
     failures: list[str] = []
     schedule = [
