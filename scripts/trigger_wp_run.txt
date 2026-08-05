@@ -5,3 +5,4 @@
 2026-08-03 15:48:45 +08:00 target_trade_date=20260803 target_slot=14:30 mode=same_day_recovery reason=evidence_universe_fix
 2026-08-04 14:50:33 +08:00 target_trade_date=20260804 target_slot=14:30 mode=same_day_recovery reason=missed_scheduler
 2026-08-05 13:55:55 +08:00 target_trade_date=20260805 signal_slot=14:00 entry_settlement_slot=14:05 mode=exact request_id=codex-20260805-135555
+2026-08-05 14:41:23 +08:00 target_trade_date=20260805 signal_slot=14:00 entry_settlement_slot=14:05 mode=same_day_recovery reason=missed_exact_session request_id=codex-20260805-144123
