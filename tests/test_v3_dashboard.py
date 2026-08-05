@@ -224,14 +224,17 @@ def test_live_dashboard_separates_all_qualified_and_five_observations(
 
 def test_gate_reasons_use_compact_visible_labels(tmp_path) -> None:
     path = tmp_path / "latest.html"
-    observation = candidate(
-        "600001.SH",
-        cohort="OBSERVATION",
-        passes=False,
-        probability_lower=0.53,
-        rank=1,
-    )
-    observation["failed_gate_labels"] = (
+    observations = [
+        candidate(
+            f"00000{index}.SZ",
+            cohort="OBSERVATION",
+            passes=False,
+            probability_lower=0.53 - index * 0.01,
+            rank=index,
+        )
+        for index in range(1, 6)
+    ]
+    observations[0]["failed_gate_labels"] = (
         "元模型盈利概率不足、元模型期望收益不足、"
         "完整成交率不足、元模型横截面排名不足、"
         "次日退出风险过高、元模型大亏风险过高"
@@ -240,7 +243,7 @@ def test_gate_reasons_use_compact_visible_labels(tmp_path) -> None:
     text = render(
         path,
         phase="SIGNAL",
-        predictions=pd.DataFrame([observation]),
+        predictions=pd.DataFrame(observations),
     )
 
     assert "<th>原因</th>" in text
