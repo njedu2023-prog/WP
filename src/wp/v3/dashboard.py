@@ -858,6 +858,29 @@ def _closed_day_section(
     """
 
 
+_GATE_REASON_SHORT_LABELS = {
+    "元模型盈利概率不足": "概率低",
+    "元模型期望收益不足": "收益低",
+    "完整成交率不足": "成交低",
+    "元模型横截面排名不足": "排名低",
+    "次日退出风险过高": "退出风险高",
+    "元模型大亏风险过高": "大亏风险高",
+}
+
+
+def _short_gate_reason(value: Any) -> str:
+    full_reason = str(value or "").strip()
+    if not full_reason:
+        return "门槛未过"
+    normalized = full_reason.replace("，", "、").replace(",", "、")
+    parts = [part.strip() for part in normalized.split("、") if part.strip()]
+    short_labels = [
+        _GATE_REASON_SHORT_LABELS.get(part, part)
+        for part in parts
+    ]
+    return " · ".join(dict.fromkeys(short_labels))
+
+
 def _cohort_table(
     records: list[dict[str, Any]],
     cohort: str,
@@ -868,7 +891,7 @@ def _cohort_table(
     for row in records:
         record_cohort = str(row.get("candidate_cohort") or "QUALIFIED")
         status = _cohort_status_tag(row, record_cohort)
-        reason = (
+        full_reason = (
             "全部固定门槛通过"
             if record_cohort == "QUALIFIED"
             else str(
@@ -876,6 +899,11 @@ def _cohort_table(
                 or row.get("rejection_reasons")
                 or "未通过全部固定门槛"
             )
+        )
+        reason = (
+            "通过"
+            if record_cohort == "QUALIFIED"
+            else _short_gate_reason(full_reason)
         )
         rows.append(
             "<tr>"
@@ -887,7 +915,7 @@ def _cohort_table(
             f"<td>{_probability_pair(row)}</td>"
             f"<td>{_return_pct(row.get('expected_utility_lower_pct'))}</td>"
             f"<td>{_return_pct(row.get('downside_q10_pct'))}</td>"
-            f"<td class='reason'>{_e(reason)}</td>"
+            f"<td class='reason' title='{_e(full_reason)}'>{_e(reason)}</td>"
             "</tr>"
         )
     heading = "组别" if cohort == "HISTORY" else "状态"
@@ -895,7 +923,7 @@ def _cohort_table(
         '<div class="table-wrap dense-table"><table><thead><tr>'
         f"<th>{heading}</th><th>股票</th><th>信号</th><th>信号价</th>"
         "<th>入场基准价</th><th>校准概率 / 保守概率</th>"
-        "<th>净收益下界</th><th>下行 10% 分位</th><th>判定依据</th>"
+        "<th>净收益下界</th><th>下行 10% 分位</th><th>原因</th>"
         "</tr></thead><tbody>"
         + "".join(rows)
         + "</tbody></table></div>"
