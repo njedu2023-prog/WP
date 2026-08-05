@@ -355,7 +355,16 @@ def main() -> None:
         return
     if mode == "auto":
         current = now_cn()
-        if current.time() <= time(14, 0):
+        capture_deadline = (
+            datetime.combine(current.date(), RUN_START, CN_TZ)
+            + timedelta(
+                seconds=(
+                    SCHEDULE_GRACE_SECONDS
+                    + MAX_CAPTURE_LATENESS_SECONDS
+                )
+            )
+        )
+        if current <= capture_deadline:
             run_session()
         else:
             run_once_if_due()

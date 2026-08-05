@@ -38,6 +38,71 @@ def test_auto_start_before_warmup_runs_continuous_session(monkeypatch):
     assert calls == ["run_session"]
 
 
+@pytest.mark.parametrize(
+    ("started_at", "expected_call"),
+    [
+        (
+            datetime(
+                2026,
+                8,
+                6,
+                14,
+                0,
+                30,
+                tzinfo=run_wp_session.CN_TZ,
+            ),
+            "run_session",
+        ),
+        (
+            datetime(
+                2026,
+                8,
+                6,
+                14,
+                2,
+                45,
+                tzinfo=run_wp_session.CN_TZ,
+            ),
+            "run_session",
+        ),
+        (
+            datetime(
+                2026,
+                8,
+                6,
+                14,
+                2,
+                46,
+                tzinfo=run_wp_session.CN_TZ,
+            ),
+            "run_once_if_due",
+        ),
+    ],
+)
+def test_auto_start_honors_signal_capture_deadline(
+    monkeypatch,
+    started_at,
+    expected_call,
+):
+    calls = []
+    monkeypatch.setenv("WP_RUN_MODE", "auto")
+    monkeypatch.setattr(run_wp_session, "now_cn", lambda: started_at)
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_session",
+        lambda: calls.append("run_session"),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once_if_due",
+        lambda: calls.append("run_once_if_due"),
+    )
+
+    run_wp_session.main()
+
+    assert calls == [expected_call]
+
+
 def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
     calls = []
     clock = {
