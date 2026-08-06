@@ -1,0 +1,4 @@
+# Dedicated GitHub Pages publication retry marker.
+# Codex updates this file only when outputs are complete but Pages publication failed.
+initialized_at=2026-08-06T21:50:00+08:00
+request_id=bootstrap-pages-retry-marker
