@@ -21,7 +21,7 @@
   "market_data_p95_age_seconds": 1821.641633,
   "market_data_time": "2026-08-06 14:00:00",
   "missing_slots": [],
-  "observation_count": 0,
+  "observation_count": 5,
   "observation_selection_status": "COMPLETE",
   "observation_shortfall_reason": null,
   "observation_target_count": 5,

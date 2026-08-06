@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from html import escape
 from pathlib import Path
 from typing import Any
@@ -71,12 +72,19 @@ def render_v3_dashboard(
         live_visible=live_visible,
         health=str(manifest.get("health_status") or "ok"),
     )
+    rendered_revision = json.dumps(
+        str(manifest.get("report_revision") or ""),
+        ensure_ascii=False,
+    )
     html = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>WP 尾盘决策台</title>
   <style>
     :root {{
@@ -650,6 +658,7 @@ def render_v3_dashboard(
         trade_date=trade_date,
         show=not live_visible,
         retrospective=retrospective,
+        generated_at=manifest.get("report_revision"),
     )}
 
     <section class="section dense-section" data-tab-group>
@@ -691,6 +700,30 @@ def render_v3_dashboard(
     <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
   </main>
   <script>
+    (function () {{
+      var renderedRevision = {rendered_revision};
+      function refreshWhenNewer() {{
+        var manifestUrl = new URL('../json/wp_manifest.json', window.location.href);
+        manifestUrl.searchParams.set('_', Date.now().toString());
+        fetch(manifestUrl.toString(), {{ cache: 'no-store' }})
+          .then(function (response) {{
+            return response.ok ? response.json() : null;
+          }})
+          .then(function (latest) {{
+            var latestRevision = latest && String(latest.report_revision || '');
+            if (!latestRevision || latestRevision === renderedRevision) return;
+            var nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set(
+              'rev',
+              latestRevision.replace(/[^0-9]/g, '') || Date.now().toString()
+            );
+            window.location.replace(nextUrl.toString());
+          }})
+          .catch(function () {{}});
+      }}
+      refreshWhenNewer();
+      window.setInterval(refreshWhenNewer, 60000);
+    }})();
     document.querySelectorAll('[data-tab-group]').forEach(function (group) {{
       var buttons = group.querySelectorAll('[data-tab]');
       var panels = group.querySelectorAll('[data-tab-panel]');
@@ -822,6 +855,7 @@ def _closed_day_section(
     trade_date: str,
     show: bool,
     retrospective: dict[str, Any],
+    generated_at: Any = None,
 ) -> str:
     if not show or not session:
         return ""
@@ -829,6 +863,11 @@ def _closed_day_section(
         _compact_date(session.get("trade_date")) or trade_date
     )
     rows = session_records(session)
+    display_generated_time = _session_generated_time(
+        rows,
+        session=session,
+        fallback=generated_at,
+    )
     has_observations = any(
         str(row.get("candidate_cohort") or "") == "OBSERVATION"
         for row in rows
@@ -847,7 +886,7 @@ def _closed_day_section(
     <section class="section dense-section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">D 日冻结证据 · {_e(display_trade_date)}</h2>
+          <h2 class="section-title">T 日冻结证据 · {_e(display_trade_date)} {_e(display_generated_time)}</h2>
           <p class="section-sub">已收盘，不再显示可买名单；以下仅供审计与 T+1 验证</p>
         </div>
         <div class="count">{len(rows)}</div>
@@ -1787,6 +1826,30 @@ def _display_month(value: Any) -> str:
 def _display_datetime(value: Any) -> str:
     text = str(value or "").strip()
     return text if text else "等待首次更新"
+
+
+def _session_generated_time(
+    rows: list[dict[str, Any]],
+    *,
+    session: dict[str, Any],
+    fallback: Any,
+) -> str:
+    values = [
+        row.get("observed_at")
+        for row in rows
+        if row.get("observed_at")
+    ]
+    values.extend(
+        [
+            session.get("frozen_at"),
+            fallback,
+        ]
+    )
+    for value in values:
+        parsed = pd.to_datetime(value, errors="coerce")
+        if pd.notna(parsed):
+            return parsed.strftime("%H:%M:%S")
+    return "时间待确认"
 
 
 def _month_label(value: Any) -> str:

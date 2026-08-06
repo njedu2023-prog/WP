@@ -19,7 +19,6 @@ concurrency:
 jobs:
   tail-session:
     runs-on: ubuntu-latest
-    timeout-minutes: 80
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -56,9 +55,9 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_RUN_MODE: auto
+          WP_RUN_MODE: session
           WP_SCHEDULE_GRACE_SECONDS: "120"
-          WP_MAX_CAPTURE_LATENESS_SECONDS: "45"
+          WP_PROSPECTIVE_CAPTURE_LATENESS_SECONDS: "45"
           LOKY_MAX_CPU_COUNT: "2"
       - name: Prune and report compact runtime references
         run: |

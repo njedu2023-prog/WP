@@ -9,8 +9,8 @@ on:
       - scripts/trigger_wp_close_validation.txt
       - .github/workflows/validate_wp_close.yml
   schedule:
-    # 07:08 UTC = 15:08 Asia/Shanghai. One warm job polls until truth arrives.
-    - cron: "8 7 * * 1-5"
+    # 08:07 UTC = 16:07 Asia/Shanghai. Retry until all due T+1 truth is written.
+    - cron: "7 8 * * 1-5"
 
 permissions:
   contents: write
@@ -22,7 +22,7 @@ concurrency:
 jobs:
   validate-close:
     runs-on: ubuntu-latest
-    timeout-minutes: 65
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
@@ -42,6 +42,7 @@ jobs:
           GITHUB_REPOSITORY: ${{ github.repository }}
           GITHUB_REF_NAME: main
           GITHUB_EVENT_NAME: ${{ github.event_name }}
-          WP_CLOSE_RUN_MODE: ${{ github.event_name == 'schedule' && 'session' || 'once' }}
-          WP_CLOSE_INTERVAL_SECONDS: "300"
+          WP_CLOSE_RUN_MODE: session
+          WP_CLOSE_INTERVAL_SECONDS: "120"
+          WP_CLOSE_END_TIME: "19:00"
           LOKY_MAX_CPU_COUNT: "2"

@@ -4,6 +4,9 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="color-scheme" content="light">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>WP 尾盘决策台</title>
   <style>
     :root {
@@ -568,7 +571,7 @@
     <section class="section dense-section">
       <div class="section-head">
         <div>
-          <h2 class="section-title">D 日冻结证据 · 2026-08-06</h2>
+          <h2 class="section-title">T 日冻结证据 · 2026-08-06 14:30:04</h2>
           <p class="section-sub">已收盘，不再显示可买名单；以下仅供审计与 T+1 验证</p>
         </div>
         <div class="count">5</div>
@@ -622,6 +625,30 @@
     <p class="footer">本页展示模型候选与影子真值，不代表用户实际成交，也不承诺收益。</p>
   </main>
   <script>
+    (function () {
+      var renderedRevision = "2026-08-06 17:47:50";
+      function refreshWhenNewer() {
+        var manifestUrl = new URL('../json/wp_manifest.json', window.location.href);
+        manifestUrl.searchParams.set('_', Date.now().toString());
+        fetch(manifestUrl.toString(), { cache: 'no-store' })
+          .then(function (response) {
+            return response.ok ? response.json() : null;
+          })
+          .then(function (latest) {
+            var latestRevision = latest && String(latest.report_revision || '');
+            if (!latestRevision || latestRevision === renderedRevision) return;
+            var nextUrl = new URL(window.location.href);
+            nextUrl.searchParams.set(
+              'rev',
+              latestRevision.replace(/[^0-9]/g, '') || Date.now().toString()
+            );
+            window.location.replace(nextUrl.toString());
+          })
+          .catch(function () {});
+      }
+      refreshWhenNewer();
+      window.setInterval(refreshWhenNewer, 60000);
+    })();
     document.querySelectorAll('[data-tab-group]').forEach(function (group) {
       var buttons = group.querySelectorAll('[data-tab]');
       var panels = group.querySelectorAll('[data-tab-panel]');

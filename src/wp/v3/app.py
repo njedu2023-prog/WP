@@ -239,6 +239,16 @@ def run_v3() -> dict[str, Any]:
     qualified_live["manual_execution_only"] = True
     observations_live["production_authorized"] = False
     observations_live["manual_execution_only"] = True
+    recorded_qualified_count = (
+        int(current_session.get("qualified_count", len(qualified_live)))
+        if current_session
+        else int(len(qualified_live))
+    )
+    recorded_observation_count = (
+        int(current_session.get("observation_count", len(observations_live)))
+        if current_session
+        else int(len(observations_live))
+    )
     data_age = pd.to_numeric(runtime_data_age, errors="coerce")
     finite_data_age = data_age.loc[data_age.notna() & data_age.ge(0)]
     update_time = current.strftime("%Y-%m-%d %H:%M:%S")
@@ -277,8 +287,8 @@ def run_v3() -> dict[str, Any]:
         "recovered_at": source_manifest.get("recovered_at"),
         "live_display_allowed": live_display_allowed,
         "buy_plan_count": int(len(qualified_live)),
-        "qualified_count": int(len(qualified_live)),
-        "observation_count": int(len(observations_live)),
+        "qualified_count": recorded_qualified_count,
+        "observation_count": recorded_observation_count,
         "observation_target_count": config.strategy.observation_count,
         "observation_selection_status": (
             cohort_selection.observation_selection_status

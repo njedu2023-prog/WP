@@ -33,8 +33,8 @@ RUN_START = time(14, 0)
 RUN_END = time(15, 0)
 LATE_RECOVERY_START = time(14, 7)
 LATE_RECOVERY_END = time(16, 10)
-MAX_CAPTURE_LATENESS_SECONDS = int(
-    os.environ.get("WP_MAX_CAPTURE_LATENESS_SECONDS", "45")
+PROSPECTIVE_CAPTURE_LATENESS_SECONDS = int(
+    os.environ.get("WP_PROSPECTIVE_CAPTURE_LATENESS_SECONDS", "45")
 )
 LIVE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
@@ -119,6 +119,45 @@ def _has_fixed_signal_session(trade_date: str) -> bool:
             for slot in session.get("covered_slots", [])
         }
         for session in ledger.get("sessions", [])
+    )
+
+
+def _assert_required_daily_list(trade_date: str) -> None:
+    ledger = load_shadow_ledger(
+        Path("outputs/json/wp_v3_candidate_ledger.json")
+    )
+    session = next(
+        (
+            item
+            for item in ledger.get("sessions", [])
+            if str(item.get("trade_date") or "") == trade_date
+        ),
+        None,
+    )
+    if session is None:
+        raise RuntimeError(
+            f"required 14:00 list is absent for {trade_date}"
+        )
+    observations = list(session.get("observations", []))
+    target_count = int(session.get("observation_target_count") or 5)
+    codes = [
+        str(item.get("ts_code") or "").strip()
+        for item in observations
+    ]
+    if (
+        len(observations) != target_count
+        or len(set(codes)) != target_count
+        or any(not code for code in codes)
+    ):
+        raise RuntimeError(
+            "required 14:00 observation list is incomplete: "
+            f"expected={target_count}, actual={len(observations)}, "
+            f"unique={len(set(codes))}"
+        )
+    print(
+        "WP required 14:00 list verified: "
+        f"qualified={len(session.get('candidates', []))}, "
+        f"observations={len(observations)}"
     )
 
 
@@ -248,7 +287,9 @@ def run_once_if_due() -> None:
             "14:00 signal and 14:05 entry benchmark from rt_min_daily."
         )
         run_once("14:00", late_recovery=True)
+        _assert_required_daily_list(trade_date)
         run_once(settlement_slot="14:05", late_recovery=True)
+        _assert_required_daily_list(trade_date)
         print(
             "WP same-day recovery completed as non-prospective evidence."
         )
@@ -292,6 +333,7 @@ def run_session() -> None:
         )
 
     failures: list[str] = []
+    signal_was_delayed = False
     schedule = [
         datetime.combine(current.date(), slot, CN_TZ)
         for slot in (time(14, 0), time(14, 5), time(14, 10), time(15, 0))
@@ -308,16 +350,16 @@ def run_session() -> None:
             time_module.sleep(wait_seconds)
         started_at = now_cn()
         capture_lateness = (started_at - capture_at).total_seconds()
-        if capture_lateness > MAX_CAPTURE_LATENESS_SECONDS:
-            message = (
-                f"missed anchored slot {scheduled_at:%H:%M}; "
+        delayed_capture = (
+            capture_lateness
+            > PROSPECTIVE_CAPTURE_LATENESS_SECONDS
+        )
+        if delayed_capture:
+            print(
+                "::warning::WP anchored slot is delayed but will still "
+                f"complete: slot={scheduled_at:%H:%M}, "
                 f"capture_lateness={capture_lateness:.0f}s"
             )
-            failures.append(message)
-            print(f"::error::{message}")
-            if scheduled_at.time() == time(14, 0):
-                break
-            continue
         print(
             f"WP completed-bar iteration {scheduled_at:%H:%M} started: "
             f"{started_at:%Y-%m-%d %H:%M:%S}; "
@@ -326,14 +368,26 @@ def run_session() -> None:
         try:
             slot = scheduled_at.strftime("%H:%M")
             if slot == "14:00":
-                run_once(slot)
+                signal_was_delayed = delayed_capture
+                if signal_was_delayed:
+                    run_once(slot, late_recovery=True)
+                else:
+                    run_once(slot)
+                _assert_required_daily_list(trade_date)
             elif slot == "14:05":
                 if not _has_fixed_signal_session(trade_date):
                     raise RuntimeError(
                         "immutable 14:00 signal is absent; "
                         "14:05 settlement is forbidden"
                     )
-                run_once(settlement_slot=slot)
+                if signal_was_delayed:
+                    run_once(
+                        settlement_slot=slot,
+                        late_recovery=True,
+                    )
+                else:
+                    run_once(settlement_slot=slot)
+                _assert_required_daily_list(trade_date)
             else:
                 run_once()
         except Exception as error:
@@ -355,16 +409,7 @@ def main() -> None:
         return
     if mode == "auto":
         current = now_cn()
-        capture_deadline = (
-            datetime.combine(current.date(), RUN_START, CN_TZ)
-            + timedelta(
-                seconds=(
-                    SCHEDULE_GRACE_SECONDS
-                    + MAX_CAPTURE_LATENESS_SECONDS
-                )
-            )
-        )
-        if current <= capture_deadline:
+        if today_window(current) is not None:
             run_session()
         else:
             run_once_if_due()

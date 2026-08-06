@@ -18,7 +18,7 @@ def test_auto_start_before_warmup_runs_continuous_session(monkeypatch):
             7,
             27,
             13,
-            23,
+            50,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -38,55 +38,21 @@ def test_auto_start_before_warmup_runs_continuous_session(monkeypatch):
     assert calls == ["run_session"]
 
 
-@pytest.mark.parametrize(
-    ("started_at", "expected_call"),
-    [
-        (
-            datetime(
-                2026,
-                8,
-                6,
-                14,
-                0,
-                30,
-                tzinfo=run_wp_session.CN_TZ,
-            ),
-            "run_session",
-        ),
-        (
-            datetime(
-                2026,
-                8,
-                6,
-                14,
-                2,
-                45,
-                tzinfo=run_wp_session.CN_TZ,
-            ),
-            "run_session",
-        ),
-        (
-            datetime(
-                2026,
-                8,
-                6,
-                14,
-                2,
-                46,
-                tzinfo=run_wp_session.CN_TZ,
-            ),
-            "run_once_if_due",
-        ),
-    ],
-)
-def test_auto_start_honors_signal_capture_deadline(
-    monkeypatch,
-    started_at,
-    expected_call,
-):
+def test_auto_start_has_no_signal_capture_deadline(monkeypatch):
     calls = []
     monkeypatch.setenv("WP_RUN_MODE", "auto")
-    monkeypatch.setattr(run_wp_session, "now_cn", lambda: started_at)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: datetime(
+            2026,
+            8,
+            6,
+            14,
+            45,
+            tzinfo=run_wp_session.CN_TZ,
+        ),
+    )
     monkeypatch.setattr(
         run_wp_session,
         "run_session",
@@ -100,7 +66,7 @@ def test_auto_start_honors_signal_capture_deadline(
 
     run_wp_session.main()
 
-    assert calls == [expected_call]
+    assert calls == ["run_session"]
 
 
 def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
@@ -134,6 +100,11 @@ def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
         run_wp_session,
         "_has_fixed_signal_session",
         lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: None,
     )
     monkeypatch.setattr(
         run_wp_session,
@@ -197,6 +168,11 @@ def test_exact_session_prewarms_compact_references_before_signal(
     )
     monkeypatch.setattr(
         run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: None,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
         "run_once",
         lambda signal_slot=None, **kwargs: events.append(
             (signal_slot, kwargs)
@@ -214,35 +190,95 @@ def test_exact_session_prewarms_compact_references_before_signal(
     ]
 
 
-def test_exact_session_rejects_late_signal_instead_of_backfilling(
+def test_exact_session_completes_delayed_signal_as_recovery(
     monkeypatch,
     tmp_path,
 ):
     calls = []
-    monkeypatch.chdir(tmp_path)
-    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
-    monkeypatch.setattr(
-        run_wp_session,
-        "now_cn",
-        lambda: datetime(
+    clock = {
+        "now": datetime(
             2026,
             8,
             5,
             14,
             3,
             tzinfo=run_wp_session.CN_TZ,
+        )
+    }
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: clock["now"],
+    )
+    monkeypatch.setattr(
+        run_wp_session.time_module,
+        "sleep",
+        lambda seconds: clock.__setitem__(
+            "now",
+            clock["now"] + timedelta(seconds=seconds),
         ),
     )
     monkeypatch.setattr(
         run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: calls.append(("verified", trade_date)),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_fixed_signal_session",
+        lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
         "run_once",
-        lambda *args, **kwargs: calls.append((args, kwargs)),
+        lambda signal_slot=None, **kwargs: calls.append(
+            (signal_slot, kwargs)
+        ),
     )
 
-    with pytest.raises(RuntimeError, match="missed anchored slot 14:00"):
-        run_wp_session.run_session()
+    run_wp_session.run_session()
 
-    assert calls == []
+    assert calls[:5] == [
+        ("14:00", {"late_recovery": True}),
+        ("verified", "20260805"),
+        (
+            None,
+            {
+                "settlement_slot": "14:05",
+                "late_recovery": True,
+            },
+        ),
+        ("verified", "20260805"),
+        (None, {}),
+    ]
+
+
+def test_required_daily_list_rejects_observation_shortfall(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        run_wp_session,
+        "load_shadow_ledger",
+        lambda path: {
+            "sessions": [
+                {
+                    "trade_date": "20260806",
+                    "observation_target_count": 5,
+                    "observations": [
+                        {"ts_code": f"60000{index}.SH"}
+                        for index in range(4)
+                    ],
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="observation list is incomplete"):
+        run_wp_session._assert_required_daily_list("20260806")
 
 
 def test_exact_session_still_freezes_and_closes_after_settlement_failure(
@@ -275,6 +311,11 @@ def test_exact_session_still_freezes_and_closes_after_settlement_failure(
         run_wp_session,
         "_has_fixed_signal_session",
         lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: None,
     )
 
     def fake_run_once(signal_slot=None, **kwargs):
@@ -311,6 +352,11 @@ def test_push_after_missed_slot_runs_same_day_recovery(monkeypatch, tmp_path):
             45,
             tzinfo=run_wp_session.CN_TZ,
         ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: None,
     )
     monkeypatch.setattr(
         run_wp_session,

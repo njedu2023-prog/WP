@@ -4,7 +4,7 @@ import os
 import subprocess
 import sys
 import time as time_module
-from datetime import datetime, time
+from datetime import datetime
 from pathlib import Path
 
 try:
@@ -71,6 +71,18 @@ def run_once() -> int:
     return pending
 
 
+def _session_end(current: datetime) -> datetime:
+    raw = os.environ.get("WP_CLOSE_END_TIME", "19:00").strip()
+    try:
+        parsed = datetime.strptime(raw, "%H:%M").time()
+    except ValueError as error:
+        raise ValueError(
+            "WP_CLOSE_END_TIME must use HH:MM, "
+            f"received {raw!r}"
+        ) from error
+    return datetime.combine(current.date(), parsed, current.tzinfo)
+
+
 def main() -> None:
     current = now_cn()
     trade_date = current.strftime("%Y%m%d")
@@ -91,7 +103,7 @@ def main() -> None:
         return
 
     interval = int(os.environ.get("WP_CLOSE_INTERVAL_SECONDS", "300"))
-    end = datetime.combine(current.date(), time(16, 10), current.tzinfo)
+    end = _session_end(current)
     if current > end:
         pending = run_once()
         if pending == 0:

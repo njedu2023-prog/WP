@@ -138,6 +138,7 @@ def test_closed_dashboard_labels_frozen_evidence_with_signal_date(
                         "first_signal_time": "14:00",
                         "first_signal_price": 10.0,
                         "entry_price": 10.01,
+                        "observed_at": "2026-08-05T14:12:34+08:00",
                     }
                 ],
             }
@@ -146,8 +147,19 @@ def test_closed_dashboard_labels_frozen_evidence_with_signal_date(
 
     text = render(path, phase="CLOSED", ledger=ledger)
 
-    assert "D 日冻结证据 · 2026-08-05" in text
+    assert "T 日冻结证据 · 2026-08-05 14:12:34" in text
+    assert "D 日冻结证据" not in text
     assert "今日冻结证据" not in text
+
+
+def test_dashboard_checks_uncached_manifest_for_new_revision(tmp_path) -> None:
+    path = tmp_path / "latest.html"
+    text = render(path, phase="CLOSED")
+
+    assert 'http-equiv="Cache-Control"' in text
+    assert "wp_manifest.json" in text
+    assert "cache: 'no-store'" in text
+    assert "window.setInterval(refreshWhenNewer, 60000)" in text
 
 
 def test_research_ready_is_not_reported_as_integrity_failure(tmp_path) -> None:
