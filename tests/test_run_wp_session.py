@@ -281,6 +281,32 @@ def test_required_daily_list_rejects_observation_shortfall(
         run_wp_session._assert_required_daily_list("20260806")
 
 
+def test_required_daily_list_rejects_non_five_declared_target(
+    monkeypatch,
+    tmp_path,
+):
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(
+        run_wp_session,
+        "load_shadow_ledger",
+        lambda path: {
+            "sessions": [
+                {
+                    "trade_date": "20260806",
+                    "observation_target_count": 4,
+                    "observations": [
+                        {"ts_code": f"60000{index}.SH"}
+                        for index in range(4)
+                    ],
+                }
+            ]
+        },
+    )
+
+    with pytest.raises(RuntimeError, match="expected=5"):
+        run_wp_session._assert_required_daily_list("20260806")
+
+
 def test_exact_session_still_freezes_and_closes_after_settlement_failure(
     monkeypatch,
     tmp_path,
@@ -425,6 +451,105 @@ def test_push_after_market_close_still_runs_same_day_recovery(
             },
         ),
     ]
+
+
+def test_post_close_recovers_missing_settlement_without_rewriting_signal(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: datetime(
+            2026,
+            8,
+            6,
+            20,
+            0,
+            tzinfo=run_wp_session.CN_TZ,
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_required_daily_list",
+        lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_fixed_entry_settlement",
+        lambda trade_date: False,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: None,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once",
+        lambda signal_slot=None, **kwargs: calls.append(
+            (signal_slot, kwargs)
+        ),
+    )
+
+    run_wp_session.run_once_if_due()
+
+    assert calls == [
+        (
+            None,
+            {
+                "settlement_slot": "14:05",
+                "late_recovery": True,
+            },
+        ),
+    ]
+
+
+def test_post_close_skips_when_signal_and_settlement_are_complete(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: datetime(
+            2026,
+            8,
+            6,
+            20,
+            0,
+            tzinfo=run_wp_session.CN_TZ,
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_required_daily_list",
+        lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_has_fixed_entry_settlement",
+        lambda trade_date: True,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once",
+        lambda signal_slot=None, **kwargs: calls.append(
+            (signal_slot, kwargs)
+        ),
+    )
+
+    run_wp_session.run_once_if_due()
+
+    assert calls == []
 
 
 def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_path):
