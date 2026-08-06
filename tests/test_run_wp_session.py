@@ -380,6 +380,53 @@ def test_push_after_missed_slot_runs_same_day_recovery(monkeypatch, tmp_path):
     ]
 
 
+def test_push_after_market_close_still_runs_same_day_recovery(
+    monkeypatch,
+    tmp_path,
+):
+    calls = []
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("GITHUB_EVENT_NAME", "push")
+    monkeypatch.delenv("TUSHARE_TOKEN", raising=False)
+    monkeypatch.setattr(
+        run_wp_session,
+        "now_cn",
+        lambda: datetime(
+            2026,
+            8,
+            6,
+            20,
+            0,
+            tzinfo=run_wp_session.CN_TZ,
+        ),
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "_assert_required_daily_list",
+        lambda trade_date: None,
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "run_once",
+        lambda signal_slot=None, **kwargs: calls.append(
+            (signal_slot, kwargs)
+        ),
+    )
+
+    run_wp_session.run_once_if_due()
+
+    assert calls == [
+        ("14:00", {"late_recovery": True}),
+        (
+            None,
+            {
+                "settlement_slot": "14:05",
+                "late_recovery": True,
+            },
+        ),
+    ]
+
+
 def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_path):
     captured = {}
     monkeypatch.chdir(tmp_path)
