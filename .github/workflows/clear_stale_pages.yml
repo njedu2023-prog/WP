@@ -1,10 +1,12 @@
-name: Clear stale GitHub Pages deployment lock
+name: Manual Pages deployment recovery
 
 on:
-  push:
-    branches: [main]
-    paths:
-      - .github/workflows/clear_stale_pages.yml
+  workflow_dispatch:
+    inputs:
+      deployment_id:
+        description: Stale GitHub Pages deployment ID to cancel
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -17,7 +19,7 @@ jobs:
       - name: Cancel stale Pages deployment
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PAGES_DEPLOYMENT_ID: fd859680e0020b41706afe3498a799e4d2e58425
+          PAGES_DEPLOYMENT_ID: ${{ inputs.deployment_id }}
         run: |
           curl --fail-with-body --silent --show-error \
             --request POST \
