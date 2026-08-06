@@ -36,6 +36,7 @@ LATE_RECOVERY_END = time(23, 59, 59)
 PROSPECTIVE_CAPTURE_LATENESS_SECONDS = int(
     os.environ.get("WP_PROSPECTIVE_CAPTURE_LATENESS_SECONDS", "45")
 )
+REQUIRED_OBSERVATION_COUNT = 5
 LIVE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
     "outputs/csv/wp_buy_plan.csv",
@@ -122,6 +123,60 @@ def _has_fixed_signal_session(trade_date: str) -> bool:
     )
 
 
+def _has_required_daily_list(trade_date: str) -> bool:
+    ledger = load_shadow_ledger(
+        Path("outputs/json/wp_v3_candidate_ledger.json")
+    )
+    session = next(
+        (
+            item
+            for item in ledger.get("sessions", [])
+            if str(item.get("trade_date") or "") == trade_date
+            and "14:00" in {
+                str(slot)
+                for slot in item.get("covered_slots", [])
+            }
+        ),
+        None,
+    )
+    if session is None:
+        return False
+    observations = list(session.get("observations", []))
+    codes = [
+        str(item.get("ts_code") or "").strip()
+        for item in observations
+    ]
+    return (
+        int(session.get("observation_target_count") or 0)
+        == REQUIRED_OBSERVATION_COUNT
+        and len(observations) == REQUIRED_OBSERVATION_COUNT
+        and len(set(codes)) == REQUIRED_OBSERVATION_COUNT
+        and all(codes)
+    )
+
+
+def _has_fixed_entry_settlement(trade_date: str) -> bool:
+    manifest_path = Path(
+        "data/v3/latest/wp_v3_entry_settlement_manifest.json"
+    )
+    if not manifest_path.exists():
+        return False
+    try:
+        manifest = json.loads(
+            manifest_path.read_text(encoding="utf-8")
+        )
+    except (OSError, json.JSONDecodeError):
+        return False
+    return (
+        str(manifest.get("trade_date") or "") == trade_date
+        and str(manifest.get("settlement_slot") or "") == "14:05"
+        and int(manifest.get("requested_symbols") or 0)
+        == REQUIRED_OBSERVATION_COUNT
+        and int(manifest.get("observed_symbols") or 0)
+        == REQUIRED_OBSERVATION_COUNT
+    )
+
+
 def _assert_required_daily_list(trade_date: str) -> None:
     ledger = load_shadow_ledger(
         Path("outputs/json/wp_v3_candidate_ledger.json")
@@ -139,19 +194,23 @@ def _assert_required_daily_list(trade_date: str) -> None:
             f"required 14:00 list is absent for {trade_date}"
         )
     observations = list(session.get("observations", []))
-    target_count = int(session.get("observation_target_count") or 5)
+    target_count = int(
+        session.get("observation_target_count") or 0
+    )
     codes = [
         str(item.get("ts_code") or "").strip()
         for item in observations
     ]
     if (
-        len(observations) != target_count
-        or len(set(codes)) != target_count
+        target_count != REQUIRED_OBSERVATION_COUNT
+        or len(observations) != REQUIRED_OBSERVATION_COUNT
+        or len(set(codes)) != REQUIRED_OBSERVATION_COUNT
         or any(not code for code in codes)
     ):
         raise RuntimeError(
             "required 14:00 observation list is incomplete: "
-            f"expected={target_count}, actual={len(observations)}, "
+            f"expected={REQUIRED_OBSERVATION_COUNT}, "
+            f"declared={target_count}, actual={len(observations)}, "
             f"unique={len(set(codes))}"
         )
     print(
@@ -276,19 +335,36 @@ def run_once_if_due() -> None:
     else:
         print("WP calendar fallback: TUSHARE_TOKEN is not configured; upstream data freshness will gate outputs.")
 
+    signal_recovery_required = not _has_required_daily_list(
+        trade_date
+    )
+    settlement_recovery_required = (
+        not _has_fixed_entry_settlement(trade_date)
+    )
     same_day_recovery = bool(
         os.environ.get("GITHUB_EVENT_NAME", "").strip() == "push"
         and LATE_RECOVERY_START <= current.time() <= LATE_RECOVERY_END
-        and not _has_fixed_signal_session(trade_date)
+        and (
+            signal_recovery_required
+            or settlement_recovery_required
+        )
     )
     if same_day_recovery:
         print(
             "WP same-day recovery started: rebuilding immutable "
             "14:00 signal and 14:05 entry benchmark from rt_min_daily."
         )
-        run_once("14:00", late_recovery=True)
+        if signal_recovery_required:
+            run_once("14:00", late_recovery=True)
         _assert_required_daily_list(trade_date)
-        run_once(settlement_slot="14:05", late_recovery=True)
+        if (
+            signal_recovery_required
+            or settlement_recovery_required
+        ):
+            run_once(
+                settlement_slot="14:05",
+                late_recovery=True,
+            )
         _assert_required_daily_list(trade_date)
         print(
             "WP same-day recovery completed as non-prospective evidence."
