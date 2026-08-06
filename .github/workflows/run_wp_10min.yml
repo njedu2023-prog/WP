@@ -55,6 +55,7 @@ jobs:
           TUSHARE_TOKEN: ${{ secrets.TUSHARE_TOKEN }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GITHUB_EVENT_NAME: ${{ github.event_name }}
+          # Auto keeps on-time runs exact and labels delayed executions as recovery.
           WP_RUN_MODE: auto
           WP_SCHEDULE_GRACE_SECONDS: "120"
           WP_PROSPECTIVE_CAPTURE_LATENESS_SECONDS: "45"
