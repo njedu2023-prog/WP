@@ -1,6 +1,10 @@
 name: Run WP V41 Fixed 14:00 Session
 
 on:
+  # Start the runner before the signal bar closes. The model still reads only
+  # the completed 14:00 bar and fixes the entry benchmark at 14:05.
+  schedule:
+    - cron: "45 5 * * 1-5"
   workflow_dispatch:
   push:
     branches: [main]
