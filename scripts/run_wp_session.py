@@ -16,27 +16,35 @@ try:
     from build_wp_v3_live_input import (
         build_live_input,
         capture_entry_settlement_input,
+        capture_warmup_input,
         warm_live_reference_input,
     )
 except ModuleNotFoundError:  # pragma: no cover - package import in tests
     from scripts.build_wp_v3_live_input import (
         build_live_input,
         capture_entry_settlement_input,
+        capture_warmup_input,
         warm_live_reference_input,
     )
 
 
 CN_TZ = ZoneInfo("Asia/Shanghai")
-SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "120"))
-PREP_START = time(13, 45)
-RUN_START = time(14, 0)
+SCHEDULE_GRACE_SECONDS = int(os.environ.get("WP_SCHEDULE_GRACE_SECONDS", "30"))
+PREP_START = time(12, 30)
+MARKET_DATA_CUTOFF = time(13, 55)
+PUBLICATION_DEADLINE = time(14, 0)
+RUN_START = MARKET_DATA_CUTOFF
 RUN_END = time(15, 0)
-LATE_RECOVERY_START = time(14, 7)
+LATE_RECOVERY_START = PUBLICATION_DEADLINE
 LATE_RECOVERY_END = time(23, 59, 59)
-PROSPECTIVE_CAPTURE_LATENESS_SECONDS = int(
-    os.environ.get("WP_PROSPECTIVE_CAPTURE_LATENESS_SECONDS", "45")
-)
 REQUIRED_OBSERVATION_COUNT = 5
+WARMUP_SLOTS = (
+    time(13, 30),
+    time(13, 35),
+    time(13, 40),
+    time(13, 45),
+    time(13, 50),
+)
 LIVE_COMMIT_PATHS = [
     "outputs/html_reports/latest.html",
     "outputs/csv/wp_buy_plan.csv",
@@ -71,7 +79,7 @@ def today_window(now: datetime) -> tuple[datetime, datetime] | None:
 
 def in_run_window(now: datetime) -> bool:
     today = now.date()
-    start = datetime.combine(today, time(14, 0), CN_TZ)
+    start = datetime.combine(today, MARKET_DATA_CUTOFF, CN_TZ)
     end = datetime.combine(today, time(15, 10), CN_TZ)
     return start <= now <= end
 
@@ -167,13 +175,32 @@ def _has_fixed_entry_settlement(trade_date: str) -> bool:
         )
     except (OSError, json.JSONDecodeError):
         return False
+    ledger = load_shadow_ledger(
+        Path("outputs/json/wp_v3_candidate_ledger.json")
+    )
+    session = next(
+        (
+            item
+            for item in ledger.get("sessions", [])
+            if str(item.get("trade_date") or "") == trade_date
+        ),
+        {},
+    )
+    expected_codes = {
+        str(item.get("ts_code") or "").strip()
+        for key in ("candidates", "observations")
+        for item in session.get(key, [])
+        if str(item.get("ts_code") or "").strip()
+    }
+    expected_count = len(expected_codes)
     return (
         str(manifest.get("trade_date") or "") == trade_date
         and str(manifest.get("settlement_slot") or "") == "14:05"
         and int(manifest.get("requested_symbols") or 0)
-        == REQUIRED_OBSERVATION_COUNT
+        == expected_count
         and int(manifest.get("observed_symbols") or 0)
-        == REQUIRED_OBSERVATION_COUNT
+        == expected_count
+        and expected_count >= REQUIRED_OBSERVATION_COUNT
     )
 
 
@@ -228,6 +255,9 @@ def run_once(
 ) -> None:
     env = os.environ.copy()
     env["WP_MODE"] = "live"
+    env["WP_V3_MARKET_DATA_CUTOFF_SLOT"] = MARKET_DATA_CUTOFF.strftime(
+        "%H:%M"
+    )
     if signal_slot:
         env["WP_V3_SIGNAL_SLOT"] = signal_slot
     if late_recovery:
@@ -259,8 +289,8 @@ def run_once(
             source_manifest["trade_date"]
         )
         print(
-            "WP V41 late recovery rebuilt the immutable 14:00 "
-            "snapshot before entry settlement."
+            "WP V41 recovery rebuilt the 14:00 decision from the "
+            "immutable 13:55 market cutoff before entry settlement."
         )
         subprocess.run(
             [sys.executable, "-m", "wp.main"],
@@ -301,16 +331,18 @@ def run_once(
         env["WP_V3_SIGNAL_SLOT"] = str(source_manifest["signal_slot"])
         print(
             "WP V41 causal source ready: "
-            f"{source_path} slot={source_manifest['signal_slot']}"
+            f"{source_path} decision={source_manifest['signal_slot']} "
+            "cutoff="
+            f"{source_manifest.get('market_data_cutoff_slot', MARKET_DATA_CUTOFF.strftime('%H:%M'))}"
         )
     elif current.time() > time(14, 0) and live_path.exists():
         env["WP_V3_SOURCE_CSV"] = live_path.as_posix()
         print(
-            "WP V41 reuses the immutable 14:00 feature snapshot for "
+            "WP V41 reuses the immutable 13:55-cutoff feature snapshot for "
             "settlement and close-state rendering."
         )
     else:
-        print("::warning::WP V41 live source is absent before 14:00.")
+        print("::warning::WP V41 live source is absent before 13:55.")
     subprocess.run([sys.executable, "-m", "wp.main"], check=True, env=env)
     manifest_after = manifest_path.read_bytes() if manifest_path.exists() else None
     if manifest_before == manifest_after:
@@ -351,8 +383,9 @@ def run_once_if_due() -> None:
     )
     if same_day_recovery:
         print(
-            "WP same-day recovery started: rebuilding immutable "
-            "14:00 signal and 14:05 entry benchmark from rt_min_daily."
+            "WP same-day recovery started: rebuilding the 14:00 "
+            "decision from the 13:55 cutoff and the 14:05 entry "
+            "benchmark from rt_min_daily."
         )
         if signal_recovery_required:
             run_once("14:00", late_recovery=True)
@@ -409,12 +442,68 @@ def run_session() -> None:
         )
 
     failures: list[str] = []
+    if token:
+        for warmup_slot in WARMUP_SLOTS:
+            scheduled_at = datetime.combine(
+                current.date(),
+                warmup_slot,
+                CN_TZ,
+            )
+            current = now_cn()
+            capture_at = scheduled_at + timedelta(
+                seconds=SCHEDULE_GRACE_SECONDS
+            )
+            if current > capture_at + timedelta(minutes=2):
+                print(
+                    "::warning::Skip stale warmup snapshot: "
+                    f"slot={warmup_slot:%H:%M} current={current:%H:%M:%S}"
+                )
+                continue
+            if current < capture_at:
+                wait_seconds = (capture_at - current).total_seconds()
+                print(
+                    f"Wait for WP warmup slot {warmup_slot:%H:%M}; "
+                    f"wait={wait_seconds:.0f}s"
+                )
+                time_module.sleep(wait_seconds)
+            try:
+                warmup = capture_warmup_input(
+                    observation_slot=warmup_slot.strftime("%H:%M"),
+                    root=Path.cwd(),
+                    env=os.environ.copy(),
+                )
+                print(
+                    "WP all-market warmup captured: "
+                    f"slot={warmup_slot:%H:%M} "
+                    f"rows={warmup['row_count']}"
+                )
+            except Exception as error:
+                print(
+                    "::warning::WP warmup snapshot failed; final selective "
+                    f"replay remains available: slot={warmup_slot:%H:%M} "
+                    f"error={error}"
+                )
+
     signal_was_delayed = False
     schedule = [
-        datetime.combine(current.date(), slot, CN_TZ)
-        for slot in (time(14, 0), time(14, 5), time(14, 10), time(15, 0))
+        (
+            "signal",
+            datetime.combine(current.date(), MARKET_DATA_CUTOFF, CN_TZ),
+        ),
+        (
+            "settlement",
+            datetime.combine(current.date(), time(14, 5), CN_TZ),
+        ),
+        (
+            "freeze",
+            datetime.combine(current.date(), time(14, 10), CN_TZ),
+        ),
+        (
+            "close",
+            datetime.combine(current.date(), time(15, 0), CN_TZ),
+        ),
     ]
-    for scheduled_at in schedule:
+    for action, scheduled_at in schedule:
         current = now_cn()
         capture_at = scheduled_at + timedelta(seconds=SCHEDULE_GRACE_SECONDS)
         if current < capture_at:
@@ -426,9 +515,10 @@ def run_session() -> None:
             time_module.sleep(wait_seconds)
         started_at = now_cn()
         capture_lateness = (started_at - capture_at).total_seconds()
-        delayed_capture = (
-            capture_lateness
-            > PROSPECTIVE_CAPTURE_LATENESS_SECONDS
+        delayed_capture = action == "signal" and started_at >= datetime.combine(
+            started_at.date(),
+            PUBLICATION_DEADLINE,
+            CN_TZ,
         )
         if delayed_capture:
             print(
@@ -443,14 +533,14 @@ def run_session() -> None:
         )
         try:
             slot = scheduled_at.strftime("%H:%M")
-            if slot == "14:00":
+            if action == "signal":
                 signal_was_delayed = delayed_capture
                 if signal_was_delayed:
-                    run_once(slot, late_recovery=True)
+                    run_once("14:00", late_recovery=True)
                 else:
-                    run_once(slot)
+                    run_once("14:00")
                 _assert_required_daily_list(trade_date)
-            elif slot == "14:05":
+            elif action == "settlement":
                 if not _has_fixed_signal_session(trade_date):
                     raise RuntimeError(
                         "immutable 14:00 signal is absent; "
@@ -470,7 +560,7 @@ def run_session() -> None:
             message = f"{scheduled_at:%H:%M} failed: {error}"
             failures.append(message)
             print(f"::error::{message}")
-            if slot == "14:00":
+            if action == "signal":
                 break
 
     print(f"WP session completed: {now_cn():%Y-%m-%d %H:%M:%S}")

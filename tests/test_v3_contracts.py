@@ -21,6 +21,14 @@ def test_signal_window_and_closed_state_are_immutable():
     assert session_phase(datetime(2026, 7, 27, 15, 0, tzinfo=CN_TZ), config) == "CLOSED"
 
 
+def test_publication_sla_uses_a_1355_cutoff_for_the_1400_decision():
+    config = V3Config()
+
+    assert config.publication.market_data_cutoff_time == "13:55"
+    assert config.publication.decision_publish_deadline == "14:00"
+    validate_contract(config)
+
+
 def test_shadow_period_cannot_be_reduced_below_150_days():
     config = V3Config(
         promotion=replace(V3Config().promotion, minimum_shadow_trading_days=149)

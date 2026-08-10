@@ -82,14 +82,14 @@ def run_v3() -> dict[str, Any]:
     record_signal = (
         source_evidence_authorized
         and (
-            phase in {"SIGNAL", "NO_NEW_SIGNAL"}
+            phase in {"PRE_SIGNAL", "SIGNAL", "NO_NEW_SIGNAL"}
             or source_recovery_authorized
         )
     )
     live_display_allowed = (
         source_signal_authorized
         and trade_date == current.strftime("%Y%m%d")
-        and phase in {"SIGNAL", "NO_NEW_SIGNAL", "FROZEN"}
+        and phase in {"PRE_SIGNAL", "SIGNAL", "NO_NEW_SIGNAL", "FROZEN"}
     )
     registry_path = ROOT / "outputs" / "json" / "wp_model_registry_v3.json"
     registry = load_registry(registry_path)
@@ -251,7 +251,33 @@ def run_v3() -> dict[str, Any]:
     )
     data_age = pd.to_numeric(runtime_data_age, errors="coerce")
     finite_data_age = data_age.loc[data_age.notna() & data_age.ge(0)]
-    update_time = current.strftime("%Y-%m-%d %H:%M:%S")
+    generated_at = now_cn()
+    update_time = generated_at.strftime("%Y-%m-%d %H:%M:%S")
+    publish_deadline = _localized_timestamp(
+        source_manifest.get("decision_publish_deadline")
+        or (
+            f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
+            f"{config.publication.decision_publish_deadline}:00"
+        ),
+        config.strategy.timezone,
+    )
+    previous_manifest = _read_json(output / "json" / "wp_manifest.json")
+    previous_decision_generated = (
+        previous_manifest.get("decision_page_generated_at")
+        if str(previous_manifest.get("source_trade_date") or "")
+        == trade_date
+        and str(previous_manifest.get("signal_slot") or "") == signal_slot
+        and str(previous_manifest.get("market_data_cutoff_slot") or "")
+        == str(source_manifest.get("market_data_cutoff_slot") or "")
+        else None
+    )
+    first_decision_generated_at = _localized_timestamp(
+        previous_decision_generated or generated_at,
+        config.strategy.timezone,
+    )
+    decision_publish_sla_met = (
+        first_decision_generated_at <= publish_deadline
+    )
     manifest = {
         "schema_version": "wp_manifest_v3",
         "latest_update": update_time,
@@ -260,11 +286,19 @@ def run_v3() -> dict[str, Any]:
         "target_trade_date": source_manifest.get("target_trade_date"),
         "signal_slot": signal_slot,
         "source_scheduled_slot": signal_slot,
+        "market_data_cutoff_slot": source_manifest.get(
+            "market_data_cutoff_slot"
+        ),
+        "decision_publish_deadline": publish_deadline.isoformat(),
+        "decision_page_generated_at": (
+            first_decision_generated_at.isoformat()
+        ),
+        "decision_publish_sla_met": decision_publish_sla_met,
         "market_data_time": source_manifest.get("market_data_time"),
         "source_mode": (
-            "direct_tushare_v41_same_day_recovery"
+            "direct_tushare_v41_1355_cutoff_same_day_recovery"
             if source_recovery_authorized
-            else "direct_tushare_v41"
+            else "direct_tushare_v41_1355_cutoff"
         ),
         "source_repository": "njedu2023-prog/WP",
         "session_phase": phase,
@@ -283,6 +317,16 @@ def run_v3() -> dict[str, Any]:
             "prospective_eligible",
             True,
         ),
+        "causal_shadow_eligible": source_manifest.get(
+            "causal_shadow_eligible",
+            False,
+        ),
+        "promotion_eligible": source_manifest.get(
+            "promotion_eligible",
+            False,
+        ),
+        "model_timing_status": source_manifest.get("model_timing_status"),
+        "timing_contract": source_manifest.get("timing_contract"),
         "recovery_reason": source_manifest.get("recovery_reason"),
         "recovered_at": source_manifest.get("recovered_at"),
         "live_display_allowed": live_display_allowed,
@@ -315,7 +359,9 @@ def run_v3() -> dict[str, Any]:
         "open_universe_coverage": source_manifest.get("open_universe_coverage"),
         "tail_universe_coverage": source_manifest.get("tail_universe_coverage"),
         "health_status": (
-            "session_integrity_fault"
+            "decision_publish_late"
+            if source_evidence_authorized and not decision_publish_sla_met
+            else "session_integrity_fault"
             if phase in {"FROZEN", "CLOSED"}
             and (
                 missing_slots
@@ -381,6 +427,12 @@ def run_v3() -> dict[str, Any]:
             ),
             "cohort_contract": {
                 "decision_time": config.strategy.signal_slots[0],
+                "market_data_cutoff_time": (
+                    config.publication.market_data_cutoff_time
+                ),
+                "publish_deadline": (
+                    config.publication.decision_publish_deadline
+                ),
                 "qualified_count_rule": "all_fixed_gate_passes",
                 "observation_count": config.strategy.observation_count,
                 "statistics_separate": True,
@@ -538,13 +590,20 @@ def _source_signal_authorized(
 ) -> bool:
     trade_date = str(source_manifest.get("trade_date") or "")
     signal_slot = str(source_manifest.get("signal_slot") or "")
+    cutoff_slot = str(
+        source_manifest.get("market_data_cutoff_slot") or ""
+    )
     capture_started_at = source_manifest.get("capture_started_at")
     market_data_time = source_manifest.get("market_data_time")
     if (
         len(trade_date) != 8
         or signal_slot not in config.strategy.signal_slots
+        or cutoff_slot != config.publication.market_data_cutoff_time
         or not capture_started_at
         or not market_data_time
+        or source_manifest.get("capture_contract")
+        != "anchored_prepublication_cutoff_snapshot"
+        or source_manifest.get("evidence_tier") != "PROSPECTIVE_LIVE"
     ):
         return False
     try:
@@ -558,6 +617,11 @@ def _source_signal_authorized(
             f"{signal_slot}:00",
             tz=config.strategy.timezone,
         )
+        market_cutoff = pd.Timestamp(
+            f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
+            f"{cutoff_slot}:00",
+            tz=config.strategy.timezone,
+        )
         market_time = pd.Timestamp(market_data_time)
         if market_time.tzinfo is None:
             market_time = market_time.tz_localize(config.strategy.timezone)
@@ -566,16 +630,14 @@ def _source_signal_authorized(
     except (TypeError, ValueError):
         return False
     return bool(
-        scheduled
+        market_cutoff
         <= capture
         <= scheduled
-        + pd.Timedelta(
-            config.execution.max_market_data_age_seconds,
-            unit="s",
-        )
-        and scheduled
+        and market_cutoff
         <= market_time
-        < scheduled + pd.Timedelta(60, unit="s")
+        < market_cutoff + pd.Timedelta(60, unit="s")
+        and str(source_manifest.get("latest_bar_slot") or "")
+        == cutoff_slot
     )
 
 
@@ -594,6 +656,9 @@ def _source_recovery_authorized(
         return False
     trade_date = str(source_manifest.get("trade_date") or "")
     signal_slot = str(source_manifest.get("signal_slot") or "")
+    cutoff_slot = str(
+        source_manifest.get("market_data_cutoff_slot") or ""
+    )
     market_data_time = source_manifest.get("market_data_time")
     recovered_at = source_manifest.get("recovered_at")
     decision_reference_time = source_manifest.get(
@@ -602,6 +667,7 @@ def _source_recovery_authorized(
     if (
         len(trade_date) != 8
         or signal_slot not in config.strategy.signal_slots
+        or cutoff_slot != config.publication.market_data_cutoff_time
         or not market_data_time
         or not recovered_at
         or not decision_reference_time
@@ -611,6 +677,11 @@ def _source_recovery_authorized(
         scheduled = pd.Timestamp(
             f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
             f"{signal_slot}:00",
+            tz=config.strategy.timezone,
+        )
+        market_cutoff = pd.Timestamp(
+            f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} "
+            f"{cutoff_slot}:00",
             tz=config.strategy.timezone,
         )
         market_time = _localized_timestamp(
@@ -636,9 +707,9 @@ def _source_recovery_authorized(
     except (TypeError, ValueError):
         return False
     return bool(
-        scheduled
+        market_cutoff
         <= market_time
-        < scheduled + pd.Timedelta(1, unit="min")
+        < market_cutoff + pd.Timedelta(1, unit="min")
         and scheduled
         <= decision_reference
         <= scheduled
@@ -648,7 +719,7 @@ def _source_recovery_authorized(
         )
         and recovered.strftime("%Y%m%d") == trade_date
         and str(source_manifest.get("latest_bar_slot") or "")
-        == signal_slot
+        == cutoff_slot
         and row_count >= 1_000
         and fresh_count >= 1_000
         and open_coverage

@@ -1,10 +1,10 @@
 name: Run WP V41 Fixed 14:00 Session
 
 on:
-  # Start the runner before the signal bar closes. The model still reads only
-  # the completed 14:00 bar and fixes the entry benchmark at 14:05.
+  # Start well before the SLA. No signal is produced before the completed
+  # 13:55 bar; the public decision deadline remains 14:00.
   schedule:
-    - cron: "45 5 * * 1-5"
+    - cron: "37 4 * * 1-5"
   workflow_dispatch:
   push:
     branches: [main]
@@ -32,6 +32,9 @@ jobs:
           cache-dependency-path: requirements.lock
       - name: Install dependencies
         run: pip install -r requirements.lock
+      - name: Resolve weekly runtime cache key
+        id: runtime-week
+        run: echo "week=$(TZ=Asia/Shanghai date +%G-%V)" >> "$GITHUB_OUTPUT"
       - name: Restore compact V41 runtime references
         uses: actions/cache@v4
         with:
@@ -43,15 +46,15 @@ jobs:
             data/v3/cache/stk_limit
             data/v3/cache/stock_basic
             data/v3/cache/index_member_all
-          key: wp-v41-runtime-ref-v1-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/history.py', 'src/wp/v3/live_data.py') }}-${{ github.run_id }}
+          key: wp-v41-runtime-ref-v2-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/history.py', 'src/wp/v3/live_data.py') }}-${{ steps.runtime-week.outputs.week }}
           restore-keys: |
-            wp-v41-runtime-ref-v1-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/history.py', 'src/wp/v3/live_data.py') }}-
-            wp-v41-runtime-ref-v1-${{ runner.os }}-
+            wp-v41-runtime-ref-v2-${{ runner.os }}-${{ hashFiles('config/wp_v3.yml', 'src/wp/v3/history.py', 'src/wp/v3/live_data.py') }}-
+            wp-v41-runtime-ref-v2-${{ runner.os }}-
       - name: Verify exact V41 runtime package
         run: python scripts/check_wp_runtime_readiness.py
         env:
           PYTHONPATH: src
-      - name: Run exact 14:00 session or labeled same-day recovery
+      - name: Run 13:55 cutoff and 14:00 publication session
         run: python scripts/run_wp_session.py
         env:
           PYTHONPATH: src
@@ -61,8 +64,7 @@ jobs:
           GITHUB_EVENT_NAME: ${{ github.event_name }}
           # Auto keeps on-time runs exact and labels delayed executions as recovery.
           WP_RUN_MODE: auto
-          WP_SCHEDULE_GRACE_SECONDS: "120"
-          WP_PROSPECTIVE_CAPTURE_LATENESS_SECONDS: "45"
+          WP_SCHEDULE_GRACE_SECONDS: "30"
           LOKY_MAX_CPU_COUNT: "2"
       - name: Prune and report compact runtime references
         run: |

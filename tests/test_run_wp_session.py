@@ -18,7 +18,7 @@ def test_auto_start_before_warmup_runs_continuous_session(monkeypatch):
             7,
             27,
             13,
-            50,
+            0,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -69,7 +69,10 @@ def test_auto_start_has_no_signal_capture_deadline(monkeypatch):
     assert calls == ["run_session"]
 
 
-def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
+def test_exact_session_runs_cutoff_publish_entry_freeze_and_close(
+    monkeypatch,
+    tmp_path,
+):
     calls = []
     clock = {
         "now": datetime(
@@ -77,7 +80,7 @@ def test_exact_session_runs_only_four_anchored_phases(monkeypatch, tmp_path):
             8,
             5,
             13,
-            56,
+            54,
             tzinfo=run_wp_session.CN_TZ,
         )
     }
@@ -135,7 +138,7 @@ def test_exact_session_prewarms_compact_references_before_signal(
             8,
             5,
             13,
-            50,
+            0,
             tzinfo=run_wp_session.CN_TZ,
         )
     }
@@ -152,6 +155,14 @@ def test_exact_session_prewarms_compact_references_before_signal(
             "prior_trade_date_count": 35,
             "stock_basic_rows": 5_000,
         },
+    )
+    monkeypatch.setattr(
+        run_wp_session,
+        "capture_warmup_input",
+        lambda observation_slot, **_: events.append(
+            ("warmup", observation_slot)
+        )
+        or {"row_count": 3_000},
     )
     monkeypatch.setattr(
         run_wp_session.time_module,
@@ -182,7 +193,14 @@ def test_exact_session_prewarms_compact_references_before_signal(
     run_wp_session.run_session()
 
     assert events[0][0] == "warm"
-    assert events[1:] == [
+    assert events[1:6] == [
+        ("warmup", "13:30"),
+        ("warmup", "13:35"),
+        ("warmup", "13:40"),
+        ("warmup", "13:45"),
+        ("warmup", "13:50"),
+    ]
+    assert events[6:] == [
         ("14:00", {}),
         (None, {"settlement_slot": "14:05"}),
         (None, {}),
@@ -590,11 +608,12 @@ def test_v3_causal_source_contract_is_passed_to_core_engine(monkeypatch, tmp_pat
 
     assert captured["WP_EXPECTED_TRADE_DATE"] == "20260727"
     assert captured["WP_V3_SIGNAL_SLOT"] == "14:00"
+    assert captured["WP_V3_MARKET_DATA_CUTOFF_SLOT"] == "13:55"
     assert captured["WP_V3_SOURCE_CSV"] == source_path.as_posix()
     assert captured["WP_MODE"] == "live"
 
 
-def test_1400_signal_is_built_at_1402_after_completed_bar_grace(
+def test_1400_decision_uses_the_completed_1355_cutoff(
     monkeypatch,
     tmp_path,
 ):
@@ -607,8 +626,8 @@ def test_1400_signal_is_built_at_1402_after_completed_bar_grace(
             2026,
             7,
             27,
-            14,
-            2,
+            13,
+            56,
             tzinfo=run_wp_session.CN_TZ,
         ),
     )
@@ -623,6 +642,7 @@ def test_1400_signal_is_built_at_1402_after_completed_bar_grace(
         return source_path, {
             "trade_date": "20260727",
             "signal_slot": "14:00",
+            "market_data_cutoff_slot": "13:55",
         }
 
     def fake_run(command, **kwargs):

@@ -125,11 +125,18 @@ def build_live_feature_frame(
     *,
     trade_date: str,
     signal_slot: str,
+    market_data_cutoff_slot: str | None = None,
     config: V3Config,
     late_recovery: bool = False,
 ) -> tuple[pd.DataFrame, dict[str, Any]]:
     if signal_slot not in config.strategy.signal_slots:
         raise ValueError(f"{signal_slot} is not a V3 signal slot")
+    market_slot = (
+        market_data_cutoff_slot
+        or config.publication.market_data_cutoff_time
+    )
+    if market_slot > signal_slot:
+        raise ValueError("market data cutoff cannot follow the decision slot")
     calendar_start = (
         datetime.strptime(trade_date, "%Y%m%d") - timedelta(days=90)
     ).strftime("%Y%m%d")
@@ -298,20 +305,20 @@ def build_live_feature_frame(
         replay = _fetch_rt_min_daily_replay(
             client,
             trade_date=trade_date,
-            through_slot=signal_slot,
+            through_slot=market_slot,
             ts_codes=sorted(expected_symbols),
             workers=config.history.minute_fetch_workers,
         )
         current_minute = replay.loc[
             pd.to_datetime(replay["trade_time"], errors="coerce")
             .dt.strftime("%H:%M")
-            .eq(signal_slot)
+            .eq(market_slot)
         ].copy()
     else:
         current_minute = _fetch_rt_min_snapshot(
             client,
             trade_date=trade_date,
-            observation_slot=signal_slot,
+            observation_slot=market_slot,
             ts_codes=sorted(expected_symbols),
         )
     if current_minute.empty:
@@ -321,28 +328,44 @@ def build_live_feature_frame(
         errors="coerce",
     ).dt.strftime("%H:%M")
     current_minute = current_minute.loc[
-        current_minute["bar_slot"].eq(signal_slot)
+        current_minute["bar_slot"].eq(market_slot)
     ].drop(columns="bar_slot")
     if current_minute.empty:
         raise RuntimeError(
-            f"live all-market rt_min has no completed {signal_slot} bar"
+            f"live all-market rt_min has no completed {market_slot} bar"
         )
+    observation_slots = _observation_slots((market_slot,))
+    session_tail = pd.DataFrame()
     if not late_recovery:
         direct_replay_codes = _direct_replay_candidate_codes(
             current_minute,
             base=base,
             config=config,
         )
+        session_tail = _load_rt_min_session_snapshots(
+            client,
+            trade_date=trade_date,
+            observation_slot=market_slot,
+            current=current_minute,
+            observation_slots=observation_slots,
+        )
+        snapshot_counts = session_tail.groupby("ts_code").size()
+        direct_replay_codes = [
+            code
+            for code in direct_replay_codes
+            if int(snapshot_counts.get(code, 0))
+            < config.execution.min_intraday_snapshot_count
+        ]
         if direct_replay_codes:
             direct_replay = _fetch_rt_min_daily_replay(
                 client,
                 trade_date=trade_date,
-                through_slot=signal_slot,
+                through_slot=market_slot,
                 ts_codes=direct_replay_codes,
                 workers=config.history.minute_fetch_workers,
             )
     requested_time = pd.Timestamp(
-        f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {signal_slot}:00"
+        f"{trade_date[:4]}-{trade_date[4:6]}-{trade_date[6:]} {market_slot}:00"
     )
     current_age = (
         requested_time - pd.to_datetime(current_minute["trade_time"], errors="coerce")
@@ -375,7 +398,7 @@ def build_live_feature_frame(
     else:
         open_snapshot = client.query(
             "rt_k",
-            cache_key=f"{trade_date}_{signal_slot.replace(':', '')}_open",
+            cache_key=f"{trade_date}_{market_slot.replace(':', '')}_open",
             refresh=True,
             ts_code=RTK_WILDCARDS,
             fields=RTK_FIELDS,
@@ -390,7 +413,6 @@ def build_live_feature_frame(
         config,
         trade_date=trade_date,
     )
-    observation_slots = _observation_slots(config.strategy.signal_slots)
     if late_recovery:
         tail = replay.loc[
             pd.to_datetime(replay["trade_time"], errors="coerce")
@@ -399,11 +421,11 @@ def build_live_feature_frame(
         ].copy()
     else:
         tail = _merge_direct_replay_tail(
-            current_minute,
+            session_tail,
             direct_replay=direct_replay,
             observation_slots=observation_slots,
         )
-    snapshots = _slot_features(tail, signal_slot)
+    snapshots = _slot_features(tail, market_slot)
     snapshots = snapshots.merge(day_snapshot, on="ts_code", how="left").merge(
         base, on="ts_code", how="inner"
     )
@@ -412,6 +434,7 @@ def build_live_feature_frame(
         errors="coerce",
     ).fillna(pd.to_numeric(snapshots["pre_close"], errors="coerce"))
     snapshots["signal_slot"] = signal_slot
+    snapshots["market_data_cutoff_slot"] = market_slot
     snapshots["signal_price"] = snapshots["slot_close"]
     snapshots["ret_from_prev_close_pct"] = (
         snapshots["signal_price"] / snapshots["pre_close"] - 1.0
@@ -466,6 +489,7 @@ def build_live_feature_frame(
         "trade_date": trade_date,
         "target_trade_date": target_trade_date,
         "signal_slot": signal_slot,
+        "market_data_cutoff_slot": market_slot,
         "market_data_time": snapshots["market_data_time"].iloc[0],
         "latest_bar_slot": actual_slot,
         "row_count": int(len(snapshots)),
@@ -483,8 +507,9 @@ def build_live_feature_frame(
         "market_data_source": (
             "rt_min_daily"
             if late_recovery
-            else "rt_min+selective_rt_min_daily"
+            else "rt_min_session_snapshots+selective_rt_min_daily"
         ),
+        "session_snapshot_row_count": int(len(session_tail)),
         "direct_replay_candidate_count": len(direct_replay_codes),
         "direct_replay_row_count": int(len(direct_replay)),
         **quality,

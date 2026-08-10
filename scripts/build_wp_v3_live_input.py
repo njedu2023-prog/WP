@@ -67,6 +67,10 @@ def build_live_input(
         environment.get("WP_V3_LATE_RECOVERY", "").strip() == "1"
     )
     config = load_v3_config(root / "config" / "wp_v3.yml")
+    market_data_cutoff_slot = (
+        environment.get("WP_V3_MARKET_DATA_CUTOFF_SLOT", "").strip()
+        or config.publication.market_data_cutoff_time
+    )
     client = TushareHistoryClient(
         ts.pro_api(token),
         root / "data" / "v3" / "cache",
@@ -76,6 +80,7 @@ def build_live_input(
         client,
         trade_date=trade_date,
         signal_slot=signal_slot,
+        market_data_cutoff_slot=market_data_cutoff_slot,
         config=config,
         late_recovery=late_recovery,
     )
@@ -86,14 +91,41 @@ def build_live_input(
     manifest["capture_contract"] = (
         "retrospective_same_day_rt_min_daily"
         if late_recovery
-        else "anchored_signal_slot_snapshot"
+        else "anchored_prepublication_cutoff_snapshot"
     )
     manifest["evidence_tier"] = (
         "RECOVERED_SAME_DAY"
         if late_recovery
         else "PROSPECTIVE_LIVE"
     )
-    manifest["prospective_eligible"] = not late_recovery
+    timing_bridge = market_data_cutoff_slot != signal_slot
+    manifest["prospective_eligible"] = bool(
+        not late_recovery and not timing_bridge
+    )
+    manifest["causal_shadow_eligible"] = not late_recovery
+    manifest["promotion_eligible"] = bool(
+        not late_recovery and not timing_bridge
+    )
+    manifest["timing_contract"] = (
+        f"{market_data_cutoff_slot}_market_cutoff__"
+        f"{config.publication.decision_publish_deadline}_publish__"
+        f"{config.execution.entry_execution_deadline}_entry"
+    )
+    manifest["model_timing_status"] = (
+        "TIMING_BRIDGE_SHADOW" if timing_bridge else "EXACT_MODEL_SLOT"
+    )
+    publish_deadline = datetime.combine(
+        datetime.strptime(trade_date, "%Y%m%d").date(),
+        datetime.strptime(
+            config.publication.decision_publish_deadline,
+            "%H:%M",
+        ).time(),
+        CN_TZ,
+    )
+    manifest["decision_publish_deadline"] = publish_deadline.isoformat()
+    manifest["capture_completed_before_publish_deadline"] = bool(
+        capture_completed_at <= publish_deadline
+    )
     if late_recovery:
         grace_seconds = int(
             environment.get("WP_SCHEDULE_GRACE_SECONDS", "120")

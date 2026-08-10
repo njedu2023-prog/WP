@@ -104,3 +104,8 @@ evidence:
   retrospective_end_date: "20260731"
   live_shadow_start_date: "20260805"
   keep_cohort_statistics_separate: true
+
+publication:
+  market_data_cutoff_time: "13:55"
+  decision_publish_deadline: "14:00"
+  raw_report_refresh_seconds: 20

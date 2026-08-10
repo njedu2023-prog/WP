@@ -76,6 +76,10 @@ def render_v3_dashboard(
         str(manifest.get("report_revision") or ""),
         ensure_ascii=False,
     )
+    rendered_revision_attr = _e(
+        str(manifest.get("report_revision") or "")
+    )
+    raw_refresh_ms = config.publication.raw_report_refresh_seconds * 1000
     html = f"""<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -85,6 +89,7 @@ def render_v3_dashboard(
   <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
   <meta http-equiv="Pragma" content="no-cache">
   <meta http-equiv="Expires" content="0">
+  <meta name="wp-report-revision" content="{rendered_revision_attr}">
   <title>WP 尾盘决策台</title>
   <style>
     :root {{
@@ -618,7 +623,7 @@ def render_v3_dashboard(
     <div class="topbar-inner">
       <div class="brand">WP · T+1 尾盘决策</div>
       <div class="top-meta">
-        <span>固定决策 14:00</span>
+        <span>13:55 截止 · 14:00 发布 · 14:05 入场</span>
         <span>{_e(_display_datetime(manifest.get("report_revision")))}</span>
       </div>
     </div>
@@ -665,7 +670,7 @@ def render_v3_dashboard(
       <div class="section-head">
         <div>
           <h2 class="section-title">T+1 真实验证</h2>
-          <p class="section-sub">实时统计始于 {_display_date(config.evidence.live_shadow_start_date)} · T 日 14:00 产生信号 · 14:05 影子入场 · T+1 收盘验证 · 旧合同单独标记且不合并统计</p>
+          <p class="section-sub">实时统计始于 {_display_date(config.evidence.live_shadow_start_date)} · T 日 13:55 行情截止 · 14:00 发布 · 14:05 影子入场 · T+1 收盘验证 · 旧合同单独标记且不合并统计</p>
         </div>
         <div class="segment" role="tablist" aria-label="验证组别">
           <button type="button" role="tab" aria-selected="false" data-tab="QUALIFIED">合格</button>
@@ -702,6 +707,27 @@ def render_v3_dashboard(
   <script>
     (function () {{
       var renderedRevision = {rendered_revision};
+      var rawReportUrl = 'https://raw.githubusercontent.com/njedu2023-prog/WP/main/outputs/html_reports/latest.html';
+      function refreshFromRawReport() {{
+        if (window.location.hostname !== 'njedu2023-prog.github.io') return;
+        var url = new URL(rawReportUrl);
+        url.searchParams.set('_', Date.now().toString());
+        fetch(url.toString(), {{ cache: 'no-store' }})
+          .then(function (response) {{
+            return response.ok ? response.text() : '';
+          }})
+          .then(function (html) {{
+            if (!html) return;
+            var parsed = new DOMParser().parseFromString(html, 'text/html');
+            var marker = parsed.querySelector('meta[name="wp-report-revision"]');
+            var latestRevision = marker && String(marker.getAttribute('content') || '');
+            if (!latestRevision || latestRevision === renderedRevision) return;
+            document.open();
+            document.write(html);
+            document.close();
+          }})
+          .catch(function () {{}});
+      }}
       function refreshWhenNewer() {{
         var manifestUrl = new URL('../json/wp_manifest.json', window.location.href);
         manifestUrl.searchParams.set('_', Date.now().toString());
@@ -721,7 +747,9 @@ def render_v3_dashboard(
           }})
           .catch(function () {{}});
       }}
+      refreshFromRawReport();
       refreshWhenNewer();
+      window.setInterval(refreshFromRawReport, {raw_refresh_ms});
       window.setInterval(refreshWhenNewer, 60000);
     }})();
     document.querySelectorAll('[data-tab-group]').forEach(function (group) {{
@@ -1616,7 +1644,7 @@ def _system_contract(
       <div class="split">
         <div>
           <h3 class="evidence-title">执行合同</h3>
-          <p class="evidence-copy">14:00 形成候选；14:05 五分钟收盘价加 {_number(config.execution.entry_slippage_bps)}bp 作为影子入场价；T+1 参与收盘集合竞价卖出；往返成本 {_number(config.execution.round_trip_cost_bps)}bp。</p>
+          <p class="evidence-copy">13:55 截止市场数据，14:00 前发布候选；14:05 五分钟收盘价加 {_number(config.execution.entry_slippage_bps)}bp 作为影子入场价；T+1 参与收盘集合竞价卖出；往返成本 {_number(config.execution.round_trip_cost_bps)}bp。</p>
         </div>
         <div>
           <h3 class="evidence-title">统计合同</h3>
@@ -1759,8 +1787,14 @@ def _data_status(manifest: dict[str, Any]) -> str:
         "ok": "正常",
         "research_ready": "研究回测就绪",
         "无符合条件股票": "正常",
+        "decision_publish_late": "发布延迟",
     }.get(health, health)
     parts = [health_label]
+    publish_sla = manifest.get("decision_publish_sla_met")
+    if publish_sla is True:
+        parts.append("14:00准点")
+    elif publish_sla is False and health != "decision_publish_late":
+        parts.append("发布延迟")
     if coverage is not None:
         parts.append(f"覆盖 {coverage:.1%}")
     if age is not None:

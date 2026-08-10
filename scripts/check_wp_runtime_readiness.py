@@ -78,6 +78,12 @@ def runtime_readiness(
         "status": "ready",
         "strategy_id": config.strategy.strategy_id,
         "signal_slot": config.strategy.signal_slots[0],
+        "market_data_cutoff_slot": (
+            config.publication.market_data_cutoff_time
+        ),
+        "decision_publish_deadline": (
+            config.publication.decision_publish_deadline
+        ),
         "entry_settlement_slot": config.execution.entry_execution_deadline,
         "model_version": bundle.model_version,
         "model_fingerprint": bundle.fingerprint,

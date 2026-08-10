@@ -11,7 +11,7 @@ def test_tail_schedule_has_one_signal_then_settlement_freeze_and_close():
     slots = scheduled_slots(datetime(2026, 7, 27).date())
 
     assert [slot.strftime("%H:%M") for slot in slots] == [
-        "14:00",
+        "13:55",
         "14:05",
         "14:10",
         "15:00",
@@ -39,6 +39,10 @@ def test_latest_due_slot_stays_inside_tail_window():
         .strftime("%H:%M")
         == "14:10"
     )
-    assert latest_due_slot(datetime(2026, 7, 27, 13, 59, tzinfo=CN_TZ)) is None
+    assert (
+        latest_due_slot(datetime(2026, 7, 27, 13, 59, tzinfo=CN_TZ))
+        .strftime("%H:%M")
+        == "13:55"
+    )
     assert latest_due_slot(datetime(2026, 7, 27, 11, 46, tzinfo=CN_TZ)) is None
     assert latest_due_slot(datetime(2026, 7, 27, 15, 3, tzinfo=CN_TZ)) is None

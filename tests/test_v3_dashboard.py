@@ -158,7 +158,10 @@ def test_dashboard_checks_uncached_manifest_for_new_revision(tmp_path) -> None:
 
     assert 'http-equiv="Cache-Control"' in text
     assert "wp_manifest.json" in text
+    assert "raw.githubusercontent.com/njedu2023-prog/WP/main" in text
+    assert 'meta name="wp-report-revision"' in text
     assert "cache: 'no-store'" in text
+    assert "window.setInterval(refreshFromRawReport, 20000)" in text
     assert "window.setInterval(refreshWhenNewer, 60000)" in text
 
 
@@ -367,7 +370,8 @@ def test_dashboard_keeps_live_validation_contract_without_research_block(
     assert '<h2 class="section-title">T+1 真实验证</h2>' in text
     assert "2026 年 8 月起 T+1 真实验证" not in text
     assert "实时统计始于 2026-08-05" in text
-    assert "T 日 14:00 产生信号" in text
+    assert "T 日 13:55 行情截止" in text
+    assert "14:00 发布" in text
     assert "14:05 影子入场" in text
     assert "T+1 收盘验证" in text
     assert "证据与上线边界" not in text
@@ -396,8 +400,8 @@ def test_dashboard_uses_independent_short_cohort_tabs(tmp_path) -> None:
         'aria-selected="true" data-tab="OBSERVATION"'
     ) == 1
     assert (
-        "实时统计始于 2026-08-05 · T 日 14:00 产生信号 · "
-        "14:05 影子入场 · T+1 收盘验证 · "
+        "实时统计始于 2026-08-05 · T 日 13:55 行情截止 · "
+        "14:00 发布 · 14:05 影子入场 · T+1 收盘验证 · "
         "旧合同单独标记且不合并统计"
         in text
     )

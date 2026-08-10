@@ -66,6 +66,8 @@ def test_runtime_readiness_accepts_exact_v41_shadow_bundle(tmp_path):
 
     assert result["status"] == "ready"
     assert result["signal_slot"] == "14:00"
+    assert result["market_data_cutoff_slot"] == "13:55"
+    assert result["decision_publish_deadline"] == "14:00"
     assert result["entry_settlement_slot"] == "14:05"
     assert result["model_fingerprint"] == bundle.fingerprint
 

@@ -150,6 +150,15 @@ class EvidenceContract:
 
 
 @dataclass(frozen=True)
+class PublicationContract:
+    """Operational SLA; excluded from the frozen model fingerprint."""
+
+    market_data_cutoff_time: str = "13:55"
+    decision_publish_deadline: str = "14:00"
+    raw_report_refresh_seconds: int = 20
+
+
+@dataclass(frozen=True)
 class V3Config:
     strategy: StrategyContract = field(default_factory=StrategyContract)
     execution: ExecutionContract = field(default_factory=ExecutionContract)
@@ -157,6 +166,7 @@ class V3Config:
     promotion: PromotionContract = field(default_factory=PromotionContract)
     history: HistoryContract = field(default_factory=HistoryContract)
     evidence: EvidenceContract = field(default_factory=EvidenceContract)
+    publication: PublicationContract = field(default_factory=PublicationContract)
 
 
 def _coerce(cls: type[Any], raw: dict[str, Any]) -> Any:
@@ -188,6 +198,7 @@ def load_v3_config(path: str | Path = "config/wp_v3.yml") -> V3Config:
         promotion=_coerce(PromotionContract, raw.get("promotion", {})),
         history=_coerce(HistoryContract, raw.get("history", {})),
         evidence=_coerce(EvidenceContract, raw.get("evidence", {})),
+        publication=_coerce(PublicationContract, raw.get("publication", {})),
     )
     validate_contract(config)
     return config
@@ -200,6 +211,27 @@ def validate_contract(config: V3Config) -> None:
         raise ValueError("signal_slots must be strictly chronological")
     if config.strategy.signal_slots != DEFAULT_SIGNAL_SLOTS:
         raise ValueError("WP has one immutable signal slot: 14:00")
+    if (
+        config.publication.decision_publish_deadline
+        != config.strategy.signal_slots[0]
+    ):
+        raise ValueError(
+            "decision publish deadline must equal the immutable 14:00 slot"
+        )
+    cutoff = datetime.strptime(
+        config.publication.market_data_cutoff_time,
+        "%H:%M",
+    )
+    deadline = datetime.strptime(
+        config.publication.decision_publish_deadline,
+        "%H:%M",
+    )
+    if cutoff >= deadline:
+        raise ValueError("market data cutoff must be before publication")
+    if deadline - cutoff != timedelta(minutes=5):
+        raise ValueError("WP publication requires a five-minute lead")
+    if not 10 <= config.publication.raw_report_refresh_seconds <= 60:
+        raise ValueError("raw report refresh must be between 10 and 60 seconds")
     if config.strategy.candidate_freeze_time <= config.strategy.signal_slots[-1]:
         raise ValueError("candidate freeze must occur after the final signal slot")
     if config.strategy.clear_live_display_time < config.strategy.candidate_freeze_time:
