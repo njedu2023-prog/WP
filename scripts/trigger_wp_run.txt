@@ -12,3 +12,4 @@
 2026-08-06 16:14:30 +08:00 target_trade_date=20260806 signal_slot=14:00 entry_settlement_slot=14:05 mode=same_day_recovery self_heal=final-wp reason=incomplete_shadow_session_after_close request_id=final-wp-20260806-161430
 2026-08-07 14:05:37 +08:00 target_trade_date=20260807 signal_slot=14:00 entry_settlement_slot=14:05 mode=session request_id=codex-20260807-140537
 2026-08-10 14:01:13 +08:00 target_trade_date=20260810 signal_slot=14:00 entry_settlement_slot=14:05 mode=session request_id=codex-20260810-140113
+2026-08-11 13:04:30 +08:00 target_trade_date=20260811 market_data_cutoff_slot=13:55 signal_slot=14:00 decision_publish_deadline=14:00 entry_settlement_slot=14:05 mode=session request_id=codex-20260811-130430
