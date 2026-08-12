@@ -2,3 +2,4 @@
 2026-08-04 15:52:50 +08:00 target_trade_date=20260804 mode=once reason=verify_observation_close_truth
 2026-08-05 16:16:00 +08:00 target_trade_date=20260805 mode=once self_heal=final-wp verify_observation_close_truth
 2026-08-07 16:13:44 +08:00 target_trade_date=20260807 mode=once self_heal=final-wp verify_observation_close_truth
+2026-08-12 16:08:35 +08:00 target_trade_date=20260812 mode=once self_heal=final-wp verify_observation_close_truth
