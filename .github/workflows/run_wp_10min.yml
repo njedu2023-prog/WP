@@ -1,15 +1,9 @@
 name: Run WP V41 Fixed 14:00 Session
 
 on:
-  # Start well before the SLA. No signal is produced before the completed
-  # 13:55 bar; the public decision deadline remains 14:00.
-  schedule:
-    - cron: "37 4 * * 1-5"
+  # Automatic schedule and trigger-file runs paused 2026-08-14 by user request.
+  # Deliberate one-off runs remain available from the Actions UI.
   workflow_dispatch:
-  push:
-    branches: [main]
-    paths:
-      - scripts/trigger_wp_run.txt
 
 permissions:
   contents: write

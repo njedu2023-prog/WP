@@ -1,16 +1,9 @@
 name: Validate WP Close
 
 on:
+  # Automatic schedule and trigger-file runs paused 2026-08-14 by user request.
+  # Deliberate one-off runs remain available from the Actions UI.
   workflow_dispatch:
-  push:
-    branches:
-      - main
-    paths:
-      - scripts/trigger_wp_close_validation.txt
-      - .github/workflows/validate_wp_close.yml
-  schedule:
-    # 08:07 UTC = 16:07 Asia/Shanghai. Retry until all due T+1 truth is written.
-    - cron: "7 8 * * 1-5"
 
 permissions:
   contents: write
